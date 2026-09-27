@@ -25,8 +25,11 @@ const port = Number(process.env.API_PORT || 4000);
 // Behind Hostinger's reverse proxy, the raw request always looks like plain
 // HTTP to Express — without this, request.protocol below would build
 // http:// upload URLs for a site served over https, which browsers block as
-// mixed content.
-app.set("trust proxy", true);
+// mixed content. Trust only a fixed number of proxy hops (not `true`), or any
+// client could spoof X-Forwarded-For and bypass the IP rate limiters below.
+// TRUST_PROXY is the hop count (e.g. 2 for Hostinger CDN + web server).
+const trustProxy = process.env.TRUST_PROXY || "1";
+app.set("trust proxy", /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
 // Reflects only origins that are actually this project's own frontend(s) —
 // the live domain and any of its subdomains, the Hostinger preview domain
 // (which has changed once already this project), and local dev — instead of

@@ -1,0 +1,101 @@
+# Deploys the backend to the Hostinger Node.js site after a manual approval.
+#
+# Push to main (or "Run workflow" in the Actions tab) -> checks run -> the deploy
+# job waits on the "production" environment until a required reviewer approves
+# -> Hostinger clones main and rebuilds the app -> /api/health must answer ok.
+#
+# Needs, on the "production" environment:
+#   secret   HOSTINGER_API_TOKEN              hPanel -> Account -> API
+#   variable HOSTINGER_GIT_INSTALLATION_UUID  the GitHub connection made in hPanel -> Git
+# App env vars (DB, SMTP, reCAPTCHA, ...) live in hPanel, not here.
+name: Deploy backend
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One production deploy at a time; a newer run replaces an older one still
+# waiting for approval, but never cancels a deploy that is already running.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  HOSTINGER_API: https://developers.hostinger.com/api/hosting/v1
+  HOSTINGER_USERNAME: u465324772
+  HOSTINGER_DOMAIN: darkgray-starling-318391.hostingersite.com
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Syntax-check server, scripts and migrations
+        run: for f in server/*.js scripts/*.mjs config/*.cjs db/migrations-sequelize/*.cjs; do node --check "$f"; done
+
+  deploy:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://darkgray-starling-318391.hostingersite.com/api/health
+    env:
+      TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
+      INSTALLATION_UUID: ${{ vars.HOSTINGER_GIT_INSTALLATION_UUID }}
+    steps:
+      - name: Start Hostinger build from main
+        id: build
+        run: |
+          set -euo pipefail
+          test -n "$TOKEN" || { echo "::error::HOSTINGER_API_TOKEN secret is not set on the production environment"; exit 1; }
+          test -n "$INSTALLATION_UUID" || { echo "::error::HOSTINGER_GIT_INSTALLATION_UUID variable is not set on the production environment"; exit 1; }
+          body=$(jq -n --arg owner "${{ github.repository_owner }}" --arg repo "${{ github.event.repository.name }}" --arg branch "${{ github.ref_name }}" --arg inst "$INSTALLATION_UUID" '{
+            node_version: 22, app_type: "express", package_manager: "npm", entry_file: "server/index.js",
+            root_directory: null, output_directory: null, build_script: null,
+            source_type: "git", source_options: {owner: $owner, repository: $repo, branch: $branch, installation_uuid: $inst}
+          }')
+          status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$HOSTINGER_API/accounts/$HOSTINGER_USERNAME/websites/$HOSTINGER_DOMAIN/nodejs/builds" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "Accept: application/json" -d "$body")
+          cat response.json; echo
+          [ "$status" -lt 300 ] || { echo "::error::Hostinger rejected the build request (HTTP $status)"; exit 1; }
+          uuid=$(jq -r '.uuid // .data.uuid // empty' response.json)
+          test -n "$uuid" || { echo "::error::No build uuid in Hostinger response"; exit 1; }
+          echo "uuid=$uuid" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for build to finish
+        env:
+          BUILD: ${{ steps.build.outputs.uuid }}
+        run: |
+          set -euo pipefail
+          base="$HOSTINGER_API/accounts/$HOSTINGER_USERNAME/websites/$HOSTINGER_DOMAIN/nodejs/builds/$BUILD"
+          for i in $(seq 1 90); do
+            state=$(curl -sS "$base" -H "Authorization: Bearer $TOKEN" -H "Accept: application/json" | jq -r '.state // .data.state // "unknown"' || echo unknown)
+            echo "build $BUILD: $state"
+            case "$state" in
+              completed) exit 0 ;;
+              failed)
+                echo "::group::Build logs"; curl -sS "$base/logs" -H "Authorization: Bearer $TOKEN" -H "Accept: application/json"; echo; echo "::endgroup::"
+                echo "::error::Hostinger build failed"; exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "::error::Build did not finish within 15 minutes"; exit 1
+
+      - name: Health check
+        run: |
+          for i in $(seq 1 12); do
+            if curl -sS -m 10 "https://$HOSTINGER_DOMAIN/api/health" | jq -e '.ok == true' >/dev/null 2>&1; then echo "Backend is healthy"; exit 0; fi
+            echo "not healthy yet, retrying..."; sleep 10
+          done
+          echo "::error::/api/health did not return ok:true after deploy"; exit 1
