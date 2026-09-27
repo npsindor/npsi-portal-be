@@ -1,0 +1,47 @@
+const { DataTypes } = require("sequelize");
+
+const timestamps = {
+  created_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+  updated_at: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW },
+};
+const id = { type: DataTypes.STRING(64), primaryKey: true, allowNull: false };
+const text = (allowNull = true) => ({ type: DataTypes.TEXT, allowNull });
+const string = (allowNull = true) => ({ type: DataTypes.STRING(255), allowNull });
+const table = (columns) => ({ id, ...columns, ...timestamps });
+
+const definitions = {
+  announcements: table({ title: text(false), body: text(false), date: { type: DataTypes.DATE }, type: string(), status: { type: DataTypes.STRING(64), defaultValue: "Active" } }),
+  applications: table({ application_id: { type: DataTypes.STRING(255), allowNull: false, unique: true }, status: { type: DataTypes.STRING(64), defaultValue: "SUBMITTED" }, family_head_name: text(false), mobile: string(), email: string(), family_name: text(false), address: text(), city: string(), district: string(), state: string(), pincode: string(), gotra: string(), native_place: string(), village: string(), members_data: { type: DataTypes.JSON }, submitted_date: { type: DataTypes.DATE }, admin_remarks: text(), reviewed_date: { type: DataTypes.DATE }, resulting_family_id: string() }),
+  events: table({ title: text(false), slug: string(), banner_url: text(), description: text(), date: { type: DataTypes.DATEONLY, allowNull: false }, start_time: string(), end_time: string(), venue: text(false), map_location: text(), organizer: string(), contact: string(), registration_open: { type: DataTypes.DATE }, registration_close: { type: DataTypes.DATE }, fee: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 }, capacity: { type: DataTypes.INTEGER }, rules: text(), terms: text(), status: { type: DataTypes.STRING(64), defaultValue: "DRAFT" } }),
+  families: table({ family_id: { type: DataTypes.STRING(255), unique: true }, family_name: text(), head_name: text(), status: { type: DataTypes.STRING(64), defaultValue: "PENDING" }, address: text(), city: string(), district: string(), state: string(), pincode: string(), native_place: string(), village: string(), gotra: string(), contact_number: string(), email: string(), registration_date: { type: DataTypes.DATE }, member_count: { type: DataTypes.INTEGER, defaultValue: 0 }, application_id: string() }),
+  family_members: table({ family_id: { type: DataTypes.STRING(64), allowNull: false }, membership_id: string(), name: text(false), relationship: string(false), gender: string(), dob: { type: DataTypes.DATEONLY }, mobile: string(), email: string(), education: string(), occupation: string(), address: text(), photo_url: text(), status: { type: DataTypes.STRING(64), defaultValue: "PENDING" }, linked_student_id: string() }),
+  student_applications: table({ application_id: { type: DataTypes.STRING(255), allowNull: false, unique: true }, status: { type: DataTypes.STRING(64), defaultValue: "SUBMITTED" }, student_name: text(false), mobile: string(false), email: string(), dob: { type: DataTypes.DATEONLY }, gender: string(), course: string(), institution: string(), academic_year: string(), guardian_name: string(), guardian_mobile: string(), address: text(), city: string(), district: string(), state: string(), pincode: string(), photo_url: text(), submitted_date: { type: DataTypes.DATE }, admin_remarks: text(), reviewed_date: { type: DataTypes.DATE }, resulting_student_id: string() }),
+  students: table({ student_id: { type: DataTypes.STRING(255), unique: true }, student_name: text(false), status: { type: DataTypes.STRING(64), defaultValue: "PENDING" }, mobile: string(), email: string(), dob: { type: DataTypes.DATEONLY }, gender: string(), course: string(), institution: string(), academic_year: string(), guardian_name: string(), guardian_mobile: string(), address: text(), city: string(), district: string(), state: string(), pincode: string(), photo_url: text(), registration_date: { type: DataTypes.DATE }, application_id: string(), linked_family_id: string(), linked_membership_id: string() }),
+  event_registrations: table({ registration_id: { type: DataTypes.STRING(255), allowNull: false, unique: true }, event_id: { type: DataTypes.STRING(64), allowNull: false }, event_title: string(), family_id: string(), member_ids: { type: DataTypes.JSON }, member_names: { type: DataTypes.JSON }, count: { type: DataTypes.INTEGER, defaultValue: 0 }, fee_per_member: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 }, total_fee: { type: DataTypes.DECIMAL(12, 2), defaultValue: 0 }, payment_status: { type: DataTypes.STRING(64), defaultValue: "PENDING" }, transaction_id: string(), status: { type: DataTypes.STRING(64), defaultValue: "REGISTERED" }, registered_by_id: string(), registered_date: { type: DataTypes.DATE }, registrant_name: string(), registrant_email: string() }),
+  transactions: table({ transaction_id: { type: DataTypes.STRING(255), allowNull: false, unique: true }, type: string(false), amount: { type: DataTypes.DECIMAL(12, 2), allowNull: false }, payment_method: string(), payment_status: { type: DataTypes.STRING(64), defaultValue: "PENDING" }, family_id: string(), member_id: string(), event_id: string(), reference_id: string(), date: { type: DataTypes.DATE }, remarks: text() }),
+  notifications: table({ title: text(false), message: text(false), type: string(false), recipient_family_id: string(), read: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }, date: { type: DataTypes.DATE }, deep_link: text() }),
+  rules: table({ section_number: { type: DataTypes.INTEGER }, title_en: text(false), title_hi: text(false), content_en: text(false), content_hi: text(false), status: { type: DataTypes.STRING(64), defaultValue: "Active" } }),
+  principles: table({ section_number: { type: DataTypes.INTEGER }, title_en: text(false), title_hi: text(false), content_en: text(false), content_hi: text(false), status: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "Active" } }),
+  samitis: table({ name: text(false), description: text(), formed_date: { type: DataTypes.DATEONLY }, status: { type: DataTypes.STRING(64), defaultValue: "Active" } }),
+  samiti_members: table({ samiti_id: { type: DataTypes.STRING(64), allowNull: false }, name: text(false), position: string(), mobile: string(), email: string(), status: { type: DataTypes.STRING(64), defaultValue: "Active" } }),
+  feedback: table({ feedback_id: { type: DataTypes.STRING(255), unique: true }, member_name: text(false), family_id: string(), email: string(), feedback_type: string(), subject: string(), message: text(), attachment_url: text(), questions: { type: DataTypes.JSON }, rating: { type: DataTypes.INTEGER }, status: { type: DataTypes.STRING(64), defaultValue: "Submitted" }, reply: text(), replied_date: { type: DataTypes.DATE }, replied_by_id: string(), internal_note: text(), archived: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false }, submitted_date: { type: DataTypes.DATE } }),
+  transfer_requests: table({ request_id: { type: DataTypes.STRING(255), allowNull: false, unique: true }, request_type: string(false), status: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "PENDING" }, reason: text(), source_student_id: string(), source_membership_id: string(), source_family_id: string(), target_family_id: string(), requester_id: string(), admin_remarks: text(), approved_by_id: string(), approved_date: { type: DataTypes.DATE }, resulting_membership_id: string(), old_family_id: string(), new_family_id: string() }),
+  users: table({ email: { type: DataTypes.STRING(255), unique: true }, full_name: string(), role: { type: DataTypes.STRING(64), defaultValue: "user" }, password_hash: text(), is_verified: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true }, status: { type: DataTypes.STRING(64), allowNull: false, defaultValue: "active" }, session_token: text(), session_expires_at: { type: DataTypes.DATE }, reset_token_hash: text(), reset_token_expires_at: { type: DataTypes.DATE } }),
+};
+
+module.exports = {
+  async up(queryInterface) {
+    for (const [name, columns] of Object.entries(definitions)) await queryInterface.createTable(name, columns);
+    await queryInterface.addIndex("applications", ["application_id", "mobile"], { name: "applications_lookup_idx" });
+    await queryInterface.addIndex("events", ["status", "date"], { name: "events_status_date_idx" });
+    await queryInterface.addIndex("family_members", ["family_id"], { name: "family_members_family_idx" });
+    await queryInterface.addIndex("notifications", ["recipient_family_id", "date"], { name: "notifications_recipient_idx" });
+    await queryInterface.addIndex("transactions", ["family_id", "date"], { name: "transactions_family_idx" });
+    await queryInterface.addIndex("principles", ["section_number"], { name: "principles_section_idx" });
+    await queryInterface.addIndex("users", [{ name: "session_token", length: 255 }], { name: "users_session_token_idx" });
+    await queryInterface.addIndex("users", [{ name: "reset_token_hash", length: 255 }], { name: "users_reset_token_idx" });
+  },
+  async down(queryInterface) {
+    for (const name of Object.keys(definitions).reverse()) await queryInterface.dropTable(name);
+  },
+};

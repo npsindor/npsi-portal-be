@@ -1,0 +1,8 @@
+import fs from "node:fs/promises";
+import process from "node:process";
+import { parse } from "csv-parse/sync";
+import mysql from "mysql2/promise";
+
+const file = process.argv[2]; if (!file) { console.error("Usage: npm run db:import-users -- <users.csv>"); process.exit(1); }
+const rows = parse(await fs.readFile(file, "utf8"), { columns: true, skip_empty_lines: true, bom: true }); const connection = await mysql.createConnection({ host: process.env.MYSQL_HOST || "localhost", port: Number(process.env.MYSQL_PORT || 3600), user: process.env.MYSQL_USER || "cdn", password: process.env.MYSQL_PASSWORD || "cdn12345", database: process.env.MYSQL_DATABASE || "patidar_samaj" });
+try { await connection.beginTransaction(); for (const row of rows) await connection.execute("INSERT INTO users (id, email, full_name, role, status, is_verified, created_at, updated_at) VALUES (UUID(), LOWER(?), ?, ?, ?, ?, COALESCE(?, NOW()), COALESCE(?, NOW())) ON DUPLICATE KEY UPDATE full_name = VALUES(full_name), role = VALUES(role), status = VALUES(status), is_verified = VALUES(is_verified), updated_at = VALUES(updated_at)", [row.email, row.full_name || row.email.split("@")[0], row.role === "admin" ? "admin" : "user", row.status || "active", row.status === "active", row.created_date || null, row.updated_date || row.created_date || null]); await connection.commit(); console.log(`Imported ${rows.length} user account(s). Password hashes were not present in the CSV.`); } catch (error) { await connection.rollback(); throw error; } finally { await connection.end(); }

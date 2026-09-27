@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# Environment files (contain DB and SMTP credentials)
+.env
+.env.*
+!.env.example
+
+# Local data imports (Base44 CSV exports contain member PII)
+database/
+*.csv
+
+# User-uploaded files (photos, attachments)
+uploads/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
