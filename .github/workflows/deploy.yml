@@ -1,10 +1,14 @@
-# Deploys the backend to the Hostinger Node.js site after a manual approval.
+# Deploys the backend to its Hostinger Node.js site.
 #
-# Push to main (or "Run workflow" in the Actions tab) -> checks run -> the deploy
-# job waits on the "production" environment until a required reviewer approves
-# -> Hostinger clones main and rebuilds the app -> /api/health must answer ok.
+#   main -> "production" environment (waits for a required reviewer to approve)
+#           -> darkgray-starling-318391.hostingersite.com (api.npsindore.org)
+#   test -> "test" environment (no approval, deploys automatically)
+#           -> saddlebrown-newt-991262.hostingersite.com (api-test.npsindore.org)
 #
-# Needs, on the "production" environment:
+# Push (or "Run workflow" in the Actions tab) -> checks run -> Hostinger clones
+# the branch and rebuilds the app -> /api/health must answer ok.
+#
+# Needs, on each environment:
 #   secret   HOSTINGER_API_TOKEN              hPanel -> Account -> API
 #   variable HOSTINGER_GIT_INSTALLATION_UUID  the GitHub connection made in hPanel -> Git
 # App env vars (DB, SMTP, reCAPTCHA, ...) live in hPanel, not here.
@@ -12,22 +16,23 @@ name: Deploy backend
 
 on:
   push:
-    branches: [main]
+    branches: [main, test]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One production deploy at a time; a newer run replaces an older one still
+# One deploy per branch at a time; a newer run replaces an older one still
 # waiting for approval, but never cancels a deploy that is already running.
 concurrency:
-  group: production-deploy
+  group: deploy-${{ github.ref_name }}
   cancel-in-progress: false
 
 env:
   HOSTINGER_API: https://developers.hostinger.com/api/hosting/v1
   HOSTINGER_USERNAME: u465324772
-  HOSTINGER_DOMAIN: darkgray-starling-318391.hostingersite.com
+  HOSTINGER_DOMAIN: ${{ github.ref_name == 'main' && 'darkgray-starling-318391.hostingersite.com' || 'saddlebrown-newt-991262.hostingersite.com' }}
+  PUBLIC_URL: ${{ github.ref_name == 'main' && 'https://api.npsindore.org' || 'https://api-test.npsindore.org' }}
 
 jobs:
   check:
@@ -44,22 +49,22 @@ jobs:
 
   deploy:
     needs: check
-    if: github.ref == 'refs/heads/main'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/test'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     environment:
-      name: production
-      url: https://darkgray-starling-318391.hostingersite.com/api/health
+      name: ${{ github.ref_name == 'main' && 'production' || 'test' }}
+      url: ${{ github.ref_name == 'main' && 'https://api.npsindore.org/api/health' || 'https://api-test.npsindore.org/api/health' }}
     env:
       TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
       INSTALLATION_UUID: ${{ vars.HOSTINGER_GIT_INSTALLATION_UUID }}
     steps:
-      - name: Start Hostinger build from main
+      - name: Start Hostinger build from ${{ github.ref_name }}
         id: build
         run: |
           set -euo pipefail
-          test -n "$TOKEN" || { echo "::error::HOSTINGER_API_TOKEN secret is not set on the production environment"; exit 1; }
-          test -n "$INSTALLATION_UUID" || { echo "::error::HOSTINGER_GIT_INSTALLATION_UUID variable is not set on the production environment"; exit 1; }
+          test -n "$TOKEN" || { echo "::error::HOSTINGER_API_TOKEN secret is not set on this environment"; exit 1; }
+          test -n "$INSTALLATION_UUID" || { echo "::error::HOSTINGER_GIT_INSTALLATION_UUID variable is not set on this environment"; exit 1; }
           body=$(jq -n --arg owner "${{ github.repository_owner }}" --arg repo "${{ github.event.repository.name }}" --arg branch "${{ github.ref_name }}" --arg inst "$INSTALLATION_UUID" '{
             node_version: 22, app_type: "express", package_manager: "npm", entry_file: "server/index.js",
             root_directory: null, output_directory: null, build_script: null,
@@ -95,7 +100,7 @@ jobs:
       - name: Health check
         run: |
           for i in $(seq 1 12); do
-            if curl -sS -m 10 "https://$HOSTINGER_DOMAIN/api/health" | jq -e '.ok == true' >/dev/null 2>&1; then echo "Backend is healthy"; exit 0; fi
+            if curl -sS -m 10 "$PUBLIC_URL/api/health" | jq -e '.ok == true' >/dev/null 2>&1; then echo "Backend is healthy at $PUBLIC_URL"; exit 0; fi
             echo "not healthy yet, retrying..."; sleep 10
           done
           echo "::error::/api/health did not return ok:true after deploy"; exit 1
