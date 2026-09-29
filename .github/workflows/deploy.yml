@@ -97,6 +97,19 @@ jobs:
           done
           echo "::error::Build did not finish within 15 minutes"; exit 1
 
+      # A build from Git silently turns on Hostinger's own push-to-deploy for the
+      # branch, which would let pushes to main skip the approval above. Turn it off
+      # again so only this workflow deploys.
+      - name: Keep Hostinger auto-deploy off
+        run: |
+          set -euo pipefail
+          body=$(jq -n --arg owner "${{ github.repository_owner }}" --arg repo "${{ github.event.repository.name }}" --arg branch "${{ github.ref_name }}" --arg inst "$INSTALLATION_UUID" \
+            '{installation_uuid: $inst, owner: $owner, repository: $repo, branch: $branch, is_enabled: false}')
+          status=$(curl -sS -o response.json -w '%{http_code}' -X PUT "$HOSTINGER_API/accounts/$HOSTINGER_USERNAME/websites/$HOSTINGER_DOMAIN/git/auto-deployments/settings" \
+            -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "Accept: application/json" -d "$body")
+          cat response.json; echo
+          [ "$status" -lt 300 ] || { echo "::error::Could not turn off Hostinger auto-deploy (HTTP $status)"; exit 1; }
+
       - name: Health check
         run: |
           for i in $(seq 1 12); do
