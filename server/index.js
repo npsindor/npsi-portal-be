@@ -346,7 +346,7 @@ const nextSequentialId = async (table, column, prefix) => {
 };
 
 app.get("/api/health", async (_request, response) => {
-  try { await sequelize.authenticate(); response.json({ ok: true, database: "mysql" }); }
+  try { await sequelize.authenticate(); response.json({ ok: true, database: "mysql", env: process.env.APP_ENV || "development" }); }
   catch (error) { response.status(503).json({ ok: false, error: error.message }); }
 });
 
