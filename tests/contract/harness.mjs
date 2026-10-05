@@ -1,7 +1,5 @@
-// Black-box contract test harness: starts the API as a child process on a
-// throwaway MySQL database, seeds known data, and exposes a Supertest client.
-// The same suite runs against the legacy Express app and the NestJS app; only
-// CONTRACT_SERVER_CMD (how to start it) and CONTRACT_API (which path table) change.
+// Black-box contract test harness: starts the built API (dist/main.js) as a child
+// process on a throwaway MySQL database, seeds known data, and exposes Supertest.
 import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -27,8 +25,8 @@ const dbConfig = {
   password: process.env.CONTRACT_MYSQL_PASSWORD ?? localEnv.MYSQL_PASSWORD ?? "",
 };
 const PORT = Number(process.env.CONTRACT_PORT || 4790);
-const SERVER_CMD = (process.env.CONTRACT_SERVER_CMD || "node server/index.js").split(" ");
-const MIGRATION_COUNT = fs.readdirSync(path.join(root, "db/migrations-sequelize")).filter((f) => f.endsWith(".cjs")).length;
+const SERVER_CMD = (process.env.CONTRACT_SERVER_CMD || "node dist/main.js").split(" ");
+const PRISMA_MIGRATION_COUNT = fs.readdirSync(path.join(root, "prisma/migrations"), { withFileTypes: true }).filter((d) => d.isDirectory()).length;
 export const UPLOADS_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "npsi-contract-uploads-"));
 
 export const TOKENS = { admin: "a".repeat(64), member: "m".repeat(64), other: "o".repeat(64), expired: "e".repeat(64), noFamily: "n".repeat(64) };
@@ -68,6 +66,8 @@ const hashPassword = (password) => {
   return `${salt}:${crypto.scryptSync(password, salt, 64).toString("hex")}`;
 };
 const sha256 = (value) => crypto.createHash("sha256").update(value).digest("hex");
+// The app stores only a SHA-256 of each session token.
+const storedToken = (token) => sha256(token);
 
 const waitFor = async (check, label, timeoutMs = 60000) => {
   const start = Date.now();
@@ -109,12 +109,23 @@ const seed = async () => {
     await query(
       `INSERT INTO users (id, email, full_name, phone, role, password_hash, is_verified, status, session_token, session_expires_at, otp_hash, otp_expires_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${u.session_token ? "DATE_ADD(NOW(), INTERVAL 1 DAY)" : "NULL"}, ?, ${u.otp_hash ? "DATE_ADD(NOW(), INTERVAL 10 MINUTE)" : "NULL"})`,
-      [u.id, u.email, u.full_name, u.phone, u.role, u.password_hash, u.is_verified, u.status, u.session_token || null, u.otp_hash || null],
+      [
+        u.id,
+        u.email,
+        u.full_name,
+        u.phone,
+        u.role,
+        u.password_hash,
+        u.is_verified,
+        u.status,
+        u.session_token ? storedToken(u.session_token) : null,
+        u.otp_hash || null,
+      ],
     );
   }
   await query(
     "INSERT INTO users (id, email, password_hash, session_token, session_expires_at) VALUES ('u-expired', 'expired@test.local', ?, ?, DATE_SUB(NOW(), INTERVAL 1 DAY))",
-    [hashPassword("x123456"), TOKENS.expired],
+    [hashPassword("x123456"), storedToken(TOKENS.expired)],
   );
   await query(
     "INSERT INTO families (id, family_id, family_name, head_name, status, city, contact_number, email, registration_date, member_count, created_at) VALUES (?, ?, 'Patel', 'Member Head', 'ACTIVE', 'Indore', '9200000001', 'member@test.local', '2026-01-01 00:00:00', 1, '2026-01-01 00:00:00'), (?, ?, 'Other', 'Other Head', 'ACTIVE', 'Bhopal', '9200000002', 'other@test.local', '2026-01-02 00:00:00', 1, '2026-01-02 00:00:00')",
@@ -175,6 +186,7 @@ export const setup = async () => {
       SMTP_FROM: "",
       RECAPTCHA_SECRET_KEY: "",
       ADMIN_NOTIFICATION_EMAILS: "admin-notify@test.local",
+      LOG_REQUESTS: "false",
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -186,9 +198,11 @@ export const setup = async () => {
     output += chunk;
   });
   try {
-    await waitFor(async () => (await query("SELECT COUNT(*) AS n FROM SequelizeMeta"))[0].n >= MIGRATION_COUNT, "migrations");
+    // Every Prisma migration finished.
+    const migrated = async () => (await query("SELECT COUNT(*) AS n FROM _prisma_migrations WHERE finished_at IS NOT NULL"))[0].n >= PRISMA_MIGRATION_COUNT;
+    await waitFor(migrated, "migrations");
     const healthy = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`).catch(() => null))?.ok === true;
-    await waitFor(async () => (await healthy("/api/v1/health")) || (await healthy("/api/health")), "server");
+    await waitFor(() => healthy("/api/v1/health"), "server");
   } catch (error) {
     throw new Error(`${error.message}\n--- server output ---\n${output}`);
   }

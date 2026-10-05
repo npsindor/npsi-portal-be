@@ -1,9 +1,10 @@
 # NestJS migration report
 
-The backend was migrated from Express 5 + JavaScript to NestJS 12 + TypeScript (strict), its
-endpoints moved to standardized `/api/v1` paths, and the frontend updated to match. Business
-behavior is unchanged: the same black-box contract suite (82 tests) passes against the legacy
-Express app on the old paths and against the NestJS app on the new paths.
+The backend was migrated from Express 5 + JavaScript (raw SQL through Sequelize) to NestJS 12 +
+TypeScript (strict) with a Prisma 7 data layer, its endpoints moved to standardized `/api/v1`
+paths, and the frontend updated to match. Business behavior is unchanged except for one approved
+fix (logout without a token): the same black-box contract suite (85 tests) passes against the
+legacy Express app on the old paths and against the NestJS + Prisma app on the new paths.
 
 ## Branches and commits (local, not pushed)
 
@@ -63,16 +64,64 @@ Samiti `samitis`, SamitiMember `samiti-members`, Student `students`, StudentAppl
 Status codes and response bodies are unchanged for every endpoint (including 200 for login and
 the other non-creating POSTs, 204 for logout and deletes, 200 `[]` for an empty batch).
 
+## Prisma data layer
+
+- **Prisma 7.10** with the MariaDB driver adapter (works with MySQL); no native query engine.
+  Hostinger runs Node 22.18.0, the minimum Prisma 7 needs, so Prisma is pinned to `~7.10.0`.
+- **Schema**: introspected from a database built by the legacy migrations
+  (`prisma/schema.prisma`); models are named after the entities and `@@map` to the unchanged
+  tables and columns. Verified identical: a Sequelize-built and a Prisma-built database both
+  report "No difference detected" against the schema, and the seed data checksums match.
+- **Migrations**: Prisma Migrate. `prisma/migrations/0_init` is the baseline (all 17 tables +
+  the principles seed from legacy migration 002). Existing databases (test, production) are
+  baselined automatically on first boot or `npm run db:migrate`: when `SequelizeMeta` has all 8
+  legacy migrations and `_prisma_migrations` doesn't exist, `0_init` is marked applied without
+  running it. Verified on a copy of the local dev database (`applied_steps_count 0`, no drift).
+- **Response parity** (column codec): Prisma returns DATE as a full timestamp, DECIMAL as
+  `"100"` and TINYINT booleans as `true`; responses keep the legacy `"2026-12-01"`, `"100.00"`
+  and `1`/`0`. Writes and filters apply MySQL's old implicit conversions; unknown filter/order
+  columns still return MySQL's `Unknown column ...` 500. New contract tests check each format
+  against both apps.
+- **Database clock kept**: session, OTP and reset-token expiry statements still use `NOW()` via
+  Prisma's parameterized tagged-template SQL; sequential display ids keep their SQL too.
+- `sequelize`/`sequelize-cli` are dev dependencies now, used only by the legacy `server/` app.
+
+## Backend improvements (after the migration)
+
+| # | Improvement | Where |
+|---|---|---|
+| 1 | Startup warning when `UPLOADS_DIR` is unset on test/production (each Hostinger deploy is a new code folder, so default uploads are wiped) | `configure-app.ts` |
+| 3 | Session tokens stored as SHA-256 (a database copy can't be used to log in); **everyone logs in once after this deploys** | `auth.service.ts`, `session.service.ts` |
+| 4 | helmet security headers (CSP, HSTS, nosniff, frame options; uploads stay cross-origin embeddable); no `X-Powered-By` | `configure-app.ts` |
+| 5 | Public uploads: daily per-IP cap (150) on top of 40 per 15 min (login can't be required: registration uploads photos before an account exists) | `limiters.ts` |
+| 6 | Email/mobile availability checks rate-limited (60 per 15 min per IP) against enumeration | `limiters.ts`, `lookups.module.ts` |
+| 7 | Swagger disabled when `APP_ENV=production` (still on for test and local) | `configure-app.ts` |
+| 8 | Dependency audit: 9 findings (5 high) → **0**; overrides for `mariadb` 3.5, `mysql2`, `deepmerge-ts` 8; `csv-parse` 7 | `package.json` |
+| 9 | CI runs the e2e and contract suites against a MySQL 8.4 service before any deploy | `.github/workflows/deploy.yml` |
+| 10 | Request logging: one JSON line per request through console (shows in Hostinger's log viewer), `X-Request-Id` header, 5xx logged with the id; no query strings logged | `common/logging/request-logger.ts` |
+| 11 | Email retries for transient failures (network, SMTP 4xx), twice with backoff; permanent 5xx not retried | `mail.service.ts` |
+| 12 | Graceful shutdown (`enableShutdownHooks`): DB connections closed on restart | `main.ts` |
+| 13 | Duplicate email/mobile checks run in MySQL (EXISTS queries) instead of loading whole tables; same rules, proven against the legacy app by 3 new contract tests | `lookups.repository.ts` |
+| 14 | Concurrent creates that compute the same display id (e.g. NPSI-APP-…) retry with the next free id instead of failing with a 500 | `entities.service.ts` |
+| 15 | Indexes for member lookups by email (families, family_members, students, feedback) and family_members.membership_id | `prisma/migrations/20261005000000_add_member_lookup_indexes` |
+| 16 | Legacy Express app, Sequelize, `config/database.cjs`, `.sequelizerc` and the legacy contract mode removed (after a final 88/88 comparison against the legacy app) | — |
+
+Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), setting
+`UPLOADS_DIR` in hPanel (a server change), and **#17** (DTO/Zod validation and domain modules:
+a breaking redesign, to be planned separately).
+
 ## Test results (final run)
 
 | Repo | Check | Result |
 |---|---|---|
 | Backend | `npm run check` (Biome lint + format, 70 files) | pass, 0 diagnostics |
 | Backend | `npm run build` (tsc, strict) | pass |
-| Backend | `npm test` (unit, 92 tests) | 92/92 pass |
-| Backend | `npm run test:e2e` (29 tests, every v1 endpoint, real MySQL) | 29/29 pass |
-| Backend | `npm run test:contract` (NestJS, v1 paths) | 82/82 pass |
-| Backend | `npm run test:contract:legacy` (Express, old paths) | 82/82 pass |
+| Backend | `npm test` (unit, 112 tests) | 112/112 pass |
+| Backend | `npm run test:e2e` (31 tests, every v1 endpoint, real MySQL) | 31/31 pass |
+| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 88/88 pass |
+| Backend | Final comparison before removing the legacy app: same 88 contract tests on Express + Sequelize, old paths | 88/88 pass |
+| Backend | `npm audit` | 0 vulnerabilities |
+| Backend | Clean production-only install → build → start on a fresh DB | pass (Prisma client generated, `0_init` applied, 10 principles seeded) |
 | Backend | Swagger at `/api/docs` | 99 operations, 71 schemas; every operation has a tag, summary, typed success response, at least one error response, and a request DTO wherever it takes a body |
 | Frontend | `npm run lint` | 0 errors (44 pre-existing warnings, unchanged) |
 | Frontend | `npm test` (6 tests) | 6/6 pass |
@@ -93,8 +142,9 @@ the other non-creating POSTs, 204 for logout and deletes, 200 `[]` for an empty 
 | recaptcha.service.ts | 100% | 92.9% | 100% |
 | mail.service.ts | 97.4% | 90.0% | 100% |
 | app-config.service.ts | 96.8% | 100% | 92.3% |
-| database.service.ts | 21.6% | 50.0% | 0% (needs a real DB; exercised by e2e and contract tests) |
-| **All services** | **93.5%** | **95.9%** | **98.2%** |
+| column-codec.ts | 100% | 92.5% | 100% |
+| prisma.service.ts | 50.0% | 100% | 0% (needs a real DB; exercised by e2e and contract tests) |
+| **All services + codec** | **95.2%** | **95.5%** | **92.9%** |
 
 `npm run test:cov` enforces at least 80% lines, branches and functions.
 
@@ -113,9 +163,19 @@ the other non-creating POSTs, 204 for logout and deletes, 200 `[]` for an empty 
 3. **Old paths are gone.** `/api/...` (without `v1`) now returns 404, so the backend and
    frontend branches must be deployed together.
 
+### Approved change
+- **Logout without a bearer token now returns 204** (no-op). The legacy app returned a 500 with
+  a raw driver message; with Prisma an empty token filter would have matched every user, so it
+  is guarded explicitly.
+
+### Minor differences from the Prisma data layer
+- `/api/v1/health` when the database is down: still 503 `{ ok: false, error }`, but the error
+  text now comes from the Prisma adapter instead of Sequelize.
+- `updated_at` on entity updates is set from the app clock (UTC) instead of MySQL `NOW()`.
+- Validation errors MySQL raised for impossible values (e.g. `"abc"` into an integer column)
+  are still 500s with MySQL-style messages, but the exact wording may differ.
+
 ### Existing quirks kept on purpose (fixing them would change behavior; say if you want them fixed)
-- Logout without a bearer token returns `500` with the raw driver message
-  `Positional replacement (?) 0 has no entry in the replacement map (replacements[0] is undefined).`
 - A client-supplied `id` on create overrides the generated UUID wherever the non-admin field
   whitelist doesn't strip it (admins and the public-create entities).
 - Datetime strings are normalized twice; the second pass reads them as server-local time. On a
@@ -143,12 +203,13 @@ the other non-creating POSTs, 204 for logout and deletes, 200 `[]` for an empty 
 ## Follow-ups before deploying (not done; they change production)
 1. **Deploy both branches together.** The frontend must call `/api/v1`, which only the new
    backend serves.
-2. **Hostinger build settings.** Production currently starts `server/index.js` without a build
-   step (`entry_file: server/index.js` in `.github/workflows/deploy.yml` and the Hostinger build
-   settings). The NestJS app needs `npm run build` and `entry_file: dist/main.js`, and the build
-   needs the dev dependencies (`typescript`). Update the deploy workflow and Hostinger settings,
-   then verify on the test environment first.
-3. **Remove the legacy server** (`server/`, `dev:legacy`, `test:contract:legacy` and the legacy
-   path table) once production runs `dist/main.js`.
-4. **Swagger in production**: `/api/docs` is public. That's fine for an API whose security doesn't
-   rely on secrecy, but it can be limited to non-production if preferred.
+2. **Deploy pipeline** (done on this branch): the check job runs Biome, build, unit, e2e and contract tests (MySQL 8.4 service);
+   Hostinger builds with `npm run build` (which runs `prisma generate`) and starts
+   `dist/main.js`; the health check calls `/api/v1/health`. Verify on the test environment first.
+3. **First boot on test/production** baselines the existing database automatically (see
+   "Prisma data layer"). Take a database backup before the first production deploy.
+4. **Set `UPLOADS_DIR`** on the test and production backends in hPanel to a folder outside
+   the deployed code (e.g. `/home/u465324772/uploads`), then restart.
+5. **Measure `TRUST_PROXY`** on the test site after deploying (RateLimit headers with and
+   without a forged `X-Forwarded-For`) and set it in hPanel.
+6. **Everyone logs in once** after this deploys (session tokens are now stored hashed).

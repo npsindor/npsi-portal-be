@@ -4,18 +4,20 @@ import type { ConfigService } from "@nestjs/config";
 import { AppConfigService } from "../config/app-config.service.js";
 import type { EnvironmentVariables } from "../config/env.validation.js";
 import { validateEnv } from "../config/env.validation.js";
-import type { DatabaseService } from "../database/database.service.js";
+import type { PrismaService } from "../database/prisma.service.js";
 import { as, fakeConfig, rejectsWith, request, user } from "../testing/fakes.js";
+import { logServerError, type RequestWithId, requestLogger } from "./logging/request-logger.js";
 import { MailService } from "./mail/mail.service.js";
 import { RecaptchaService } from "./recaptcha/recaptcha.service.js";
 import { bearerToken, SessionService } from "./session/session.service.js";
+import { sha256 } from "./utils/crypto.js";
 
 afterEach(() => mock.restoreAll());
 
 describe("SessionService", () => {
   const sessions = (row: unknown) => {
-    const first = mock.fn(async (..._args: unknown[]) => row);
-    return { first, service: new SessionService(as<DatabaseService>({ first })) };
+    const first = mock.fn(async (..._args: unknown[]) => (row ? [row] : []));
+    return { first, service: new SessionService(as<PrismaService>({ $queryRaw: first })) };
   };
 
   test("reads the token after an optional Bearer prefix", () => {
@@ -32,7 +34,7 @@ describe("SessionService", () => {
   test("looks up live sessions by token", async () => {
     const { first, service } = sessions(user());
     assert.equal((await service.getBearerUser(request({ authorization: "Bearer t" })))?.id, "u-1");
-    assert.deepEqual(first.mock.calls[0].arguments[1], ["t"]);
+    assert.deepEqual(first.mock.calls[0].arguments.slice(1), [sha256("t")], "looks up the token's hash");
     assert.equal(await sessions(undefined).service.getBearerUser(request({ authorization: "Bearer t" })), null);
   });
   test("requireUser / requireAdmin", async () => {
@@ -151,5 +153,96 @@ describe("AppConfigService", () => {
   test("env validation rejects non-numeric ports", () => {
     assert.ok(validateEnv({ API_PORT: "4000", MYSQL_PORT: "" }));
     assert.throws(() => validateEnv({ API_PORT: "abc" }), /API_PORT must be a number/);
+  });
+});
+
+describe("MailService retries", () => {
+  const configured = () => {
+    const service = new MailService(fakeConfig({ smtp: { host: "smtp.example.com", port: 465, secure: true, user: "u", pass: "p", from: "f" } }));
+    service.retryDelaysMs = [0, 0];
+    const sendMail = mock.fn(async (_message: unknown): Promise<unknown> => ({ messageId: "1" }));
+    Object.defineProperty(service, "transporter", { value: { sendMail } });
+    return { service, sendMail };
+  };
+  const message = { to: "a@x.com", subject: "S", html: "h", text: "t" };
+
+  test("retries transient failures (network errors, SMTP 4xx) twice", async () => {
+    const { service, sendMail } = configured();
+    mock.method(console, "warn", () => undefined);
+    sendMail.mock.mockImplementationOnce(async () => {
+      throw new Error("ECONNRESET");
+    });
+    sendMail.mock.mockImplementationOnce(async () => {
+      throw Object.assign(new Error("try later"), { responseCode: 421 });
+    }, 1);
+    assert.deepEqual(await service.send(message), { messageId: "1" });
+    assert.equal(sendMail.mock.callCount(), 3);
+  });
+  test("gives up after the last retry", async () => {
+    const { service, sendMail } = configured();
+    mock.method(console, "warn", () => undefined);
+    sendMail.mock.mockImplementation(async () => {
+      throw new Error("ECONNREFUSED");
+    });
+    await assert.rejects(service.send(message), /ECONNREFUSED/);
+    assert.equal(sendMail.mock.callCount(), 3);
+  });
+  test("permanent SMTP rejections (5xx) are not retried", async () => {
+    const { service, sendMail } = configured();
+    sendMail.mock.mockImplementation(async () => {
+      throw Object.assign(new Error("554 reserved domain"), { responseCode: 554 });
+    });
+    await assert.rejects(service.send(message), /554/);
+    assert.equal(sendMail.mock.callCount(), 1);
+  });
+});
+
+describe("requestLogger", () => {
+  const run = (headers: Record<string, string> = {}, url = "/api/v1/stats?email=secret@x.com") => {
+    const listeners: Record<string, () => void> = {};
+    const response = {
+      statusCode: 200,
+      headers: {} as Record<string, string>,
+      setHeader(name: string, value: string) {
+        this.headers[name] = value;
+      },
+      on(event: string, cb: () => void) {
+        listeners[event] = cb;
+      },
+    };
+    const req = { get: (name: string) => headers[name.toLowerCase()], method: "GET", originalUrl: url, ip: "1.2.3.4" } as unknown as RequestWithId;
+    const next = mock.fn();
+    requestLogger(req, response as never, next);
+    return { req, response, next, finish: () => listeners.finish?.() };
+  };
+
+  test("assigns a request id, or keeps a sane incoming one", () => {
+    const fresh = run();
+    assert.match(fresh.response.headers["X-Request-Id"], /^[0-9a-f-]{36}$/);
+    assert.equal(fresh.req.requestId, fresh.response.headers["X-Request-Id"]);
+    assert.equal(run({ "x-request-id": "abc-123" }).response.headers["X-Request-Id"], "abc-123");
+    assert.notEqual(run({ "x-request-id": "bad id <script>" }).response.headers["X-Request-Id"], "bad id <script>");
+  });
+  test("logs one JSON line per request, without the query string", () => {
+    const log = mock.method(console, "log", () => undefined);
+    const { finish, next } = run();
+    assert.equal(next.mock.callCount(), 1);
+    finish();
+    const line = JSON.parse(String(log.mock.calls[0].arguments[0]));
+    assert.deepEqual(
+      { msg: line.msg, method: line.method, path: line.path, status: line.status, ip: line.ip },
+      { msg: "request", method: "GET", path: "/api/v1/stats", status: 200, ip: "1.2.3.4" },
+    );
+    assert.ok(!String(log.mock.calls[0].arguments[0]).includes("secret@x.com"));
+  });
+  test("server errors are logged with the request id; client errors are not", () => {
+    const error = mock.method(console, "error", () => undefined);
+    const { req } = run();
+    logServerError(req, 400, new Error("bad input"));
+    assert.equal(error.mock.callCount(), 0);
+    logServerError(req, 500, new Error("boom"));
+    const line = JSON.parse(String(error.mock.calls[0].arguments[0]));
+    assert.equal(line.id, req.requestId);
+    assert.equal(line.message, "boom");
   });
 });

@@ -7,7 +7,7 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { Test } from "@nestjs/testing";
 import mysql from "mysql2/promise";
 import request from "supertest";
-import { hashOtp, hashPassword } from "../common/utils/crypto.js";
+import { hashOtp, hashPassword, sha256 } from "../common/utils/crypto.js";
 
 export const TOKENS = { admin: "a".repeat(64), member: "m".repeat(64), noFamily: "n".repeat(64) } as const;
 export const PASSWORD = "Secret@123";
@@ -38,24 +38,25 @@ export const startApp = async (): Promise<void> => {
     SKIP_DB_BOOTSTRAP: "true",
     UPLOADS_DIR: fs.mkdtempSync(path.join(os.tmpdir(), "npsi-e2e-uploads-")),
     APP_ENV: "e2e",
+    LOG_REQUESTS: "false",
     TRUST_PROXY: "1",
     SMTP_HOST: "",
     SMTP_USER: "",
     SMTP_PASS: "",
     RECAPTCHA_SECRET_KEY: "",
   });
-  const [{ AppModule }, { configureApp }, { DatabaseService }] = await Promise.all([
+  const [{ AppModule }, { configureApp }, { PrismaService }] = await Promise.all([
     import("../app.module.js"),
     import("../configure-app.js"),
-    import("../database/database.service.js"),
+    import("../database/prisma.service.js"),
   ]);
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   app = moduleRef.createNestApplication<NestExpressApplication>({ bodyParser: false, logger: false });
   configureApp(app);
   await app.init();
-  const db = app.get(DatabaseService);
-  db.runPendingMigrations();
-  await seed(db);
+  const prisma = app.get(PrismaService);
+  await prisma.runPendingMigrations();
+  await seed({ execute: (sql, params = []) => prisma.$executeRawUnsafe(sql, ...params) });
 };
 
 export const stopApp = async (): Promise<void> => {
@@ -75,7 +76,8 @@ const seed = async (db: Db): Promise<void> => {
      ('u-admin', 'admin@e2e.local', 'Admin', '9100000001', 'admin', ?, 1, ?, DATE_ADD(NOW(), INTERVAL 1 DAY)),
      ('u-member', 'member@e2e.local', 'Member', '9100000002', 'user', ?, 1, ?, DATE_ADD(NOW(), INTERVAL 1 DAY)),
      ('u-nofamily', 'nofamily@e2e.local', 'No Family', '9100000003', 'user', ?, 1, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))`,
-    [pw, TOKENS.admin, pw, TOKENS.member, pw, TOKENS.noFamily],
+    // Sessions are stored as SHA-256 of the token.
+    [pw, sha256(TOKENS.admin), pw, sha256(TOKENS.member), pw, sha256(TOKENS.noFamily)],
   );
   await db.execute(
     "INSERT INTO users (id, email, phone, password_hash, is_verified, otp_hash, otp_expires_at) VALUES ('u-otp', 'otp@e2e.local', '9100000004', ?, 0, ?, DATE_ADD(NOW(), INTERVAL 10 MINUTE))",

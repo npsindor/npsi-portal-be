@@ -63,7 +63,7 @@ SamitiMember, Student, StudentApplication, Transaction, TransferRequest.
 
 ### Data layer
 - MySQL tables listed above plus `users` and `SequelizeMeta`; all access is parameterized raw SQL
-- No ORM models; the NestJS app keeps the same raw SQL through a shared `DatabaseService`
+- No ORM models in the legacy app. The NestJS app uses Prisma 7 (schema introspected from these tables, Prisma Migrate with a `0_init` baseline); see `docs/migration-report.md`
 
 ### Environment variables (names unchanged)
 `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `API_PORT`,
@@ -162,7 +162,7 @@ Known, intended differences that follow from the path change (no business change
 - An unsupported entity used to be `404 {"error":"Unsupported entity: X"}` on `/api/entities/X`; with one route per resource, an unknown resource is a plain unknown route (still `404 {"error": ...}`).
 
 ## 4. Target architecture
-NestJS + TypeScript (strict), feature modules under `src/modules/`: `health`, `auth`, `me`,
+NestJS + TypeScript (strict), feature modules directly under `src/` (one folder each): `health`, `auth`, `me`,
 `public-lookups` (family verification, application status, availability checks, stats),
 `uploads`, and `entities` (one controller per resource sharing one service that holds the
 current generic entity rules). Shared pieces live in `src/common` (bearer-auth guards,

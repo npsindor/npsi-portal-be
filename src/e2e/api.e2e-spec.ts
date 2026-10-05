@@ -4,7 +4,7 @@
 // auth failures where they apply.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { ENTITY_DEFINITIONS, ENTITY_NAMES } from "../modules/entities/entity-definitions.js";
+import { ENTITY_DEFINITIONS, ENTITY_NAMES } from "../entities/entity-definitions.js";
 import { api, FAMILY, OTP, PASSWORD, startApp, stopApp, TOKENS } from "../testing/e2e-app.js";
 
 const V1 = "/api/v1";
@@ -33,6 +33,15 @@ describe("platform", () => {
     const res = await api("post", `${V1}/auth/sessions`).set("Content-Type", "application/json").send("{bad");
     assert.equal(res.status, 400);
     assert.equal(typeof res.body.error, "string");
+  });
+  test("security headers and a request id on every response", async () => {
+    const res = await api("get", `${V1}/health`);
+    assert.match(res.headers["x-request-id"], /^[0-9a-f-]{36}$/);
+    assert.equal(res.headers["x-content-type-options"], "nosniff");
+    assert.equal(res.headers["cross-origin-resource-policy"], "cross-origin", "uploads must stay embeddable by the frontend");
+    assert.ok(res.headers["content-security-policy"]);
+    assert.equal(res.headers["x-powered-by"], undefined);
+    assert.equal((await api("get", `${V1}/health`).set("X-Request-Id", "trace-42")).headers["x-request-id"], "trace-42");
   });
   test("Swagger UI and document are served at /api/docs", async () => {
     assert.equal((await api("get", "/api/docs")).status, 200);
@@ -151,6 +160,11 @@ describe("public lookups", () => {
   });
   test("GET /stats", async () => {
     assert.deepEqual((await api("get", `${V1}/stats`)).body, { families: 1, members: 1 });
+  });
+  test("availability checks are rate limited per IP", async () => {
+    let last = 0;
+    for (let i = 0; i < 61; i += 1) last = (await api("get", `${V1}/email-availability?email=x@e2e.local`).set("X-Forwarded-For", "10.8.8.8")).status;
+    assert.equal(last, 429);
   });
   test("public lookups are rate limited per IP", async () => {
     const statuses: number[] = [];

@@ -1,7 +1,6 @@
-// Contract tests: the source of truth for "behavior must not change".
-// Run with `npm run test:contract` (legacy app) or with CONTRACT_API=v1 and
-// CONTRACT_SERVER_CMD set for the NestJS app. Tests run in order and share
-// one seeded database, so later tests may depend on records created earlier.
+// Contract tests: the source of truth for the API's behavior. Black-box over
+// HTTP against the built app (`npm run test:contract`). Tests run in order and
+// share one seeded database, so later tests may depend on records created earlier.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { call, FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, query, setup, TOKENS, teardown } from "./harness.mjs";
@@ -195,10 +194,11 @@ describe("auth: me and logout", () => {
     assert.equal(res.text, "");
     assertError(await api("me", [], { token: login.body.access_token }), 401, "Authentication required.");
   });
-  // Existing quirk, preserved on purpose: without a token the UPDATE has no
-  // replacement value and the driver error surfaces as a 500.
-  test("logout without a token is a 500 (existing behavior)", async () => {
-    assertError(await api("logout"), 500, "Positional replacement (?) 0 has no entry in the replacement map (replacements[0] is undefined).");
+  // Without a token there is no session to end: still a 204, nothing changes.
+  test("logout without a token is a no-op 204", async () => {
+    const res = await api("logout");
+    assert.equal(res.status, 204);
+    assert.equal(res.text, "");
   });
 });
 
@@ -626,6 +626,50 @@ describe("entities: create", () => {
   });
 });
 
+describe("column value formats", () => {
+  // How each MySQL column type comes back in responses (the Prisma data layer
+  // must reproduce what the legacy raw-SQL layer returned).
+  test("date-only, decimal, datetime, boolean and JSON columns", async () => {
+    const event = await api("create", ["Event"], { token: TOKENS.admin }).send({
+      title: "Formats",
+      date: "2026-12-31",
+      venue: "Hall",
+      fee: 99.5,
+      capacity: "40",
+      registration_open: "2026-11-01T10:00:00.000Z",
+      status: "PUBLISHED",
+    });
+    assert.equal(event.status, 201, JSON.stringify(event.body));
+    assert.equal(event.body.date, "2026-12-31");
+    assert.equal(event.body.fee, "99.50");
+    assert.equal(event.body.capacity, 40);
+    assert.match(event.body.registration_open, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/);
+    const listed = (await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ title: "Formats" }))}`])).body[0];
+    assert.deepEqual(listed, event.body);
+    const feedback = await api("create", ["Feedback"], { token: TOKENS.admin }).send({ member_name: "F", archived: 1, rating: "4", questions: { q1: "yes" } });
+    assert.equal(feedback.status, 201, JSON.stringify(feedback.body));
+    assert.equal(feedback.body.archived, 1);
+    assert.equal(feedback.body.rating, 4);
+    assert.deepEqual(feedback.body.questions, { q1: "yes" });
+    const patched = await api("update", ["Feedback", feedback.body.id], { token: TOKENS.admin }).send({ archived: false, questions: '["a","b"]' });
+    assert.equal(patched.body.archived, 0);
+    assert.deepEqual(patched.body.questions, ["a", "b"]);
+  });
+  test("filters convert like MySQL did (boolean as 0/1, null matches nothing)", async () => {
+    const unread = await api("list", ["Notification", `?filter=${encodeURIComponent(JSON.stringify({ read: 0 }))}`], { token: TOKENS.admin });
+    assert.equal(unread.status, 200);
+    assert.ok(unread.body.length > 0 && unread.body.every((n) => n.read === 0));
+    const nullFilter = await api("list", ["Notification", `?filter=${encodeURIComponent(JSON.stringify({ recipient_family_id: null }))}`], {
+      token: TOKENS.admin,
+    });
+    assert.deepEqual(nullFilter.body, []);
+  });
+  test("unknown filter or order columns are MySQL-style 500s", async () => {
+    assertError(await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ nope: 1 }))}`]), 500, "Unknown column 'nope' in 'where clause'");
+    assertError(await api("list", ["Event", "?order=nope"]), 500, "Unknown column 'nope' in 'order clause'");
+  });
+});
+
 describe("entities: batch create", () => {
   test("401 anonymous, 403 member", async () => {
     assertError(await api("bulk", ["Family"]).send({ records: [{}] }), 401, "Authentication required.");
@@ -707,5 +751,50 @@ describe("entities: delete", () => {
     assert.equal((await api("remove", ["FamilyMember", IDS.createdMember], { token: TOKENS.member })).status, 204);
     const [row] = await query("SELECT COUNT(*) AS n FROM family_members WHERE id = ?", [IDS.createdMember]);
     assert.equal(row.n, 0);
+  });
+});
+
+describe("duplicate contact rules", () => {
+  before(async () => {
+    await query(
+      "INSERT INTO applications (id, application_id, status, family_head_name, family_name, mobile, email) VALUES ('dup-rej', 'DUP-REJ', 'REJECTED', 'H', 'F', '9611111111', 'rejected@test.local'), ('dup-null', 'DUP-NULL', NULL, 'H', 'F', '9622222222', 'nullstatus@test.local')",
+    );
+    await query(
+      "INSERT INTO families (id, family_id, family_name, contact_number, email) VALUES ('dup-fam', 'DUP-FAM', 'F', '+91 96333-33333', '  Spaced@Test.Local ')",
+    );
+    await query(
+      "INSERT INTO student_applications (id, application_id, status, student_name, mobile, email) VALUES ('dup-stu-rej', 'DUP-STU-REJ', 'REJECTED', 'S', '9644444444', 'sturej@test.local')",
+    );
+    await query("INSERT INTO students (id, student_id, student_name, mobile, email) VALUES ('dup-stu', 'DUP-STU', 'S', '9655555555', 'student2@test.local')");
+  });
+  const mobile = async (value) => (await api("checkMobile", [`?mobile=${encodeURIComponent(value)}`])).body.taken;
+  const email = async (value) => (await api("checkEmail", [`?email=${encodeURIComponent(value)}`])).body.taken;
+
+  test("rejected applications release their mobile and email; a NULL status still holds them", async () => {
+    assert.equal(await mobile("9611111111"), false);
+    assert.equal(await email("rejected@test.local"), false);
+    assert.equal(await mobile("9622222222"), true);
+    assert.equal(await email("NullStatus@test.local"), true);
+  });
+  test("stored values are normalized: formatted mobiles and padded, mixed-case emails", async () => {
+    assert.equal(await mobile("9633333333"), true);
+    assert.equal(await email("spaced@test.local"), true);
+    assert.equal(await mobile("9644444444"), false, "rejected student application");
+    assert.equal(await mobile("9655555555"), true, "students count for the public check");
+  });
+  test("a new family application ignores student mobiles but not family contacts", async () => {
+    const base = { family_head_name: "H", family_name: "F", address: "A", city: "C", district: "D" };
+    const student = await api("create", ["Application"]).send({ ...base, mobile: "9655555555", email: "dupcheck1@test.local" });
+    assert.equal(student.status, 201, JSON.stringify(student.body));
+    assertError(
+      await api("create", ["Application"]).send({ ...base, mobile: "+91 9633333333", email: "dupcheck2@test.local" }),
+      409,
+      "This mobile number is already registered on the portal.",
+    );
+    assertError(
+      await api("create", ["Application"]).send({ ...base, mobile: "9876500099", email: "SPACED@test.local" }),
+      409,
+      "This email is already registered on the portal.",
+    );
   });
 });

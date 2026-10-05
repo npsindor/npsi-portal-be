@@ -1,6 +1,5 @@
-// Endpoint table for the contract suite. Tests refer to endpoints by key, so
-// switching CONTRACT_API between "legacy" and "v1" re-targets every test
-// without changing a single expected status code or response body.
+// Endpoint table for the contract suite: tests refer to endpoints by key, so a
+// path change is one edit here and never touches an expected status or body.
 const RESOURCES = {
   Announcement: "announcements",
   Application: "applications",
@@ -18,33 +17,6 @@ const RESOURCES = {
   StudentApplication: "student-applications",
   Transaction: "transactions",
   TransferRequest: "transfer-requests",
-};
-
-const legacy = {
-  health: () => ["GET", "/api/health"],
-  register: () => ["POST", "/api/auth/register"],
-  verifyOtp: () => ["POST", "/api/auth/verify-otp"],
-  resendOtp: () => ["POST", "/api/auth/resend-otp"],
-  login: () => ["POST", "/api/auth/login"],
-  resetRequest: () => ["POST", "/api/auth/reset-request"],
-  resetPassword: () => ["POST", "/api/auth/reset-password"],
-  invite: () => ["POST", "/api/auth/invite"],
-  changePassword: () => ["POST", "/api/auth/change-password"],
-  me: () => ["GET", "/api/auth/me"],
-  logout: () => ["POST", "/api/auth/logout"],
-  myFamily: () => ["GET", "/api/me/family"],
-  myFeedback: () => ["GET", "/api/me/feedback"],
-  verifyFamily: (familyId) => ["GET", `/api/verify/${encodeURIComponent(familyId)}`],
-  trackApplication: (qs = "") => ["GET", `/api/track/application${qs}`],
-  checkMobile: (qs = "") => ["GET", `/api/check-mobile${qs}`],
-  checkEmail: (qs = "") => ["GET", `/api/check-email${qs}`],
-  stats: () => ["GET", "/api/stats"],
-  upload: () => ["POST", "/api/upload"],
-  list: (entity, qs = "") => ["GET", `/api/entities/${entity}${qs}`],
-  create: (entity) => ["POST", `/api/entities/${entity}`],
-  bulk: (entity) => ["POST", `/api/entities/${entity}/bulk`],
-  update: (entity, id) => ["PATCH", `/api/entities/${entity}/${id}`],
-  remove: (entity, id) => ["DELETE", `/api/entities/${entity}/${id}`],
 };
 
 const v1 = {
@@ -74,5 +46,5 @@ const v1 = {
   remove: (entity, id) => ["DELETE", `/api/v1/${RESOURCES[entity]}/${id}`],
 };
 
-export const API = process.env.CONTRACT_API === "v1" ? v1 : legacy;
+export const API = v1;
 export const ENTITIES = Object.keys(RESOURCES);

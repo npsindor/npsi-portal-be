@@ -1,5 +1,6 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from "@nestjs/common";
 import type { Response } from "express";
+import { logServerError, type RequestWithId } from "../logging/request-logger.js";
 import type { ErrorBody } from "./api-error.js";
 
 // Converts every error to the legacy `{ "error": message }` body. HTTP
@@ -23,8 +24,10 @@ export const toErrorResponse = (exception: unknown): { status: number; body: Err
 @Catch()
 export class HttpErrorFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
-    const response = host.switchToHttp().getResponse<Response>();
+    const http = host.switchToHttp();
+    const response = http.getResponse<Response>();
     const { status, body } = toErrorResponse(exception);
+    logServerError(http.getRequest<RequestWithId>(), status, exception);
     response.status(status).json(body);
   }
 }

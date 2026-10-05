@@ -1,5 +1,5 @@
 // Record and SQL helpers ported unchanged from the legacy server/index.js.
-import type { DbRow } from "../../database/database.service.js";
+import type { DbRow } from "../../database/database.types.js";
 
 export type RecordBody = Record<string, unknown>;
 

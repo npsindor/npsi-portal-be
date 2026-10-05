@@ -4,7 +4,9 @@ import type { NestExpressApplication } from "@nestjs/platform-express";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
+import helmet from "helmet";
 import { HttpErrorFilter, toErrorResponse } from "./common/filters/http-error.filter.js";
+import { logServerError, type RequestWithId, requestLogger } from "./common/logging/request-logger.js";
 import { AppConfigService } from "./config/app-config.service.js";
 
 export const API_PREFIX = "api/v1";
@@ -16,8 +18,9 @@ const ALLOWED_ORIGIN_PATTERN = /^https:\/\/([a-z0-9-]+\.)*npsindore\.org$|^https
 
 // Errors raised by Express middleware before Nest's router (CORS rejection,
 // invalid or oversized JSON) get the same `{ error }` body as everything else.
-const expressErrorHandler = (error: unknown, _request: Request, response: Response, _next: NextFunction): void => {
+const expressErrorHandler = (error: unknown, request: Request, response: Response, _next: NextFunction): void => {
   const { status, body } = toErrorResponse(error);
+  logServerError(request as RequestWithId, status, error);
   response.status(status).json(body);
 };
 
@@ -30,6 +33,10 @@ export const configureApp = (app: NestExpressApplication): void => {
   // Behind Hostinger's reverse proxy; a fixed hop count (TRUST_PROXY) keeps
   // https upload URLs correct without letting clients spoof X-Forwarded-For.
   app.set("trust proxy", config.trustProxy);
+  app.use(requestLogger);
+  // Security headers. Uploaded images are served to the frontend's own origin
+  // (npsindore.org loads them from the API domain), so they must be embeddable cross-origin.
+  app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
   app.use(
     cors({
       origin: (origin, callback) => {
@@ -41,6 +48,10 @@ export const configureApp = (app: NestExpressApplication): void => {
   );
   app.use(express.json({ limit: "2mb" }));
   app.use(expressErrorHandler);
+  // Each Hostinger deploy is a new version folder; uploads stored inside it vanish on the next deploy.
+  if (["production", "test"].includes(config.appEnv) && !process.env.UPLOADS_DIR) {
+    console.warn(`⚠️  UPLOADS_DIR is not set: uploads are stored in ${config.uploadsDir}, inside the deployed code, and will be lost on the next deploy.`);
+  }
   fs.mkdirSync(config.uploadsDir, { recursive: true });
   app.useStaticAssets(config.uploadsDir, { prefix: "/uploads", maxAge: "7d", index: false });
   app.setGlobalPrefix(API_PREFIX);
@@ -49,6 +60,8 @@ export const configureApp = (app: NestExpressApplication): void => {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: false }));
   app.useGlobalFilters(new HttpErrorFilter());
 
+  // API docs everywhere except production (they map every endpoint and field for an attacker).
+  if (config.appEnv === "production") return;
   const document = SwaggerModule.createDocument(
     app,
     new DocumentBuilder()

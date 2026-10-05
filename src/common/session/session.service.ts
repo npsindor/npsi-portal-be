@@ -1,7 +1,8 @@
 import { Injectable } from "@nestjs/common";
 import type { Request } from "express";
-import { DatabaseService } from "../../database/database.service.js";
+import { PrismaService } from "../../database/prisma.service.js";
 import { ApiError } from "../filters/api-error.js";
+import { sha256 } from "../utils/crypto.js";
 
 export interface UserRow {
   [column: string]: unknown;
@@ -25,12 +26,15 @@ export const bearerToken = (request: Request): string | undefined => request.hea
 
 @Injectable()
 export class SessionService {
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getBearerUser(request: Request): Promise<UserRow | null> {
     const token = bearerToken(request);
     if (!token) return null;
-    return (await this.db.first<UserRow>("SELECT * FROM users WHERE session_token = ? AND session_expires_at > NOW() LIMIT 1", [token])) || null;
+    // Only a SHA-256 of each session token is stored, so a database copy can't be used to log in.
+    // Expiry is checked against the database clock (sessions are written with NOW()).
+    const [user] = await this.prisma.$queryRaw<UserRow[]>`SELECT * FROM users WHERE session_token = ${sha256(token)} AND session_expires_at > NOW() LIMIT 1`;
+    return user || null;
   }
 
   async requireUser(request: Request): Promise<UserRow> {

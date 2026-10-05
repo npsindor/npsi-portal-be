@@ -5,7 +5,7 @@
 #   test -> "test" environment (no approval, deploys automatically)
 #           -> saddlebrown-newt-991262.hostingersite.com (api-test.npsindore.org)
 #
-# Push (or "Run workflow" in the Actions tab) -> checks (Biome, build, unit tests)
+# Push (or "Run workflow" in the Actions tab) -> checks (Biome, build, unit, e2e and contract tests on a throwaway MySQL)
 # -> Hostinger clones the branch, runs `npm run build` and starts dist/main.js
 # -> /api/v1/health must answer ok.
 #
@@ -38,6 +38,25 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
+    # Throwaway MySQL for the e2e and contract suites (they create and drop their own databases).
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci-root
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      MYSQL_HOST: 127.0.0.1
+      MYSQL_PORT: "3306"
+      MYSQL_USER: root
+      MYSQL_PASSWORD: ci-root
+      CONTRACT_MYSQL_HOST: 127.0.0.1
+      CONTRACT_MYSQL_USER: root
+      CONTRACT_MYSQL_PASSWORD: ci-root
+      LOG_REQUESTS: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -51,8 +70,12 @@ jobs:
         run: npm run build
       - name: Unit tests
         run: npm test
-      - name: Syntax-check scripts and migrations
-        run: for f in scripts/*.mjs config/*.cjs db/migrations-sequelize/*.cjs; do node --check "$f"; done
+      - name: e2e tests (real MySQL)
+        run: npm run test:e2e
+      - name: Contract tests (every endpoint, black-box)
+        run: npm run test:contract
+      - name: Syntax-check scripts
+        run: for f in scripts/*.mjs; do node --check "$f"; done
 
   deploy:
     needs: check

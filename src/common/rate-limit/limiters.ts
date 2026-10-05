@@ -12,3 +12,9 @@ export const otpLimiter = limiter(10 * 60 * 1000, 10);
 // tracking); this keeps one-off lookups working while stopping bulk scraping.
 export const publicLookupLimiter = limiter(15 * 60 * 1000, 30);
 export const uploadLimiter = limiter(15 * 60 * 1000, 40);
+// Upload endpoint is public (registration forms upload photos before an account
+// exists), so on top of the 15-minute limit each IP gets a daily cap.
+export const uploadDailyLimiter = limiter(24 * 60 * 60 * 1000, 150);
+// Availability checks reveal whether an email/mobile is registered; generous
+// enough for form typing, tight enough to stop bulk enumeration.
+export const availabilityLimiter = limiter(15 * 60 * 1000, 60);
