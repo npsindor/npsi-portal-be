@@ -1,0 +1,66 @@
+// Endpoint table for the contract suite. Tests refer to endpoints by key, so
+// switching CONTRACT_API between "legacy" and "v1" re-targets every test
+// without changing a single expected status code or response body.
+const RESOURCES = {
+  Announcement: "announcements", Application: "applications", Event: "events", EventRegistration: "event-registrations",
+  Family: "families", FamilyMember: "family-members", Feedback: "feedback", Notification: "notifications",
+  Principle: "principles", Rule: "rules", Samiti: "samitis", SamitiMember: "samiti-members", Student: "students",
+  StudentApplication: "student-applications", Transaction: "transactions", TransferRequest: "transfer-requests",
+};
+
+const legacy = {
+  health: () => ["GET", "/api/health"],
+  register: () => ["POST", "/api/auth/register"],
+  verifyOtp: () => ["POST", "/api/auth/verify-otp"],
+  resendOtp: () => ["POST", "/api/auth/resend-otp"],
+  login: () => ["POST", "/api/auth/login"],
+  resetRequest: () => ["POST", "/api/auth/reset-request"],
+  resetPassword: () => ["POST", "/api/auth/reset-password"],
+  invite: () => ["POST", "/api/auth/invite"],
+  changePassword: () => ["POST", "/api/auth/change-password"],
+  me: () => ["GET", "/api/auth/me"],
+  logout: () => ["POST", "/api/auth/logout"],
+  myFamily: () => ["GET", "/api/me/family"],
+  myFeedback: () => ["GET", "/api/me/feedback"],
+  verifyFamily: (familyId) => ["GET", `/api/verify/${encodeURIComponent(familyId)}`],
+  trackApplication: (qs = "") => ["GET", `/api/track/application${qs}`],
+  checkMobile: (qs = "") => ["GET", `/api/check-mobile${qs}`],
+  checkEmail: (qs = "") => ["GET", `/api/check-email${qs}`],
+  stats: () => ["GET", "/api/stats"],
+  upload: () => ["POST", "/api/upload"],
+  list: (entity, qs = "") => ["GET", `/api/entities/${entity}${qs}`],
+  create: (entity) => ["POST", `/api/entities/${entity}`],
+  bulk: (entity) => ["POST", `/api/entities/${entity}/bulk`],
+  update: (entity, id) => ["PATCH", `/api/entities/${entity}/${id}`],
+  remove: (entity, id) => ["DELETE", `/api/entities/${entity}/${id}`],
+};
+
+const v1 = {
+  health: () => ["GET", "/api/v1/health"],
+  register: () => ["POST", "/api/v1/auth/registrations"],
+  verifyOtp: () => ["POST", "/api/v1/auth/otp-verifications"],
+  resendOtp: () => ["POST", "/api/v1/auth/otps"],
+  login: () => ["POST", "/api/v1/auth/sessions"],
+  resetRequest: () => ["POST", "/api/v1/auth/password-resets"],
+  resetPassword: () => ["POST", "/api/v1/auth/password-resets/confirmations"],
+  invite: () => ["POST", "/api/v1/auth/invitations"],
+  changePassword: () => ["PUT", "/api/v1/auth/password"],
+  me: () => ["GET", "/api/v1/auth/me"],
+  logout: () => ["DELETE", "/api/v1/auth/sessions/current"],
+  myFamily: () => ["GET", "/api/v1/me/family"],
+  myFeedback: () => ["GET", "/api/v1/me/feedback"],
+  verifyFamily: (familyId) => ["GET", `/api/v1/family-verifications/${encodeURIComponent(familyId)}`],
+  trackApplication: (qs = "") => ["GET", `/api/v1/application-status${qs}`],
+  checkMobile: (qs = "") => ["GET", `/api/v1/mobile-availability${qs}`],
+  checkEmail: (qs = "") => ["GET", `/api/v1/email-availability${qs}`],
+  stats: () => ["GET", "/api/v1/stats"],
+  upload: () => ["POST", "/api/v1/uploads"],
+  list: (entity, qs = "") => ["GET", `/api/v1/${RESOURCES[entity]}${qs}`],
+  create: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}`],
+  bulk: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}/batch`],
+  update: (entity, id) => ["PATCH", `/api/v1/${RESOURCES[entity]}/${id}`],
+  remove: (entity, id) => ["DELETE", `/api/v1/${RESOURCES[entity]}/${id}`],
+};
+
+export const API = process.env.CONTRACT_API === "v1" ? v1 : legacy;
+export const ENTITIES = Object.keys(RESOURCES);

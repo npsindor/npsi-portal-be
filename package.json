@@ -7,7 +7,8 @@
     "dev": "node server/index.js",
     "db:migrate": "node scripts/migrate.mjs",
     "db:import": "node scripts/import-base44-exports.mjs database",
-    "db:import-users": "node scripts/import-users-export.mjs"
+    "db:import-users": "node scripts/import-users-export.mjs",
+    "test:contract": "node --test --test-reporter=spec tests/contract/contract.test.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",
@@ -20,5 +21,8 @@
     "nodemailer": "^10.0.10",
     "sequelize": "^6.37.8",
     "sequelize-cli": "^6.6.5"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.1"
   }
 }
