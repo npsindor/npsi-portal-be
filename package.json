@@ -8,13 +8,14 @@
     "db:migrate": "node scripts/migrate.mjs",
     "db:import": "node scripts/import-base44-exports.mjs database",
     "db:import-users": "node scripts/import-users-export.mjs",
-    "test:contract": "node --test --test-reporter=spec tests/contract/contract.test.mjs",
+    "test:contract": "npm run build && CONTRACT_API=v1 CONTRACT_SERVER_CMD='node dist/main.js' node --test --test-reporter=spec tests/contract/contract.test.mjs",
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
     "lint": "biome lint",
     "format": "biome format --write",
     "check": "biome check",
-    "dev:legacy": "node server/index.js"
+    "dev:legacy": "node server/index.js",
+    "test:contract:legacy": "node --test --test-reporter=spec tests/contract/contract.test.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.2",

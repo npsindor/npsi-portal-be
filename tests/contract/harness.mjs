@@ -187,7 +187,8 @@ export const setup = async () => {
   });
   try {
     await waitFor(async () => (await query("SELECT COUNT(*) AS n FROM SequelizeMeta"))[0].n >= MIGRATION_COUNT, "migrations");
-    await waitFor(async () => (await fetch(`http://127.0.0.1:${PORT}/api/health`).catch(() => fetch(`http://127.0.0.1:${PORT}/api/v1/health`))).ok, "server");
+    const healthy = async (path) => (await fetch(`http://127.0.0.1:${PORT}${path}`).catch(() => null))?.ok === true;
+    await waitFor(async () => (await healthy("/api/v1/health")) || (await healthy("/api/health")), "server");
   } catch (error) {
     throw new Error(`${error.message}\n--- server output ---\n${output}`);
   }

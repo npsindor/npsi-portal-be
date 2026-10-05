@@ -17,7 +17,7 @@ export class AuthModule implements NestModule {
         route(R.login, RequestMethod.POST),
         route(R.resetRequest, RequestMethod.POST),
         route(R.resetPassword, RequestMethod.POST),
-        route(R.changePassword, RequestMethod.POST),
+        route(R.changePassword, RequestMethod.PUT),
       );
     consumer.apply(otpLimiter).forRoutes(route(R.verifyOtp, RequestMethod.POST), route(R.resendOtp, RequestMethod.POST));
   }

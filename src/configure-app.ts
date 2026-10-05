@@ -7,7 +7,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import { HttpErrorFilter, toErrorResponse } from "./common/filters/http-error.filter.js";
 import { AppConfigService } from "./config/app-config.service.js";
 
-export const API_PREFIX = "api";
+export const API_PREFIX = "api/v1";
 export const DOCS_PATH = "api/docs";
 
 // Only this project's own frontends: the live domain and its subdomains, the

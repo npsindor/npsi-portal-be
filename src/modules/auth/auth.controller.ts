@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Post, Put, Req, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -98,7 +98,7 @@ export class AuthController {
     return this.auth.invite(body);
   }
 
-  @Post(R.changePassword)
+  @Put(R.changePassword)
   @HttpCode(200)
   @UseGuards(UserGuard)
   @ApiBearerAuth()
@@ -120,7 +120,7 @@ export class AuthController {
     return this.auth.me(user);
   }
 
-  @Post(R.logout)
+  @Delete(R.logout)
   @HttpCode(204)
   @ApiBearerAuth()
   @ApiOperation({ summary: "End the current session" })
