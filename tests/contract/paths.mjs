@@ -2,10 +2,22 @@
 // switching CONTRACT_API between "legacy" and "v1" re-targets every test
 // without changing a single expected status code or response body.
 const RESOURCES = {
-  Announcement: "announcements", Application: "applications", Event: "events", EventRegistration: "event-registrations",
-  Family: "families", FamilyMember: "family-members", Feedback: "feedback", Notification: "notifications",
-  Principle: "principles", Rule: "rules", Samiti: "samitis", SamitiMember: "samiti-members", Student: "students",
-  StudentApplication: "student-applications", Transaction: "transactions", TransferRequest: "transfer-requests",
+  Announcement: "announcements",
+  Application: "applications",
+  Event: "events",
+  EventRegistration: "event-registrations",
+  Family: "families",
+  FamilyMember: "family-members",
+  Feedback: "feedback",
+  Notification: "notifications",
+  Principle: "principles",
+  Rule: "rules",
+  Samiti: "samitis",
+  SamitiMember: "samiti-members",
+  Student: "students",
+  StudentApplication: "student-applications",
+  Transaction: "transactions",
+  TransferRequest: "transfer-requests",
 };
 
 const legacy = {

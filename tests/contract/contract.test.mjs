@@ -4,16 +4,20 @@
 // one seeded database, so later tests may depend on records created earlier.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
+import { call, FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, query, setup, TOKENS, teardown } from "./harness.mjs";
 import { API, ENTITIES } from "./paths.mjs";
-import { FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, TOKENS, call, query, setup, teardown } from "./harness.mjs";
 
-const api = (key, args = [], opts = {}) => { const [method, url] = API[key](...args); return call(method, url, opts); };
+const api = (key, args = [], opts = {}) => {
+  const [method, url] = API[key](...args);
+  return call(method, url, opts);
+};
 const YEAR = new Date().getFullYear();
 const PUBLIC_USER_KEYS = ["email", "full_name", "id", "phone", "role"];
 const keys = (obj) => Object.keys(obj).sort();
 const assertError = (res, status, message) => {
   assert.equal(res.status, status, `expected ${status}, got ${res.status}: ${JSON.stringify(res.body)}`);
-  if (message instanceof RegExp) assert.match(res.body.error, message); else assert.deepEqual(res.body, { error: message });
+  if (message instanceof RegExp) assert.match(res.body.error, message);
+  else assert.deepEqual(res.body, { error: message });
 };
 const assertRecord = (record) => {
   assert.ok(record.id, "record has id");
@@ -63,25 +67,54 @@ describe("stats (before any writes)", () => {
 
 describe("auth: register", () => {
   test("400 when password is missing or short", async () => {
-    assertError(await api("register").send({ email: "new@test.local", phone: "9811111111" }), 400, "Email and password are required; password must be at least 6 characters.");
-    assertError(await api("register").send({ email: "new@test.local", password: "12345", phone: "9811111111" }), 400, "Email and password are required; password must be at least 6 characters.");
+    assertError(
+      await api("register").send({ email: "new@test.local", phone: "9811111111" }),
+      400,
+      "Email and password are required; password must be at least 6 characters.",
+    );
+    assertError(
+      await api("register").send({ email: "new@test.local", password: "12345", phone: "9811111111" }),
+      400,
+      "Email and password are required; password must be at least 6 characters.",
+    );
   });
   test("400 when phone is invalid", async () => {
-    assertError(await api("register").send({ email: "new@test.local", password: "secret1", phone: "12345" }), 400, "A valid 10-digit mobile number is required.");
+    assertError(
+      await api("register").send({ email: "new@test.local", password: "secret1", phone: "12345" }),
+      400,
+      "A valid 10-digit mobile number is required.",
+    );
   });
   test("409 when phone is already registered", async () => {
-    assertError(await api("register").send({ email: "new@test.local", password: "secret1", phone: "9100000002" }), 409, "This mobile number is already registered.");
+    assertError(
+      await api("register").send({ email: "new@test.local", password: "secret1", phone: "9100000002" }),
+      409,
+      "This mobile number is already registered.",
+    );
   });
   test("409 when email is already registered", async () => {
-    assertError(await api("register").send({ email: "member@test.local", password: "secret1", phone: "9811111110" }), 409, "An account with this email already exists.");
+    assertError(
+      await api("register").send({ email: "member@test.local", password: "secret1", phone: "9811111110" }),
+      409,
+      "An account with this email already exists.",
+    );
   });
   test("201 creates an unverified account and returns the public user", async () => {
-    const res = await api("register").send({ email: "  New.User@Test.Local ", password: "secret1", full_name: " New User ", phone: "9811111111", recaptchaToken: "ignored" });
+    const res = await api("register").send({
+      email: "  New.User@Test.Local ",
+      password: "secret1",
+      full_name: " New User ",
+      phone: "9811111111",
+      recaptchaToken: "ignored",
+    });
     assert.equal(res.status, 201);
     assert.deepEqual(keys(res.body), ["requiresOtp", "user"]);
     assert.equal(res.body.requiresOtp, true);
     assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
-    assert.deepEqual({ ...res.body.user, id: undefined }, { id: undefined, email: "new.user@test.local", full_name: "New User", phone: "9811111111", role: "user" });
+    assert.deepEqual(
+      { ...res.body.user, id: undefined },
+      { id: undefined, email: "new.user@test.local", full_name: "New User", phone: "9811111111", role: "user" },
+    );
     const [row] = await query("SELECT is_verified, otp_hash FROM users WHERE id = ?", [res.body.user.id]);
     assert.equal(row.is_verified, 0);
   });
@@ -126,7 +159,11 @@ describe("auth: login", () => {
     assertError(await api("login").send({ email: "ghost@test.local", password: "whatever" }), 401, "Invalid email/phone or password.");
   });
   test("403 for an unverified account", async () => {
-    assertError(await api("login").send({ email: "unverified@test.local", password: PASSWORDS.unverified }), 403, "Please verify your account before logging in.");
+    assertError(
+      await api("login").send({ email: "unverified@test.local", password: PASSWORDS.unverified }),
+      403,
+      "Please verify your account before logging in.",
+    );
   });
   test("200 by email, phone or username", async () => {
     for (const body of [{ email: "LOGIN@test.local" }, { phone: "+91 91000 00006" }, { username: "login@test.local" }]) {
@@ -179,14 +216,21 @@ describe("auth: password reset", () => {
     assert.match(row.reset_token_hash, /^[0-9a-f]{64}$/);
   });
   test("confirm: 400 for missing or short input", async () => {
-    assertError(await api("resetPassword").send({ resetToken: "abc", newPassword: "123" }), 400, "A valid reset token and password of at least 6 characters are required.");
+    assertError(
+      await api("resetPassword").send({ resetToken: "abc", newPassword: "123" }),
+      400,
+      "A valid reset token and password of at least 6 characters are required.",
+    );
   });
   test("confirm: 400 for an invalid token", async () => {
     assertError(await api("resetPassword").send({ resetToken: "not-a-real-token", newPassword: "NewPass1" }), 400, "This reset link is invalid or expired.");
   });
   test("confirm: 200 sets the new password", async () => {
     const { createHash } = await import("node:crypto");
-    await query("UPDATE users SET reset_token_hash = ?, reset_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 MINUTE) WHERE id = ?", [createHash("sha256").update("known-reset-token").digest("hex"), IDS.loginUser]);
+    await query("UPDATE users SET reset_token_hash = ?, reset_token_expires_at = DATE_ADD(NOW(), INTERVAL 30 MINUTE) WHERE id = ?", [
+      createHash("sha256").update("known-reset-token").digest("hex"),
+      IDS.loginUser,
+    ]);
     const res = await api("resetPassword").send({ resetToken: "known-reset-token", newPassword: "Login@456" });
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, { ok: true });
@@ -199,10 +243,18 @@ describe("auth: change password", () => {
     assertError(await api("changePassword").send({ currentPassword: "x", newPassword: "NewPass1" }), 401, "Authentication required.");
   });
   test("400 when the new password is short", async () => {
-    assertError(await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: PASSWORDS.member, newPassword: "123" }), 400, "New password must be at least 6 characters.");
+    assertError(
+      await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: PASSWORDS.member, newPassword: "123" }),
+      400,
+      "New password must be at least 6 characters.",
+    );
   });
   test("401 when the current password is wrong", async () => {
-    assertError(await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: "wrong", newPassword: "NewPass1" }), 401, "Current password is incorrect.");
+    assertError(
+      await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: "wrong", newPassword: "NewPass1" }),
+      401,
+      "Current password is incorrect.",
+    );
   });
   test("200 changes the password", async () => {
     const res = await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: PASSWORDS.member, newPassword: "Other@456" });
@@ -245,7 +297,10 @@ describe("me", () => {
     assert.deepEqual(keys(res.body), ["family", "members", "student"]);
     assert.equal(res.body.family.family_id, FAMILY1);
     assertRecord(res.body.family);
-    assert.deepEqual(res.body.members.map((m) => m.id), [IDS.member1]);
+    assert.deepEqual(
+      res.body.members.map((m) => m.id),
+      [IDS.member1],
+    );
     assert.equal(res.body.student.student_id, "NPSI-STU-000001");
   });
   test("family: nulls for a user without a family", async () => {
@@ -258,7 +313,10 @@ describe("me", () => {
   test("feedback: returns own feedback records", async () => {
     const res = await api("myFeedback", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.map((f) => f.feedback_id), ["FB-000001"]);
+    assert.deepEqual(
+      res.body.map((f) => f.feedback_id),
+      ["FB-000001"],
+    );
     assertRecord(res.body[0]);
   });
 });
@@ -277,7 +335,11 @@ describe("public lookups", () => {
     assertError(await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001"]), 400, "Application ID and mobile number are required.");
   });
   test("track application: 404 for a wrong mobile", async () => {
-    assertError(await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001&mobile=9999999999"]), 404, "No application found for this ID and mobile number.");
+    assertError(
+      await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001&mobile=9999999999"]),
+      404,
+      "No application found for this ID and mobile number.",
+    );
   });
   test("track application: 200 returns the record with parsed JSON", async () => {
     const res = await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001&mobile=9400000001"]);
@@ -303,7 +365,11 @@ describe("uploads", () => {
     assertError(await api("upload"), 400, "No file uploaded.");
   });
   test("400 for a non-image file", async () => {
-    assertError(await api("upload").attach("file", Buffer.from("hello"), { filename: "a.txt", contentType: "text/plain" }), 400, "Only JPEG, PNG, WEBP or GIF images are allowed.");
+    assertError(
+      await api("upload").attach("file", Buffer.from("hello"), { filename: "a.txt", contentType: "text/plain" }),
+      400,
+      "Only JPEG, PNG, WEBP or GIF images are allowed.",
+    );
   });
   test("400 for a file over 5 MB", async () => {
     const res = await api("upload").attach("file", Buffer.alloc(5 * 1024 * 1024 + 10), { filename: "big.png", contentType: "image/png" });
@@ -325,12 +391,21 @@ describe("entities: list", () => {
   test("public entity needs no token and orders by -createdAt", async () => {
     const res = await api("list", ["Event"]);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body.map((e) => e.title), ["Free Event", "Paid Event"]);
+    assert.deepEqual(
+      res.body.map((e) => e.title),
+      ["Free Event", "Paid Event"],
+    );
     res.body.forEach(assertRecord);
   });
   test("order, filter and limit query params", async () => {
-    assert.deepEqual((await api("list", ["Event", "?order=title"])).body.map((e) => e.title), ["Free Event", "Paid Event"]);
-    assert.deepEqual((await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ title: "Paid Event" }))}`])).body.map((e) => e.id), [IDS.event]);
+    assert.deepEqual(
+      (await api("list", ["Event", "?order=title"])).body.map((e) => e.title),
+      ["Free Event", "Paid Event"],
+    );
+    assert.deepEqual(
+      (await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ title: "Paid Event" }))}`])).body.map((e) => e.id),
+      [IDS.event],
+    );
     assert.equal((await api("list", ["Event", "?limit=1"])).body.length, 1);
   });
   test("malformed filter JSON is a 500 with the error format", async () => {
@@ -370,7 +445,11 @@ describe("entities: create", () => {
   test("admin-only entity: 401 anonymous, 403 member, 201 admin", async () => {
     assertError(await api("create", ["Announcement"]).send({ title: "T", body: "B" }), 401, "Authentication required.");
     assertError(await api("create", ["Announcement"], { token: TOKENS.member }).send({ title: "T", body: "B" }), 403, "Admin access required.");
-    const res = await api("create", ["Announcement"], { token: TOKENS.admin }).send({ title: "<b>Admins may</b>", body: "B", date: "2026-02-01T10:00:00.000Z" });
+    const res = await api("create", ["Announcement"], { token: TOKENS.admin }).send({
+      title: "<b>Admins may</b>",
+      body: "B",
+      date: "2026-02-01T10:00:00.000Z",
+    });
     assert.equal(res.status, 201);
     assertRecord(res.body);
     assert.match(res.body.id, /^[0-9a-f-]{36}$/);
@@ -384,19 +463,43 @@ describe("entities: create", () => {
     assert.equal(res.body.id, "client-chosen-id");
   });
   test("application: validation errors", async () => {
-    const valid = { family_head_name: "Head", mobile: "9876500001", family_name: "Fam", email: "fam1@test.local", address: "Addr", city: "Indore", district: "Indore" };
+    const valid = {
+      family_head_name: "Head",
+      mobile: "9876500001",
+      family_name: "Fam",
+      email: "fam1@test.local",
+      address: "Addr",
+      city: "Indore",
+      district: "Indore",
+    };
     assertError(await api("create", ["Application"]).send({ ...valid, mobile: "123" }), 400, "A valid 10-digit mobile number is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, family_name: " " }), 400, "Family name is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, email: "bad" }), 400, "A valid email address is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, address: "" }), 400, "Address is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, city: "" }), 400, "City is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, district: "" }), 400, "District is required.");
-    assertError(await api("create", ["Application"]).send({ ...valid, family_name: "<script>" }), 400, 'The "family_name" field cannot contain < or > characters.');
+    assertError(
+      await api("create", ["Application"]).send({ ...valid, family_name: "<script>" }),
+      400,
+      'The "family_name" field cannot contain < or > characters.',
+    );
     assertError(await api("create", ["Application"]).send({ ...valid, mobile: "9300000001" }), 409, "This mobile number is already registered on the portal.");
     assertError(await api("create", ["Application"]).send({ ...valid, email: "member@test.local" }), 409, "This email is already registered on the portal.");
   });
   test("application: 201 with a server-assigned id and parsed JSON", async () => {
-    const res = await api("create", ["Application"]).send({ family_head_name: "Head", mobile: "9876500001", family_name: "Fam", email: "fam1@test.local", address: "Addr", city: "Indore", district: "Indore", application_id: "CLIENT", members_data: [{ name: "X" }], recaptchaToken: "t", submitted_date: "2026-02-01T10:00:00.000Z" });
+    const res = await api("create", ["Application"]).send({
+      family_head_name: "Head",
+      mobile: "9876500001",
+      family_name: "Fam",
+      email: "fam1@test.local",
+      address: "Addr",
+      city: "Indore",
+      district: "Indore",
+      application_id: "CLIENT",
+      members_data: [{ name: "X" }],
+      recaptchaToken: "t",
+      submitted_date: "2026-02-01T10:00:00.000Z",
+    });
     assert.equal(res.status, 201);
     assertRecord(res.body);
     assert.equal(res.body.application_id, `NPSI-APP-${YEAR}-${YEAR === 2026 ? "000002" : "000001"}`);
@@ -406,7 +509,11 @@ describe("entities: create", () => {
   test("student application: validation and 201", async () => {
     const valid = { student_name: "Stu", mobile: "9876500002", email: "stu1@test.local", gender: "Male", father_name: "Dad", academic_year: "2026" };
     assertError(await api("create", ["StudentApplication"]).send({ ...valid, student_name: "" }), 400, "Student name is required.");
-    assertError(await api("create", ["StudentApplication"]).send({ ...valid, guardian_mobile: "12" }), 400, "Guardian mobile number must be a valid 10-digit number.");
+    assertError(
+      await api("create", ["StudentApplication"]).send({ ...valid, guardian_mobile: "12" }),
+      400,
+      "Guardian mobile number must be a valid 10-digit number.",
+    );
     assertError(await api("create", ["StudentApplication"]).send({ ...valid, father_name: "" }), 400, "Father's name is required.");
     const res = await api("create", ["StudentApplication"]).send(valid);
     assert.equal(res.status, 201);
@@ -428,9 +535,24 @@ describe("entities: create", () => {
     assert.equal(res.body.family_id, "NPSI-FAM-000003");
   });
   test("family member: ownership and field whitelist", async () => {
-    assertError(await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ family_id: FAMILY2, name: "X", relationship: "Son" }), 403, "You can only add members to your own family.");
-    assertError(await api("create", ["FamilyMember"], { token: TOKENS.noFamily }).send({ family_id: FAMILY1, name: "X", relationship: "Son" }), 403, "You can only add members to your own family.");
-    const res = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ family_id: FAMILY1, name: "Kid", relationship: "Son", status: "ACTIVE", photo_url: "http://x/y.png", membership_id: "CLIENT" });
+    assertError(
+      await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ family_id: FAMILY2, name: "X", relationship: "Son" }),
+      403,
+      "You can only add members to your own family.",
+    );
+    assertError(
+      await api("create", ["FamilyMember"], { token: TOKENS.noFamily }).send({ family_id: FAMILY1, name: "X", relationship: "Son" }),
+      403,
+      "You can only add members to your own family.",
+    );
+    const res = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      family_id: FAMILY1,
+      name: "Kid",
+      relationship: "Son",
+      status: "ACTIVE",
+      photo_url: "http://x/y.png",
+      membership_id: "CLIENT",
+    });
     assert.equal(res.status, 201);
     assert.equal(res.body.membership_id, "NPSI-MEM-000003");
     assert.equal(res.body.photo_url, null);
@@ -439,16 +561,33 @@ describe("entities: create", () => {
   });
   test("feedback: auth required, markup rejected, 201 with sequential id", async () => {
     assertError(await api("create", ["Feedback"]).send({ member_name: "M", message: "Hi" }), 401, "Authentication required.");
-    assertError(await api("create", ["Feedback"], { token: TOKENS.member }).send({ member_name: "M", message: "<img>" }), 400, 'The "message" field cannot contain < or > characters.');
-    const res = await api("create", ["Feedback"], { token: TOKENS.member }).send({ member_name: "M", message: "Hi", email: "member@test.local", internal_note: "stripped" });
+    assertError(
+      await api("create", ["Feedback"], { token: TOKENS.member }).send({ member_name: "M", message: "<img>" }),
+      400,
+      'The "message" field cannot contain < or > characters.',
+    );
+    const res = await api("create", ["Feedback"], { token: TOKENS.member }).send({
+      member_name: "M",
+      message: "Hi",
+      email: "member@test.local",
+      internal_note: "stripped",
+    });
     assert.equal(res.status, 201);
     assert.equal(res.body.feedback_id, "FB-000002");
     assert.equal(res.body.internal_note, null);
   });
   test("event registration: ownership, event lookup and server-side fees", async () => {
     const base = { registration_id: "REG-1", event_id: IDS.event, family_id: FAMILY1, member_ids: [IDS.member1], total_fee: 0, payment_status: "SUCCESS" };
-    assertError(await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, family_id: FAMILY2 }), 403, "You can only register your own family for events.");
-    assertError(await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, member_ids: [IDS.member2] }), 403, "You can only register members of your own family.");
+    assertError(
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, family_id: FAMILY2 }),
+      403,
+      "You can only register your own family for events.",
+    );
+    assertError(
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, member_ids: [IDS.member2] }),
+      403,
+      "You can only register members of your own family.",
+    );
     assertError(await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, event_id: "missing" }), 404, "Event not found.");
     const res = await api("create", ["EventRegistration"], { token: TOKENS.member }).send(base);
     assert.equal(res.status, 201);
@@ -459,10 +598,27 @@ describe("entities: create", () => {
     assert.deepEqual(res.body.member_ids, [IDS.member1]);
   });
   test("transfer request: ownership checks and forced PENDING status", async () => {
-    assertError(await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_family_id: FAMILY2 }), 403, "You can only request a transfer for your own family.");
-    assertError(await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_membership_id: "NPSI-MEM-000002" }), 403, "You can only request a transfer for a member of your own family.");
-    assertError(await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "STUDENT", source_student_id: "NPSI-STU-999999" }), 403, "You can only request a transfer for your own student record.");
-    const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_family_id: FAMILY1, source_membership_id: "NPSI-MEM-000001", status: "APPROVED" });
+    assertError(
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_family_id: FAMILY2 }),
+      403,
+      "You can only request a transfer for your own family.",
+    );
+    assertError(
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_membership_id: "NPSI-MEM-000002" }),
+      403,
+      "You can only request a transfer for a member of your own family.",
+    );
+    assertError(
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "STUDENT", source_student_id: "NPSI-STU-999999" }),
+      403,
+      "You can only request a transfer for your own student record.",
+    );
+    const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+      request_type: "MEMBER",
+      source_family_id: FAMILY1,
+      source_membership_id: "NPSI-MEM-000001",
+      status: "APPROVED",
+    });
     assert.equal(res.status, 201);
     assert.equal(res.body.status, "PENDING");
     assert.equal(res.body.requester_id, IDS.memberUser);
@@ -483,7 +639,10 @@ describe("entities: batch create", () => {
   test("201 creates records with consecutive ids", async () => {
     const res = await api("bulk", ["Family"], { token: TOKENS.admin }).send({ records: [{ family_name: "B1" }, { family_name: "B2", registration_date: "" }] });
     assert.equal(res.status, 201);
-    assert.deepEqual(res.body.map((f) => f.family_id), ["NPSI-FAM-000004", "NPSI-FAM-000005"]);
+    assert.deepEqual(
+      res.body.map((f) => f.family_id),
+      ["NPSI-FAM-000004", "NPSI-FAM-000005"],
+    );
     assert.equal(res.body[1].registration_date, null);
   });
 });
@@ -499,9 +658,17 @@ describe("entities: update", () => {
     assertError(await api("update", ["Event", "missing"], { token: TOKENS.admin }).send({ title: "X" }), 404, "Record not found");
   });
   test("family member: ownership, whitelist and markup", async () => {
-    assertError(await api("update", ["FamilyMember", IDS.member2], { token: TOKENS.member }).send({ name: "X" }), 403, "You can only update members of your own family.");
+    assertError(
+      await api("update", ["FamilyMember", IDS.member2], { token: TOKENS.member }).send({ name: "X" }),
+      403,
+      "You can only update members of your own family.",
+    );
     assertError(await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.noFamily }).send({ name: "X" }), 403, "No family found for your account.");
-    assertError(await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "<x>" }), 400, 'The "name" field cannot contain < or > characters.');
+    assertError(
+      await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "<x>" }),
+      400,
+      'The "name" field cannot contain < or > characters.',
+    );
     const res = await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "Member Renamed", membership_id: "HACK" });
     assert.equal(res.status, 200);
     assert.equal(res.body.name, "Member Renamed");
@@ -515,7 +682,11 @@ describe("entities: update", () => {
     assert.equal(res.body.status, "ACTIVE");
   });
   test("notification: members may only mark their own as read", async () => {
-    assertError(await api("update", ["Notification", IDS.notifOther], { token: TOKENS.member }).send({ read: true }), 403, "You can only update your own notifications.");
+    assertError(
+      await api("update", ["Notification", IDS.notifOther], { token: TOKENS.member }).send({ read: true }),
+      403,
+      "You can only update your own notifications.",
+    );
     const res = await api("update", ["Notification", IDS.notifOwn], { token: TOKENS.member }).send({ read: true, title: "ignored" });
     assert.equal(res.status, 200);
     assert.equal(res.body.read, 1);
