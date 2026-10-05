@@ -2,6 +2,7 @@ import { Controller, Get, Param, Query } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiExtraModels,
+  ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -44,6 +45,7 @@ export class LookupsController {
   @Get(R.mobileAvailability)
   @ApiOperation({ summary: "Whether a mobile number is already registered anywhere on the portal" })
   @ApiOkResponse({ type: AvailabilityVo })
+  @ApiInternalServerErrorResponse({ type: ErrorVo, description: "Unexpected server or database error" })
   mobileAvailability(@Query() query: MobileQueryDto): Promise<AvailabilityVo> {
     return this.lookups.mobileAvailability(query);
   }
@@ -51,6 +53,7 @@ export class LookupsController {
   @Get(R.emailAvailability)
   @ApiOperation({ summary: "Whether an email is already registered anywhere on the portal" })
   @ApiOkResponse({ type: AvailabilityVo })
+  @ApiInternalServerErrorResponse({ type: ErrorVo, description: "Unexpected server or database error" })
   emailAvailability(@Query() query: EmailQueryDto): Promise<AvailabilityVo> {
     return this.lookups.emailAvailability(query);
   }
@@ -58,6 +61,7 @@ export class LookupsController {
   @Get(R.stats)
   @ApiOperation({ summary: "Counts of active families and members" })
   @ApiOkResponse({ type: StatsVo })
+  @ApiInternalServerErrorResponse({ type: ErrorVo, description: "Unexpected server or database error" })
   stats(): Promise<StatsVo> {
     return this.lookups.stats();
   }
