@@ -7,11 +7,11 @@ node_modules/
 !.env.example
 
 # Local data imports (Base44 CSV exports contain member PII)
-database/
+/database/
 *.csv
 
 # User-uploaded files (photos, attachments)
-uploads/
+/uploads/
 
 # Logs
 logs/

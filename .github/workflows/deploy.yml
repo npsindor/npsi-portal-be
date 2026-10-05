@@ -5,8 +5,9 @@
 #   test -> "test" environment (no approval, deploys automatically)
 #           -> saddlebrown-newt-991262.hostingersite.com (api-test.npsindore.org)
 #
-# Push (or "Run workflow" in the Actions tab) -> checks run -> Hostinger clones
-# the branch and rebuilds the app -> /api/health must answer ok.
+# Push (or "Run workflow" in the Actions tab) -> checks (Biome, build, unit tests)
+# -> Hostinger clones the branch, runs `npm run build` and starts dist/main.js
+# -> /api/v1/health must answer ok.
 #
 # Needs, on each environment:
 #   secret   HOSTINGER_API_TOKEN              hPanel -> Account -> API
@@ -44,8 +45,14 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      - name: Syntax-check server, scripts and migrations
-        run: for f in server/*.js scripts/*.mjs config/*.cjs db/migrations-sequelize/*.cjs; do node --check "$f"; done
+      - name: Lint and format check (Biome)
+        run: npm run check
+      - name: Build
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+      - name: Syntax-check scripts and migrations
+        run: for f in scripts/*.mjs config/*.cjs db/migrations-sequelize/*.cjs; do node --check "$f"; done
 
   deploy:
     needs: check
@@ -54,7 +61,7 @@ jobs:
     timeout-minutes: 30
     environment:
       name: ${{ github.ref_name == 'main' && 'production' || 'test' }}
-      url: ${{ github.ref_name == 'main' && 'https://api.npsindore.org/api/health' || 'https://api-test.npsindore.org/api/health' }}
+      url: ${{ github.ref_name == 'main' && 'https://api.npsindore.org/api/v1/health' || 'https://api-test.npsindore.org/api/v1/health' }}
     env:
       TOKEN: ${{ secrets.HOSTINGER_API_TOKEN }}
       INSTALLATION_UUID: ${{ vars.HOSTINGER_GIT_INSTALLATION_UUID }}
@@ -66,8 +73,8 @@ jobs:
           test -n "$TOKEN" || { echo "::error::HOSTINGER_API_TOKEN secret is not set on this environment"; exit 1; }
           test -n "$INSTALLATION_UUID" || { echo "::error::HOSTINGER_GIT_INSTALLATION_UUID variable is not set on this environment"; exit 1; }
           body=$(jq -n --arg owner "${{ github.repository_owner }}" --arg repo "${{ github.event.repository.name }}" --arg branch "${{ github.ref_name }}" --arg inst "$INSTALLATION_UUID" '{
-            node_version: 22, app_type: "express", package_manager: "npm", entry_file: "server/index.js",
-            root_directory: null, output_directory: null, build_script: null,
+            node_version: 22, app_type: "express", package_manager: "npm", entry_file: "dist/main.js",
+            root_directory: null, output_directory: null, build_script: "npm run build",
             source_type: "git", source_options: {owner: $owner, repository: $repo, branch: $branch, installation_uuid: $inst}
           }')
           status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$HOSTINGER_API/accounts/$HOSTINGER_USERNAME/websites/$HOSTINGER_DOMAIN/nodejs/builds" \
@@ -113,7 +120,7 @@ jobs:
       - name: Health check
         run: |
           for i in $(seq 1 12); do
-            if curl -sS -m 10 "$PUBLIC_URL/api/health" | jq -e '.ok == true' >/dev/null 2>&1; then echo "Backend is healthy at $PUBLIC_URL"; exit 0; fi
+            if curl -sS -m 10 "$PUBLIC_URL/api/v1/health" | jq -e '.ok == true' >/dev/null 2>&1; then echo "Backend is healthy at $PUBLIC_URL"; exit 0; fi
             echo "not healthy yet, retrying..."; sleep 10
           done
-          echo "::error::/api/health did not return ok:true after deploy"; exit 1
+          echo "::error::/api/v1/health did not return ok:true after deploy"; exit 1
