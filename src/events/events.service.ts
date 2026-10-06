@@ -28,8 +28,10 @@ export class EventsService {
     return toEventVo(row);
   }
 
-  remove(id: string): Promise<void> {
-    return this.repo.delete(id);
+  // An event with registrations (and their payments) can't be deleted; cancel or archive it instead.
+  async remove(id: string): Promise<void> {
+    if (await this.repo.hasRegistrations(id)) throw new ApiError(409, "This event has registrations, so it can't be deleted. Archive it instead.");
+    await this.repo.delete(id);
   }
 }
 

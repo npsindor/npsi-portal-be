@@ -78,34 +78,36 @@ model EventRegistration {
   registrantEmail String?   @map("registrant_email") @db.VarChar(255)
   createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  event           Event     @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "event_registrations_event_id_fkey")
 
   @@map("event_registrations")
 }
 
 model Event {
-  id                String    @id @db.VarChar(64)
-  title             String    @db.Text
-  slug              String?   @db.VarChar(255)
-  bannerUrl         String?   @map("banner_url") @db.Text
-  description       String?   @db.Text
-  date              DateTime  @db.Date
-  startTime         String?   @map("start_time") @db.VarChar(255)
-  endTime           String?   @map("end_time") @db.VarChar(255)
-  venue             String    @db.Text
-  mapLocation       String?   @map("map_location") @db.Text
-  organizer         String?   @db.VarChar(255)
-  contact           String?   @db.VarChar(255)
-  registrationOpen  DateTime? @map("registration_open") @db.DateTime(0)
-  registrationClose DateTime? @map("registration_close") @db.DateTime(0)
-  fee               Decimal?  @default(0.00) @db.Decimal(12, 2)
+  id                String              @id @db.VarChar(64)
+  title             String              @db.Text
+  slug              String?             @db.VarChar(255)
+  bannerUrl         String?             @map("banner_url") @db.Text
+  description       String?             @db.Text
+  date              DateTime            @db.Date
+  startTime         String?             @map("start_time") @db.VarChar(255)
+  endTime           String?             @map("end_time") @db.VarChar(255)
+  venue             String              @db.Text
+  mapLocation       String?             @map("map_location") @db.Text
+  organizer         String?             @db.VarChar(255)
+  contact           String?             @db.VarChar(255)
+  registrationOpen  DateTime?           @map("registration_open") @db.DateTime(0)
+  registrationClose DateTime?           @map("registration_close") @db.DateTime(0)
+  fee               Decimal?            @default(0.00) @db.Decimal(12, 2)
   capacity          Int?
-  rules             String?   @db.Text
-  terms             String?   @db.Text
-  status            String?   @default("DRAFT") @db.VarChar(64)
-  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
-  titleHi           String?   @map("title_hi") @db.Text
-  descriptionHi     String?   @map("description_hi") @db.Text
+  rules             String?             @db.Text
+  terms             String?             @db.Text
+  status            String?             @default("DRAFT") @db.VarChar(64)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  registrations     EventRegistration[]
+  titleHi           String?             @map("title_hi") @db.Text
+  descriptionHi     String?             @map("description_hi") @db.Text
 
   @@index([status, date])
   @@map("events")

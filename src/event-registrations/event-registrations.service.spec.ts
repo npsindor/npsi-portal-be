@@ -74,6 +74,16 @@ describe("EventRegistrationsService.create (members)", () => {
   });
 });
 
+describe("EventRegistrationsService: one registration per family per event", () => {
+  test("a family that is already registered (and hasn't cancelled) gets a 409, nothing is written", async () => {
+    const { service, repo, transactions } = build();
+    repo.activeExists.mock.mockImplementation(async () => true);
+    await rejectsWith(service.create(registration(), member()), 409, "Your family is already registered for this event.");
+    assert.deepEqual([repo.stored.length, transactions.stored.length], [0, 0]);
+    assert.deepEqual(repo.activeExists.mock.calls[0].arguments, [FAM, "ev"]);
+  });
+});
+
 describe("EventRegistrationsService (admins)", () => {
   test("create as sent, without a payment or notification; list, update, remove", async () => {
     const { service, transactions, notifications } = build();

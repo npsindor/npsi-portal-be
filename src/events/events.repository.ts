@@ -34,4 +34,8 @@ export class EventsRepository {
     const event = await db.event.findUnique({ where: { id }, select: { title: true, fee: true } });
     return event ? { title: event.title, fee: event.fee?.toNumber() ?? 0 } : null;
   }
+
+  async hasRegistrations(id: string): Promise<boolean> {
+    return (await this.prisma.eventRegistration.count({ where: { eventId: id } })) > 0;
+  }
 }

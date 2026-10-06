@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Use
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -41,6 +42,7 @@ export class EventRegistrationsController {
   @UseGuards(UserGuard)
   @ApiOperation({ summary: "Create a event registration", description: "Any logged-in user." })
   @ApiCreatedResponse({ type: EventRegistrationVo })
+  @ApiConflictResponse({ type: ErrorVo, description: "The family is already registered for this event" })
   @ApiBadRequestResponse({ type: ErrorVo })
   @ApiUnauthorizedResponse({ type: ErrorVo })
   create(@Body() body: CreateEventRegistrationDto, @CurrentUser() user: UserRow): Promise<EventRegistrationVo> {

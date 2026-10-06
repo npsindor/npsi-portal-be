@@ -57,6 +57,7 @@ export class EventRegistrationsService {
       const own = new Set(await this.membership.memberIdsOfFamily(familyId));
       if (!memberIds.every((id) => own.has(id as string))) throw new ApiError(403, "You can only register members of your own family.");
     }
+    if (await this.repo.activeExists(familyId, input.eventId)) throw new ApiError(409, "Your family is already registered for this event.");
     const row = await this.prisma.$transaction(async (tx) => {
       const event = await this.events.feeOf(input.eventId, tx);
       if (!event) throw new ApiError(404, "Event not found.");

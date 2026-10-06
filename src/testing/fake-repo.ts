@@ -34,6 +34,8 @@ export const fakeModelRepo = <Row extends { id: string }>(build: (data: Partial<
     }),
     delete: mock.fn(async (_id: string) => undefined),
     latestDisplayIds: mock.fn(async (_prefix: string): Promise<(string | null)[]> => []),
+    hasRegistrations: mock.fn(async (_eventId: string) => false),
+    activeExists: mock.fn(async (_familyId: string, _eventId: string) => false),
   };
 };
 

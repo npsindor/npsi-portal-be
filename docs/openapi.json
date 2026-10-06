@@ -3323,6 +3323,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "The family is already registered for this event",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3777,6 +3787,16 @@
           },
           "403": {
             "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The event has registrations",
             "content": {
               "application/json": {
                 "schema": {

@@ -636,6 +636,15 @@ describe("entities: create", () => {
       memberIds: [IDS.member1],
     });
     assert.equal(free.body.paymentStatus, "SUCCESS");
+    // One registration per family per event, until it is cancelled.
+    assertError(
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: IDS.event, familyId: FAMILY1, memberIds: [IDS.member1] }),
+      409,
+      "Your family is already registered for this event.",
+    );
+    for (const id of [res.body.id, free.body.id]) {
+      assert.equal((await api("update", ["EventRegistration", id], { token: TOKENS.admin }).send({ status: "CANCELLED" })).status, 200);
+    }
     assertError(
       await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: IDS.event, familyId: FAMILY2, memberIds: [] }),
       403,
@@ -1117,6 +1126,18 @@ describe("reviews (end to end, last: they create families and move members)", ()
       409,
       "This transfer request has already been approved.",
     );
+  });
+});
+
+describe("events: deleting one with registrations", () => {
+  test("is refused (409) while registrations exist", async () => {
+    assertError(
+      await api("remove", ["Event", IDS.event], { token: TOKENS.admin }),
+      409,
+      "This event has registrations, so it can't be deleted. Archive it instead.",
+    );
+    const [row] = await query("SELECT COUNT(*) AS n FROM events WHERE id = ?", [IDS.event]);
+    assert.equal(row.n, 1);
   });
 });
 

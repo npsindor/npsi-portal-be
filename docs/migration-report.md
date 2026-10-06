@@ -226,8 +226,13 @@ credentials, photo upload + profile save, fake image refused, paging (100 + 54 =
   Base44-era notifications whose title, message and type are all empty (candidates for deletion).
 - **Foreign keys** (migration `20261008000000_member_foreign_keys`): family members → families,
   samiti members → samitis, `ON DELETE CASCADE`; a missing parent is a 400. Already applied cleanly
-  to the local production copy. Not added for event registrations → events (3 point to deleted
-  events) or transactions → families (1 orphan): needs a data decision first.
+  to the local production copy. Not added for transactions → families (1 orphan): needs a data decision first.
+- **Event registrations → events** (migration `20261012000000_event_registrations_event_fk`):
+  deletes the 3 registrations of family PSI-FAM-000018 for the deleted "Holi Milan 2027" event and
+  their 3 PENDING ₹100 transactions (by id), then adds the foreign key `ON DELETE RESTRICT`. Deleting
+  an event that has registrations is a 409 ("Archive it instead"). A family can register for an event
+  once (409 while a registration that isn't `CANCELLED` exists; admins are not limited). Verified on a
+  production copy with the 3 rows present: exactly those 6 rows go, the key applies, no orphans.
 - **CORS** no longer allows any `*.hostingersite.com` site; only npsindore.org sites and localhost.
 - **Prisma `@updatedAt`** replaces the hand-set timestamps (no database change).
 - Removed the unused legacy PostgreSQL migrations (`db/migrations/`).
@@ -241,9 +246,7 @@ Runs once with the production deploy. Every row is named by id (reviewed against
 members (PSI-FAM-TEST/FINAL/FLOW/VERIFY-…, all example.com addresses), their fake fee
 TXN-FLOW-REVENUE-001, the invited test account flowmemberverify@example.com, and 8 notifications with no
 title, message or type; one fee stored with an empty family id gets NULL. Verified on a copy with the
-real foreign keys: exactly those rows go, nothing else, no orphans left. Kept on purpose: the 3
-registrations of family PSI-FAM-000018 for the deleted "Holi Milan 2027" event (history), so event
-registrations get no foreign key.
+real foreign keys: exactly those rows go, nothing else, no orphans left.
 
 Frontend: Playwright browser tests (`npm run test:browser`, run in its pipeline) cover public pages for
 anonymous visitors, the login redirect, cookie login without localStorage, one-call approval and paging.

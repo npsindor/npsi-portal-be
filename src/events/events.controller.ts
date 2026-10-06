@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Use
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -62,6 +63,7 @@ export class EventsController {
   @ApiOperation({ summary: "Delete a event", description: "Admin only." })
   @ApiParam({ name: "id", description: "Record id" })
   @ApiNoContentResponse({ description: "Deleted (also when the id did not exist)" })
+  @ApiConflictResponse({ type: ErrorVo, description: "The event has registrations" })
   @ApiUnauthorizedResponse({ type: ErrorVo })
   @ApiForbiddenResponse({ type: ErrorVo })
   remove(@Param("id") id: string): Promise<void> {

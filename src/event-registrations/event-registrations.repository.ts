@@ -44,4 +44,9 @@ export class EventRegistrationsRepository {
     });
     return rows.map((row) => row.registrationId);
   }
+
+  // Whether the family already has a registration for the event that isn't cancelled.
+  async activeExists(familyId: string, eventId: string): Promise<boolean> {
+    return (await this.prisma.eventRegistration.count({ where: { familyId, eventId, OR: [{ status: null }, { status: { not: "CANCELLED" } }] } })) > 0;
+  }
 }

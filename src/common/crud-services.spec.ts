@@ -69,6 +69,12 @@ describe("plain CRUD services", () => {
     assert.deepEqual([created.fee, created.date], [99.5, "2026-12-01"]);
     assert.ok(repo.stored[0].fee instanceof Prisma.Decimal || typeof repo.stored[0].fee === "number");
   });
+  test("an event with registrations can't be deleted", async () => {
+    const repo = fakeModelRepo(eventRow);
+    repo.hasRegistrations.mock.mockImplementation(async () => true);
+    await rejectsWith(new EventsService(as(repo)).remove("ev-1"), 409, "This event has registrations, so it can't be deleted. Archive it instead.");
+    assert.equal(repo.delete.mock.callCount(), 0);
+  });
   test("samiti members filter by samiti; students get the next display id", async () => {
     const members = fakeModelRepo(samitiMemberRow);
     await new SamitiMembersService(as(members)).list({ samitiId: "s1" });
