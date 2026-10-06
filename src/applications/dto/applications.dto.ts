@@ -2,6 +2,7 @@ import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalDate, OptionalJson, OptionalText } from "../../common/validation/fields.js";
+import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
 export class CreateApplicationDto {
   @OptionalText(64)
@@ -62,6 +63,11 @@ export class CreateApplicationDto {
   @IsOptional()
   @IsString()
   recaptchaToken?: string;
+
+  @ApiPropertyOptional({ enum: LANGS, default: "en", description: "Language of the confirmation notification" })
+  @IsOptional()
+  @IsIn(LANGS)
+  lang?: Lang;
 }
 
 export class UpdateApplicationDto extends PartialType(CreateApplicationDto) {}

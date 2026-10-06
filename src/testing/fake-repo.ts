@@ -40,8 +40,7 @@ export const fakeModelRepo = <Row extends { id: string }>(build: (data: Partial<
 export const FAM = "NPSI-FAM-000001";
 
 // MembershipRepository stand-in. The member "u-m" belongs to FAM, whose only
-// member row is "m-own" (membership NPSI-MEM-000001); "APP-NEW" was submitted
-// moments ago; "u-m" just asked to transfer to "TARGET".
+// member row is "m-own" (membership NPSI-MEM-000001).
 export const fakeMembership = () => ({
   ownFamilyId: mock.fn(async (user: { id: string } | null) => (user?.id === "u-m" ? FAM : null)),
   familyIdOfMembership: mock.fn(async (id: string) => (id === "NPSI-MEM-000001" ? FAM : id === "NPSI-MEM-000002" ? "OTHER" : null)),
@@ -55,11 +54,17 @@ export const fakeMembership = () => ({
           ? { email: "x@y.z", linkedFamilyId: "OTHER" }
           : null,
   ),
-  recentApplicationKind: mock.fn(async (id: string | null | undefined) =>
-    id === "APP-NEW" || id === "APP-PAID" ? "Application" : id === "STU-NEW" ? "StudentApplication" : null,
-  ),
-  recentTransferTo: mock.fn(async (userId: string, familyId: string) => userId === "u-m" && familyId === "TARGET"),
 });
 
 // EventsRepository stand-in: "ev" costs 250 per member, "free" nothing.
-export const fakeEvents = () => ({ feeOf: mock.fn(async (id: string) => (id === "ev" ? 250 : id === "free" ? 0 : null)) });
+export const fakeEvents = () => ({
+  feeOf: mock.fn(async (id: string) => (id === "ev" ? { title: "Garba", fee: 250 } : id === "free" ? { title: "Puja", fee: 0 } : null)),
+});
+
+// PrismaService stand-in for services that open a transaction: runs the work
+// with a marker client (the fake repositories ignore which client they get).
+export const TX = { transaction: true };
+export const fakePrisma = () => ({ $transaction: mock.fn(async <T>(work: (tx: typeof TX) => Promise<T>) => work(TX)) });
+
+// AuthService stand-in: records invitations.
+export const fakeAuth = () => ({ invite: mock.fn(async (_body: unknown) => ({ ok: true as const, username: "u", password: "p" })) });

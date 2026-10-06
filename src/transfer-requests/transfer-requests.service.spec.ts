@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import type { PrismaService } from "../database/prisma.service.js";
+import type { FamiliesRepository } from "../families/families.repository.js";
 import type { MembershipRepository } from "../membership/membership.repository.js";
-import { FAM, fakeMembership, fakeModelRepo } from "../testing/fake-repo.js";
+import type { NotificationsRepository } from "../notifications/notifications.repository.js";
+import { FAM, fakeMembership, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
 import { admin, as, rejectsWith, user } from "../testing/fakes.js";
-import { transferRequestRow } from "../testing/rows.js";
+import { familyRow, notificationRow, transferRequestRow } from "../testing/rows.js";
 import type { CreateTransferRequestDto } from "./dto/transfer-requests.dto.js";
 import type { TransferRequestsRepository } from "./transfer-requests.repository.js";
 import { TransferRequestsService } from "./transfer-requests.service.js";
@@ -11,7 +14,16 @@ import { TransferRequestsService } from "./transfer-requests.service.js";
 const member = () => user({ id: "u-m", email: "member@example.com" });
 const build = () => {
   const repo = fakeModelRepo(transferRequestRow);
-  return { service: new TransferRequestsService(as<TransferRequestsRepository>(repo), as<MembershipRepository>(fakeMembership())), repo };
+  const families = { findByFamilyId: async (familyId: string) => (familyId === "TARGET" ? familyRow({ familyId, status: "ACTIVE" }) : null) };
+  const notifications = fakeModelRepo(notificationRow);
+  const service = new TransferRequestsService(
+    as<PrismaService>(fakePrisma()),
+    as<TransferRequestsRepository>(repo),
+    as<MembershipRepository>(fakeMembership()),
+    as<FamiliesRepository>(families),
+    as<NotificationsRepository>(notifications),
+  );
+  return { service, repo, notifications };
 };
 const request = (overrides: Partial<CreateTransferRequestDto> = {}): CreateTransferRequestDto => ({
   requestType: "family_to_family",
@@ -29,6 +41,13 @@ describe("TransferRequestsService.create", () => {
     assert.deepEqual([created.requestId, created.status, created.requesterId, created.adminRemarks], ["TRF-000001", "PENDING", "u-m", null]);
     await service.create(request({ requestType: "student_to_family", sourceStudentId: "STU-OWN" }), member());
     await service.create(request({ requestType: "student_to_family", sourceStudentId: "STU-FAM" }), member());
+  });
+  test("members: the target family must exist, and is notified", async () => {
+    const { service, notifications } = build();
+    const created = await service.create(request({ lang: "hi" }), member());
+    assert.deepEqual([notifications.stored[0].recipientFamilyId, notifications.stored[0].title], ["TARGET", "नया ट्रांसफर अनुरोध"]);
+    assert.match(notifications.stored[0].message, new RegExp(created.requestId));
+    await rejectsWith(service.create(request({ targetFamilyId: "GONE" }), member()), 404, "Target family not found.");
   });
   test("members: anything else is refused", async () => {
     const { service } = build();

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Application, Prisma } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class ApplicationsRepository {
     return this.prisma.application.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Application | null> {
-    return this.prisma.application.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Application | null> {
+    return db.application.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.ApplicationUncheckedCreateInput): Promise<Application> {
-    return this.prisma.application.create({ data });
+  create(data: Prisma.ApplicationUncheckedCreateInput, db: Db = this.prisma): Promise<Application> {
+    return db.application.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.ApplicationUncheckedUpdateInput): Promise<Application | null> {
-    const { count } = await this.prisma.application.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.ApplicationUncheckedUpdateInput, db: Db = this.prisma): Promise<Application | null> {
+    const { count } = await db.application.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -30,8 +30,8 @@ export class ApplicationsRepository {
   }
 
   // The latest display ids with this prefix, for allocating the next one.
-  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
-    const rows = await this.prisma.application.findMany({
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.application.findMany({
       where: { applicationId: { startsWith: prefix } },
       orderBy: { applicationId: "desc" },
       take: 20,

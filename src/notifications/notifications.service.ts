@@ -4,7 +4,6 @@ import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
-import { assertNoMarkup } from "../common/utils/markup.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
 import type { CreateNotificationDto, NotificationListQueryDto, UpdateNotificationDto } from "./dto/notification.dto.js";
@@ -18,11 +17,9 @@ export interface BatchResult {
 
 // Who may read, send and change notifications:
 //  - admins: everything (blank recipient = everyone);
-//  - members: read their family's and broadcast notifications, mark them read,
-//    and send one to their own family or to a family they just asked to transfer to;
-//  - anyone: the one "application submitted" notification for an application
-//    submitted moments ago.
-// Field types and required fields are checked by the DTOs before this runs.
+//  - members: read their family's and broadcast notifications, and mark them read.
+// Workflows (sign-ups, approvals, event registrations, transfers) send their own
+// notifications through NotificationsRepository and notification-texts.ts.
 @Injectable()
 export class NotificationsService {
   constructor(
@@ -37,10 +34,8 @@ export class NotificationsService {
     return rows.map(toNotificationVo);
   }
 
-  async create(dto: CreateNotificationDto, user: UserRow | null): Promise<NotificationVo> {
-    const input = { ...dto };
-    if (user?.role === "admin") input.recipientFamilyId = blankToNull(input.recipientFamilyId);
-    else await this.applyNonAdminRules(input, user);
+  async create(dto: CreateNotificationDto): Promise<NotificationVo> {
+    const input = { ...dto, recipientFamilyId: blankToNull(dto.recipientFamilyId) };
     return toNotificationVo(await this.repo.create({ id: randomId(), ...toCreateData(input) }));
   }
 
@@ -72,25 +67,6 @@ export class NotificationsService {
 
   remove(id: string): Promise<void> {
     return this.repo.delete(id);
-  }
-
-  // Never a broadcast, never a link, no markup. Allowed to an application
-  // submitted moments ago (once, as its "submitted" notice), to the member's own
-  // family, or to the family they just requested a transfer to.
-  private async applyNonAdminRules(input: CreateNotificationDto, user: UserRow | null): Promise<void> {
-    assertNoMarkup(input);
-    const recipient = input.recipientFamilyId?.trim() ?? "";
-    if (!recipient) throw new ApiError(403, "Only admins can send notifications to everyone.");
-    input.recipientFamilyId = recipient;
-    delete input.deepLink;
-    delete input.read;
-    if (await this.membership.recentApplicationKind(recipient)) {
-      if (await this.repo.exists(recipient, "Registration")) throw new ApiError(409, "This application has already been notified.");
-      input.type = "Registration";
-      return;
-    }
-    if (user && (recipient === (await this.membership.ownFamilyId(user)) || (await this.membership.recentTransferTo(user.id, recipient)))) return;
-    throw new ApiError(403, "You can't send a notification to this family.");
   }
 }
 

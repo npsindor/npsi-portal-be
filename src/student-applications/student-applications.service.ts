@@ -8,18 +8,24 @@ import { parseDate } from "../common/utils/dates.js";
 import { createWithDisplayId } from "../common/utils/display-ids.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
 import { blank, EMAIL_PATTERN, normalizeMobile } from "../common/utils/text.js";
+import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { AvailabilityService } from "../lookups/availability.service.js";
+import { workflowNotification } from "../notifications/notification-texts.js";
+import { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { CreateStudentApplicationDto, StudentApplicationListQueryDto, UpdateStudentApplicationDto } from "./dto/student-applications.dto.js";
 import { StudentApplicationsRepository } from "./student-applications.repository.js";
 import { type StudentApplicationVo, toStudentApplicationVo } from "./vo/student-applications.vo.js";
 
 // Student registration applications: public form with reCAPTCHA, always
-// starting PENDING_VERIFICATION for admins to review.
+// starting PENDING_VERIFICATION for admins to review. A public submission also
+// sends the "submitted" notification, in the same transaction.
 @Injectable()
 export class StudentApplicationsService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly repo: StudentApplicationsRepository,
+    private readonly notifications: NotificationsRepository,
     private readonly availability: AvailabilityService,
     private readonly recaptcha: RecaptchaService,
   ) {}
@@ -30,8 +36,9 @@ export class StudentApplicationsService {
   }
 
   async create(dto: CreateStudentApplicationDto, user: UserRow | null): Promise<StudentApplicationVo> {
-    const { recaptchaToken, ...input } = dto;
-    if (user?.role !== "admin") {
+    const { recaptchaToken, lang, ...input } = dto;
+    const isPublic = user?.role !== "admin";
+    if (isPublic) {
       assertNoMarkup(input);
       input.status = "PENDING_VERIFICATION";
       delete input.adminRemarks;
@@ -40,11 +47,18 @@ export class StudentApplicationsService {
     }
     if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     await this.validate(input);
-    const row = await createWithDisplayId(
-      `NPSI-STU-APP-${new Date().getFullYear()}-`,
-      (prefix) => this.repo.latestDisplayIds(prefix),
-      (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input) }),
-    );
+    const row = await this.prisma.$transaction(async (tx) => {
+      const application = await createWithDisplayId(
+        `NPSI-STU-APP-${new Date().getFullYear()}-`,
+        (prefix) => this.repo.latestDisplayIds(prefix, tx),
+        (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input) }, tx),
+      );
+      if (isPublic) {
+        const { applicationId } = application;
+        await this.notifications.create(workflowNotification("studentApplicationSubmitted", applicationId, { applicationId }, lang), tx);
+      }
+      return application;
+    });
     return toStudentApplicationVo(row);
   }
 
@@ -58,7 +72,7 @@ export class StudentApplicationsService {
     return this.repo.delete(id);
   }
 
-  private async validate(input: Omit<CreateStudentApplicationDto, "recaptchaToken">): Promise<void> {
+  private async validate(input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang">): Promise<void> {
     if (blank(input.studentName)) throw new ApiError(400, "Student name is required.");
     if (!input.mobile || normalizeMobile(input.mobile).length !== 10) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (input.guardianMobile && normalizeMobile(input.guardianMobile).length !== 10)
@@ -75,7 +89,7 @@ export class StudentApplicationsService {
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
 // Required columns are checked by validate() first.
 const toCreateData = (
-  input: Omit<CreateStudentApplicationDto, "recaptchaToken">,
+  input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang">,
 ): Omit<Prisma.StudentApplicationUncheckedCreateInput, "id" | "applicationId"> => ({
   status: input.status,
   studentName: input.studentName as string,

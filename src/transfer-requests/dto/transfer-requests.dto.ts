@@ -2,6 +2,7 @@ import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
 export class CreateTransferRequestDto {
   @RequiredText("Request type is required.", 255)
@@ -60,6 +61,11 @@ export class CreateTransferRequestDto {
 
   @OptionalDate()
   requestedDate?: string | null;
+
+  @ApiPropertyOptional({ enum: LANGS, default: "en", description: "Language of the notification sent to the target family" })
+  @IsOptional()
+  @IsIn(LANGS)
+  lang?: Lang;
 }
 
 export class UpdateTransferRequestDto extends PartialType(CreateTransferRequestDto) {}

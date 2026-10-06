@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Notification, Prisma } from "../generated/prisma/client.js";
 
 // Notifications for everyone: no recipient. Before this module, the admin screen's
@@ -27,12 +27,8 @@ export class NotificationsRepository {
     return this.prisma.notification.findUnique({ where: { id }, select: { recipientFamilyId: true } });
   }
 
-  async exists(recipientFamilyId: string, type: string): Promise<boolean> {
-    return (await this.prisma.notification.count({ where: { recipientFamilyId, type } })) > 0;
-  }
-
-  create(data: Prisma.NotificationUncheckedCreateInput): Promise<Notification> {
-    return this.prisma.notification.create({ data });
+  create(data: Prisma.NotificationUncheckedCreateInput, db: Db = this.prisma): Promise<Notification> {
+    return db.notification.create({ data });
   }
 
   // All or nothing.

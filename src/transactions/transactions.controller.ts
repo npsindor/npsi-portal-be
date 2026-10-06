@@ -12,10 +12,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
-import type { UserRow } from "../common/session/session.service.js";
+import { AdminGuard } from "../common/guards/auth.guards.js";
 import { CreateTransactionDto, TransactionListQueryDto, UpdateTransactionDto } from "./dto/transactions.dto.js";
 import { TransactionsService } from "./transactions.service.js";
 import { TransactionVo } from "./vo/transactions.vo.js";
@@ -38,12 +36,14 @@ export class TransactionsController {
   }
 
   @Post()
-  @UseGuards(OptionalUserGuard)
-  @ApiOperation({ summary: "Create a transaction", description: "Public." })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: "Create a transaction", description: "Admin only." })
   @ApiCreatedResponse({ type: TransactionVo })
   @ApiBadRequestResponse({ type: ErrorVo })
-  create(@Body() body: CreateTransactionDto, @OptionalUser() user: UserRow | null): Promise<TransactionVo> {
-    return this.transactions.create(body, user);
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  create(@Body() body: CreateTransactionDto): Promise<TransactionVo> {
+    return this.transactions.create(body);
   }
 
   @Patch(":id")

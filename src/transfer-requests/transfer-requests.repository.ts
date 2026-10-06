@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, TransferRequest } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class TransferRequestsRepository {
     return this.prisma.transferRequest.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<TransferRequest | null> {
-    return this.prisma.transferRequest.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<TransferRequest | null> {
+    return db.transferRequest.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.TransferRequestUncheckedCreateInput): Promise<TransferRequest> {
-    return this.prisma.transferRequest.create({ data });
+  create(data: Prisma.TransferRequestUncheckedCreateInput, db: Db = this.prisma): Promise<TransferRequest> {
+    return db.transferRequest.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.TransferRequestUncheckedUpdateInput): Promise<TransferRequest | null> {
-    const { count } = await this.prisma.transferRequest.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.TransferRequestUncheckedUpdateInput, db: Db = this.prisma): Promise<TransferRequest | null> {
+    const { count } = await db.transferRequest.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -30,8 +30,8 @@ export class TransferRequestsRepository {
   }
 
   // The latest display ids with this prefix, for allocating the next one.
-  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
-    const rows = await this.prisma.transferRequest.findMany({
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.transferRequest.findMany({
       where: { requestId: { startsWith: prefix } },
       orderBy: { requestId: "desc" },
       take: 20,

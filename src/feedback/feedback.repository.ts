@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Feedback, Prisma } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class FeedbackRepository {
     return this.prisma.feedback.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Feedback | null> {
-    return this.prisma.feedback.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Feedback | null> {
+    return db.feedback.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.FeedbackUncheckedCreateInput): Promise<Feedback> {
-    return this.prisma.feedback.create({ data });
+  create(data: Prisma.FeedbackUncheckedCreateInput, db: Db = this.prisma): Promise<Feedback> {
+    return db.feedback.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.FeedbackUncheckedUpdateInput): Promise<Feedback | null> {
-    const { count } = await this.prisma.feedback.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.FeedbackUncheckedUpdateInput, db: Db = this.prisma): Promise<Feedback | null> {
+    const { count } = await db.feedback.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -30,8 +30,8 @@ export class FeedbackRepository {
   }
 
   // The latest display ids with this prefix, for allocating the next one.
-  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
-    const rows = await this.prisma.feedback.findMany({
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.feedback.findMany({
       where: { feedbackId: { startsWith: prefix } },
       orderBy: { feedbackId: "desc" },
       take: 20,

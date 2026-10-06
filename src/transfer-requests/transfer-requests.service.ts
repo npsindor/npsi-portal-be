@@ -7,8 +7,12 @@ import { parseDate } from "../common/utils/dates.js";
 import { createWithDisplayId } from "../common/utils/display-ids.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
 import { pick } from "../common/utils/objects.js";
+import { PrismaService } from "../database/prisma.service.js";
+import { FamiliesRepository } from "../families/families.repository.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
+import { workflowNotification } from "../notifications/notification-texts.js";
+import { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { CreateTransferRequestDto, TransferRequestListQueryDto, UpdateTransferRequestDto } from "./dto/transfer-requests.dto.js";
 import { TransferRequestsRepository } from "./transfer-requests.repository.js";
 import { type TransferRequestVo, toTransferRequestVo } from "./vo/transfer-requests.vo.js";
@@ -30,12 +34,16 @@ const MEMBER_FIELDS = [
   "requestedDate",
 ] as const;
 // Requests to move a member or student to another family. Members may only
-// ask for their own records; requests always start PENDING for admins.
+// ask for their own records, to an ACTIVE family; requests always start PENDING
+// for admins, and the target family is notified in the same transaction.
 @Injectable()
 export class TransferRequestsService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly repo: TransferRequestsRepository,
     private readonly membership: MembershipRepository,
+    private readonly families: FamiliesRepository,
+    private readonly notifications: NotificationsRepository,
   ) {}
 
   async list(query: TransferRequestListQueryDto): Promise<TransferRequestVo[]> {
@@ -44,16 +52,27 @@ export class TransferRequestsService {
   }
 
   async create(dto: CreateTransferRequestDto, user: UserRow): Promise<TransferRequestVo> {
-    const input: CreateTransferRequestDto = user.role === "admin" ? { ...dto } : pick(dto, MEMBER_FIELDS);
-    if (user.role !== "admin") {
+    const { lang, ...body } = dto;
+    const isMember = user.role !== "admin";
+    const input: Omit<CreateTransferRequestDto, "lang"> = isMember ? pick(body, MEMBER_FIELDS) : body;
+    if (isMember) {
       assertNoMarkup(input);
       await this.applyMemberRules(input, user);
     }
-    const row = await createWithDisplayId(
-      "TRF-",
-      (prefix) => this.repo.latestDisplayIds(prefix),
-      (requestId) => this.repo.create({ id: randomId(), requestId, ...toCreateData(input) }),
-    );
+    const row = await this.prisma.$transaction(async (tx) => {
+      if (isMember && input.targetFamilyId && !(await this.families.findByFamilyId(input.targetFamilyId, tx, "ACTIVE"))) {
+        throw new ApiError(404, "Target family not found.");
+      }
+      const request = await createWithDisplayId(
+        "TRF-",
+        (prefix) => this.repo.latestDisplayIds(prefix, tx),
+        (requestId) => this.repo.create({ id: randomId(), requestId, ...toCreateData(input) }, tx),
+      );
+      if (isMember && request.targetFamilyId) {
+        await this.notifications.create(workflowNotification("transferRequested", request.targetFamilyId, { requestId: request.requestId }, lang), tx);
+      }
+      return request;
+    });
     return toTransferRequestVo(row);
   }
 
@@ -67,7 +86,7 @@ export class TransferRequestsService {
     return this.repo.delete(id);
   }
 
-  private async applyMemberRules(input: CreateTransferRequestDto, user: UserRow): Promise<void> {
+  private async applyMemberRules(input: Omit<CreateTransferRequestDto, "lang">, user: UserRow): Promise<void> {
     const ownFamilyId = await this.membership.ownFamilyId(user);
     if (input.sourceFamilyId && input.sourceFamilyId !== ownFamilyId) throw new ApiError(403, "You can only request a transfer for your own family.");
     if (input.sourceMembershipId) {
@@ -84,7 +103,7 @@ export class TransferRequestsService {
   }
 }
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
-const toCreateData = (input: CreateTransferRequestDto): Omit<Prisma.TransferRequestUncheckedCreateInput, "id" | "requestId"> => ({
+const toCreateData = (input: Omit<CreateTransferRequestDto, "lang">): Omit<Prisma.TransferRequestUncheckedCreateInput, "id" | "requestId"> => ({
   requestType: input.requestType,
   status: input.status,
   reason: input.reason,

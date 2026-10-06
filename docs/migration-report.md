@@ -177,6 +177,29 @@ repository, validating DTOs, camelCase VO, unit tests), like Notification. Remov
 Checked against the local copy of production data: every list call the frontend makes returns
 camelCase rows, and one row of every resource round-trips through PATCH unchanged.
 
+### Server-side workflows (2026-10-06)
+
+Multi-step actions the frontend used to perform as several separate calls (a failure halfway left
+half-done data) are now single endpoints running one database transaction:
+
+| Action | Before (calls from the browser) | Now |
+|---|---|---|
+| Approve / reject / correct a family application | up to 6 (family, members, application, notification, invite) | `POST /applications/:id/review` |
+| Same for a student application | up to 4 | `POST /student-applications/:id/review` |
+| Approve / reject a transfer | up to 7, loading whole student and member tables | `POST /transfer-requests/:id/review` (duplicate check on the server) |
+| Family registration | application + fee + notification | `POST /applications` records all three |
+| Student registration, member transfer request | 2 each | the create sends the notification |
+| Member event registration | payment + registration + notification | `POST /event-registrations` (fee from the event, ids `EVT-REG-…`, `TXN-…`) |
+
+Invites are sent after the commit (a mail failure doesn't undo an approval). Creating transactions
+and notifications directly is now admin-only, so the "submitted in the last 15 minutes" checks are
+gone. Notification texts (English/Hindi, as the frontend had them) are in
+`src/notifications/notification-texts.ts`; requests carry `lang`.
+
+Fixed along the way: transfer approvals now set `approvedDate` (the frontend sent `reviewedDate`,
+which isn't a column and was dropped); the student-to-family duplicate check now actually checks the
+target family (the old client-side one matched the student itself first and never blocked).
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 
@@ -186,9 +209,9 @@ a breaking redesign, to be planned separately).
 |---|---|---|
 | Backend | `npm run check` (Biome lint + format, 70 files) | pass, 0 diagnostics |
 | Backend | `npm run build` (tsc, strict) | pass |
-| Backend | `npm test` (unit, 120 tests) | 120/120 pass |
+| Backend | `npm test` (unit, 129 tests) | 129/129 pass |
 | Backend | `npm run test:e2e` (31 tests, every v1 endpoint, real MySQL) | 31/31 pass |
-| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 94/94 pass |
+| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 97/97 pass |
 | Backend | Final comparison before removing the legacy app: same 88 contract tests on Express + Sequelize, old paths | 88/88 pass |
 | Backend | `npm audit` | 0 vulnerabilities |
 | Backend | Clean production-only install → build → start on a fresh DB | pass (Prisma client generated, `0_init` applied, 10 principles seeded) |

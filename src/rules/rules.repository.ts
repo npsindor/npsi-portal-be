@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, Rule } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class RulesRepository {
     return this.prisma.rule.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Rule | null> {
-    return this.prisma.rule.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Rule | null> {
+    return db.rule.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.RuleUncheckedCreateInput): Promise<Rule> {
-    return this.prisma.rule.create({ data });
+  create(data: Prisma.RuleUncheckedCreateInput, db: Db = this.prisma): Promise<Rule> {
+    return db.rule.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.RuleUncheckedUpdateInput): Promise<Rule | null> {
-    const { count } = await this.prisma.rule.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.RuleUncheckedUpdateInput, db: Db = this.prisma): Promise<Rule | null> {
+    const { count } = await db.rule.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.

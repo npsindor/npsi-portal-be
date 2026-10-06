@@ -7,7 +7,7 @@ import { UsersRepository } from "./users.repository.js";
 
 const route = (path: string, method: RequestMethod) => ({ path: `${R.base}/${path}`, method });
 
-@Module({ controllers: [AuthController], providers: [AuthService, UsersRepository], exports: [UsersRepository] })
+@Module({ controllers: [AuthController], providers: [AuthService, UsersRepository], exports: [UsersRepository, AuthService] })
 export class AuthModule implements NestModule {
   configure(consumer: MiddlewareConsumer): void {
     consumer

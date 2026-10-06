@@ -44,6 +44,7 @@ const v1 = {
   bulk: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}/batch`],
   update: (entity, id) => ["PATCH", `/api/v1/${RESOURCES[entity]}/${id}`],
   remove: (entity, id) => ["DELETE", `/api/v1/${RESOURCES[entity]}/${id}`],
+  review: (entity, id) => ["POST", `/api/v1/${RESOURCES[entity]}/${id}/review`],
 };
 
 export const API = v1;

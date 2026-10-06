@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Use
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -13,18 +14,24 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { OptionalUser } from "../common/decorators/current-user.decorator.js";
+import { ReviewDto } from "../common/dto/review.dto.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { CreateStudentApplicationDto, StudentApplicationListQueryDto, UpdateStudentApplicationDto } from "./dto/student-applications.dto.js";
+import { StudentApplicationReviewService } from "./student-application-review.service.js";
 import { StudentApplicationsService } from "./student-applications.service.js";
+import { StudentApplicationReviewVo } from "./vo/student-application-review.vo.js";
 import { StudentApplicationVo } from "./vo/student-applications.vo.js";
 
 @ApiTags("student-applications")
 @ApiBearerAuth()
 @Controller("student-applications")
 export class StudentApplicationsController {
-  constructor(private readonly studentApplications: StudentApplicationsService) {}
+  constructor(
+    private readonly studentApplications: StudentApplicationsService,
+    private readonly reviews: StudentApplicationReviewService,
+  ) {}
 
   @Get()
   @UseGuards(AdminGuard)
@@ -44,6 +51,26 @@ export class StudentApplicationsController {
   @ApiBadRequestResponse({ type: ErrorVo })
   create(@Body() body: CreateStudentApplicationDto, @OptionalUser() user: UserRow | null): Promise<StudentApplicationVo> {
     return this.studentApplications.create(body, user);
+  }
+
+  @Post(":id/review")
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: "Approve, reject or ask for a correction",
+    description:
+      "Admin only. Approving creates the ACTIVE student record, notifies the student and invites them; " +
+      "rejecting or asking for a correction (remarks required) notifies the applicant. All in one transaction.",
+  })
+  @ApiParam({ name: "id", description: "Record id" })
+  @ApiOkResponse({ type: StudentApplicationReviewVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid decision, or remarks missing" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  @ApiNotFoundResponse({ type: ErrorVo, description: "Application not found" })
+  @ApiConflictResponse({ type: ErrorVo, description: "Already approved" })
+  review(@Param("id") id: string, @Body() body: ReviewDto): Promise<StudentApplicationReviewVo> {
+    return this.reviews.review(id, body);
   }
 
   @Patch(":id")

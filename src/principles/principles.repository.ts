@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Principle, Prisma } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class PrinciplesRepository {
     return this.prisma.principle.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Principle | null> {
-    return this.prisma.principle.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Principle | null> {
+    return db.principle.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.PrincipleUncheckedCreateInput): Promise<Principle> {
-    return this.prisma.principle.create({ data });
+  create(data: Prisma.PrincipleUncheckedCreateInput, db: Db = this.prisma): Promise<Principle> {
+    return db.principle.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.PrincipleUncheckedUpdateInput): Promise<Principle | null> {
-    const { count } = await this.prisma.principle.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.PrincipleUncheckedUpdateInput, db: Db = this.prisma): Promise<Principle | null> {
+    const { count } = await db.principle.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.

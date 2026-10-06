@@ -4,5 +4,10 @@ import { NotificationsController } from "./notifications.controller.js";
 import { NotificationsRepository } from "./notifications.repository.js";
 import { NotificationsService } from "./notifications.service.js";
 
-@Module({ imports: [MembershipModule], controllers: [NotificationsController], providers: [NotificationsService, NotificationsRepository] })
+@Module({
+  imports: [MembershipModule],
+  controllers: [NotificationsController],
+  providers: [NotificationsService, NotificationsRepository],
+  exports: [NotificationsRepository],
+})
 export class NotificationsModule {}

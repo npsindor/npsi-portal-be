@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, mock, test } from "node:test";
+import type { PrismaService } from "../database/prisma.service.js";
 import type { AvailabilityService } from "../lookups/availability.service.js";
-import { fakeModelRepo } from "../testing/fake-repo.js";
+import type { NotificationsRepository } from "../notifications/notifications.repository.js";
+import { fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
 import { admin, as, fakeRecaptcha, rejectsWith } from "../testing/fakes.js";
-import { studentApplicationRow } from "../testing/rows.js";
+import { notificationRow, studentApplicationRow } from "../testing/rows.js";
 import type { CreateStudentApplicationDto } from "./dto/student-applications.dto.js";
 import type { StudentApplicationsRepository } from "./student-applications.repository.js";
 import { StudentApplicationsService } from "./student-applications.service.js";
@@ -11,12 +13,15 @@ import { StudentApplicationsService } from "./student-applications.service.js";
 const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false } = {}) => {
   const repo = fakeModelRepo(studentApplicationRow);
   const availability = { isMobileTaken: mock.fn(async () => mobileTaken), isEmailTaken: mock.fn(async () => emailTaken) };
+  const notifications = fakeModelRepo(notificationRow);
   const service = new StudentApplicationsService(
+    as<PrismaService>(fakePrisma()),
     as<StudentApplicationsRepository>(repo),
+    as<NotificationsRepository>(notifications),
     as<AvailabilityService>(availability),
     fakeRecaptcha(recaptcha).service,
   );
-  return { service, repo };
+  return { service, repo, notifications };
 };
 const student = (overrides: Partial<CreateStudentApplicationDto> = {}): CreateStudentApplicationDto => ({
   studentName: "S",
@@ -35,6 +40,14 @@ describe("StudentApplicationsService", () => {
     assert.equal(created.applicationId, `NPSI-STU-APP-${new Date().getFullYear()}-000001`);
     assert.deepEqual([created.status, created.resultingStudentId, created.dob], ["PENDING_VERIFICATION", null, "2010-04-05"]);
     assert.equal((await build().service.create(student({ status: "APPROVED" }), admin())).status, "APPROVED");
+  });
+  test("public submission also sends the 'submitted' notification; admin creates don't", async () => {
+    const pub = build();
+    const created = await pub.service.create(student(), null);
+    assert.deepEqual([pub.notifications.stored[0].recipientFamilyId, pub.notifications.stored[0].type], [created.applicationId, "Registration"]);
+    const asAdmin = build();
+    await asAdmin.service.create(student(), admin());
+    assert.equal(asAdmin.notifications.stored.length, 0);
   });
   test("validation messages, in order; reCAPTCHA; duplicates", async () => {
     const { service } = build();

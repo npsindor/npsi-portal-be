@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, SamitiMember } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class SamitiMembersRepository {
     return this.prisma.samitiMember.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<SamitiMember | null> {
-    return this.prisma.samitiMember.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<SamitiMember | null> {
+    return db.samitiMember.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.SamitiMemberUncheckedCreateInput): Promise<SamitiMember> {
-    return this.prisma.samitiMember.create({ data });
+  create(data: Prisma.SamitiMemberUncheckedCreateInput, db: Db = this.prisma): Promise<SamitiMember> {
+    return db.samitiMember.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.SamitiMemberUncheckedUpdateInput): Promise<SamitiMember | null> {
-    const { count } = await this.prisma.samitiMember.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.SamitiMemberUncheckedUpdateInput, db: Db = this.prisma): Promise<SamitiMember | null> {
+    const { count } = await db.samitiMember.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.

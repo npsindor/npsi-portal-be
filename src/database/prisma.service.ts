@@ -4,7 +4,11 @@ import { Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } f
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { AppConfigService } from "../config/app-config.service.js";
 import { PROJECT_ROOT } from "../config/project-root.js";
-import { PrismaClient } from "../generated/prisma/client.js";
+import { type Prisma, PrismaClient } from "../generated/prisma/client.js";
+
+// A Prisma client or the client of a running transaction (`prisma.$transaction(async (tx) => …)`):
+// repository methods take one so a service can run several of them as one unit.
+export type Db = Prisma.TransactionClient;
 
 const PRISMA_CLI = path.join(PROJECT_ROOT, "node_modules/prisma/build/index.js");
 const BASELINE_MIGRATION = "0_init";

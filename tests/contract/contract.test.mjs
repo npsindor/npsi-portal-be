@@ -521,7 +521,7 @@ describe("entities: create", () => {
     assert.equal(res.status, 201);
     assert.equal(res.body.applicationId, `NPSI-STU-APP-${YEAR}-000001`);
   });
-  test("registration flow: fee and notification for a fresh application, once each; the server decides type and status", async () => {
+  test("family registration: the application, its PENDING fee and its 'submitted' notification are written together", async () => {
     const app = await api("create", ["Application"]).send({
       familyHeadName: "Flow",
       mobile: "9876500011",
@@ -537,98 +537,48 @@ describe("entities: create", () => {
     assert.equal(app.status, 201);
     assert.deepEqual([app.body.status, app.body.adminRemarks], ["PENDING_VERIFICATION", null]);
     const ref = app.body.applicationId;
-    const fee = {
-      transactionId: "TX-1",
-      type: "DONATION",
-      amount: 500,
-      paymentMethod: "UPI",
-      paymentStatus: "SUCCESS",
-      referenceId: ref,
-      familyId: FAMILY1,
-    };
-    const tx = await api("create", ["Transaction"]).send(fee);
-    assert.equal(tx.status, 201);
-    assertRecord(tx.body);
-    assert.deepEqual([tx.body.type, tx.body.paymentStatus, tx.body.amount, tx.body.familyId], ["Family Registration", "PENDING", 500, null]);
-    assertError(await api("create", ["Transaction"]).send(fee), 409, "A registration fee is already recorded for this application.");
-    const notice = { title: "Submitted", message: "Thanks", type: "info", recipientFamilyId: ref, deepLink: "https://example.com" };
-    const notif = await api("create", ["Notification"]).send(notice);
-    assert.equal(notif.status, 201);
-    assert.deepEqual([notif.body.title, notif.body.type, notif.body.deepLink], ["Submitted", "Registration", null]);
-    assertError(await api("create", ["Notification"]).send(notice), 409, "This application has already been notified.");
+    const fee = (await api("list", ["Transaction", "?limit=500"], { token: TOKENS.admin })).body.find((t) => t.referenceId === ref);
+    assert.deepEqual([fee?.type, fee?.amount, fee?.paymentStatus, fee?.familyId], ["Family Registration", 500, "PENDING", null]);
+    const notice = (await api("list", ["Notification", "?limit=500"], { token: TOKENS.admin })).body.find((n) => n.recipientFamilyId === ref);
+    assert.deepEqual([notice?.type, notice?.title], ["Registration", "Application Submitted"]);
   });
-  test("anonymous transaction and notification: refused unless tied to a fresh application; never a broadcast", async () => {
-    assertError(
-      await api("create", ["Transaction"]).send({ transactionId: "TX-X", type: "DONATION", amount: 500, paymentStatus: "SUCCESS", familyId: FAMILY1 }),
-      403,
-      "Payments can only be recorded for your own registration.",
-    );
-    assertError(
-      await api("create", ["Notification"]).send({ title: "Hi", message: "M", type: "info", recipientFamilyId: FAMILY1 }),
-      403,
-      "You can't send a notification to this family.",
-    );
-    assertError(
-      await api("create", ["Notification"]).send({ title: "All", message: "M", type: "info" }),
-      403,
-      "Only admins can send notifications to everyone.",
-    );
-    assertError(
-      await api("create", ["Notification"], { token: TOKENS.member }).send({ title: "All", message: "M", type: "info" }),
-      403,
-      "Only admins can send notifications to everyone.",
-    );
+  test("only admins create transactions and notifications", async () => {
+    const tx = { transactionId: "TX-X", type: "DONATION", amount: 500 };
+    assertError(await api("create", ["Transaction"]).send(tx), 401, "Authentication required.");
+    assertError(await api("create", ["Transaction"], { token: TOKENS.member }).send(tx), 403, "Admin access required.");
+    const notice = { title: "Hi", message: "M", type: "info", recipientFamilyId: FAMILY1 };
+    assertError(await api("create", ["Notification"]).send(notice), 401, "Authentication required.");
+    assertError(await api("create", ["Notification"], { token: TOKENS.member }).send(notice), 403, "Admin access required.");
   });
-  test("member event fee and notification: own family only; SUCCESS only for a free event", async () => {
-    const paid = await api("create", ["Transaction"], { token: TOKENS.member }).send({
-      transactionId: "TX-EV-1",
-      type: "Event Registration",
+  test("event registration: registration, payment and confirmation in one call; fee from the event", async () => {
+    const res = await api("create", ["EventRegistration"], { token: TOKENS.member }).send({
       eventId: IDS.event,
-      amount: 0,
+      familyId: FAMILY1,
+      memberIds: [IDS.member1],
+      totalFee: 0,
       paymentStatus: "SUCCESS",
-      familyId: FAMILY2,
-      memberId: "NPSI-MEM-000001",
     });
-    assert.equal(paid.status, 201);
-    assert.deepEqual([paid.body.type, paid.body.familyId, paid.body.paymentStatus], ["Event Registration", FAMILY1, "PENDING"]);
-    const free = await api("create", ["Transaction"], { token: TOKENS.member }).send({
-      transactionId: "TX-EV-2",
-      type: "Event Registration",
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.match(res.body.registrationId, /^EVT-REG-\d{6}$/);
+    assert.deepEqual([res.body.feePerMember, res.body.totalFee, res.body.paymentStatus, res.body.registeredById], [100, 100, "PENDING", IDS.memberUser]);
+    const payment = (await api("list", ["Transaction", "?limit=500"], { token: TOKENS.admin })).body.find((t) => t.referenceId === res.body.registrationId);
+    assert.deepEqual(
+      [payment?.transactionId, payment?.type, payment?.amount, payment?.paymentStatus, payment?.familyId, payment?.memberId],
+      [res.body.transactionId, "Event Registration", 100, "PENDING", FAMILY1, "NPSI-MEM-000001"],
+    );
+    const seen = (await api("list", ["Notification"], { token: TOKENS.member })).body;
+    assert.ok(seen.some((n) => n.type === "Event" && n.recipientFamilyId === FAMILY1 && n.message.includes("Paid Event")));
+    const free = await api("create", ["EventRegistration"], { token: TOKENS.member }).send({
       eventId: IDS.freeEvent,
-      amount: 0,
-      paymentStatus: "SUCCESS",
+      familyId: FAMILY1,
+      memberIds: [IDS.member1],
     });
     assert.equal(free.body.paymentStatus, "SUCCESS");
     assertError(
-      await api("create", ["Transaction"], { token: TOKENS.member }).send({
-        transactionId: "TX-EV-3",
-        type: "x",
-        amount: 0,
-        eventId: IDS.event,
-        memberId: "NPSI-MEM-000002",
-      }),
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: IDS.event, familyId: FAMILY2, memberIds: [] }),
       403,
-      "You can only pay for members of your own family.",
+      "You can only register your own family for events.",
     );
-    const own = await api("create", ["Notification"], { token: TOKENS.member }).send({
-      title: "Registered",
-      message: "See you there",
-      type: "Event",
-      recipientFamilyId: FAMILY1,
-    });
-    assert.equal(own.status, 201);
-    assertError(
-      await api("create", ["Notification"], { token: TOKENS.member }).send({ title: "Hi", message: "M", type: "info", recipientFamilyId: FAMILY2 }),
-      403,
-      "You can't send a notification to this family.",
-    );
-    const broadcast = await api("create", ["Notification"], { token: TOKENS.admin }).send({
-      title: "All",
-      message: "New event",
-      type: "Announcement",
-      deepLink: "/events",
-    });
-    assert.deepEqual([broadcast.status, broadcast.body.recipientFamilyId, broadcast.body.deepLink], [201, null, "/events"]);
   });
   test("family: 401 anonymous, 403 member, 201 admin with sequential id", async () => {
     assertError(await api("create", ["Family"]).send({ familyName: "New" }), 401, "Authentication required.");
@@ -978,6 +928,97 @@ describe("notifications module", () => {
     assert.deepEqual(
       good.body.map((n) => n.title),
       ["A", "B"],
+    );
+  });
+});
+
+describe("reviews (end to end, last: they create families and move members)", () => {
+  test("family application: admin only; remarks needed to reject; approval creates the family and members and notifies them", async () => {
+    assertError(await api("review", ["Application", IDS.application]).send({ decision: "APPROVED" }), 401, "Authentication required.");
+    assertError(await api("review", ["Application", IDS.application], { token: TOKENS.member }).send({ decision: "APPROVED" }), 403, "Admin access required.");
+    assertError(
+      await api("review", ["Application", IDS.application], { token: TOKENS.admin }).send({ decision: "MAYBE" }),
+      400,
+      "Decision must be APPROVED, REJECTED or CORRECTION_REQUIRED.",
+    );
+    assertError(
+      await api("review", ["Application", IDS.application], { token: TOKENS.admin }).send({ decision: "REJECTED" }),
+      400,
+      "Remarks are required to reject or ask for a correction.",
+    );
+    assertError(await api("review", ["Application", "missing"], { token: TOKENS.admin }).send({ decision: "APPROVED" }), 404, "Application not found.");
+    const res = await api("review", ["Application", IDS.application], { token: TOKENS.admin }).send({ decision: "APPROVED" });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const { application, family, members } = res.body;
+    assert.deepEqual([application.status, application.resultingFamilyId], ["APPROVED", family.familyId]);
+    assert.deepEqual([family.status, family.headName, family.memberCount, family.applicationId], ["ACTIVE", "Applicant", 1, "NPSI-APP-2026-000001"]);
+    assert.deepEqual(
+      members.map((m) => [m.name, m.familyId, m.status]),
+      [["A", family.familyId, "ACTIVE"]],
+    );
+    const listed = (await api("list", ["Family", `?familyId=${family.familyId}`], { token: TOKENS.admin })).body;
+    assert.equal(listed.length, 1);
+    const notice = (await api("list", ["Notification", "?limit=500"], { token: TOKENS.admin })).body.find((n) => n.recipientFamilyId === family.familyId);
+    assert.equal(notice?.type, "Approval");
+    assertError(
+      await api("review", ["Application", IDS.application], { token: TOKENS.admin }).send({ decision: "APPROVED" }),
+      409,
+      "This application has already been approved.",
+    );
+  });
+  test("student application: correction, then approval creates the student record", async () => {
+    const created = await api("create", ["StudentApplication"]).send({
+      studentName: "Review Kid",
+      mobile: "9876500077",
+      email: "reviewkid@test.local",
+      gender: "Male",
+      fatherName: "Dad",
+      academicYear: "2026",
+    });
+    assert.equal(created.status, 201);
+    const corrected = await api("review", ["StudentApplication", created.body.id], { token: TOKENS.admin }).send({
+      decision: "CORRECTION_REQUIRED",
+      remarks: "Add photo",
+      lang: "hi",
+    });
+    assert.deepEqual([corrected.body.application.status, corrected.body.student], ["CORRECTION_REQUIRED", null]);
+    const approved = await api("review", ["StudentApplication", created.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" });
+    assert.equal(approved.status, 200);
+    assert.match(approved.body.student.studentId, /^NPSI-STU-\d{6}$/);
+    assert.deepEqual([approved.body.student.status, approved.body.application.resultingStudentId], ["ACTIVE", approved.body.student.studentId]);
+  });
+  test("transfer: member request notifies the target family; approval moves the member and updates both counts", async () => {
+    const request = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+      requestType: "family_to_family",
+      sourceFamilyId: FAMILY1,
+      sourceMembershipId: "NPSI-MEM-000001",
+      targetFamilyId: FAMILY2,
+      reason: "Moving",
+    });
+    assert.equal(request.status, 201, JSON.stringify(request.body));
+    const targetNotice = (await api("list", ["Notification", "?limit=500"], { token: TOKENS.admin })).body.find(
+      (n) => n.recipientFamilyId === FAMILY2 && n.message.includes(request.body.requestId),
+    );
+    assert.equal(targetNotice?.title, "New Transfer Request");
+    assertError(
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", targetFamilyId: "NPSI-FAM-999999" }),
+      404,
+      "Target family not found.",
+    );
+    const before = (await api("list", ["Family", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body[0].memberCount ?? 0;
+    const approved = await api("review", ["TransferRequest", request.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED", remarks: "ok" });
+    assert.equal(approved.status, 200, JSON.stringify(approved.body));
+    assert.deepEqual(
+      [approved.body.status, approved.body.oldFamilyId, approved.body.newFamilyId, approved.body.approvedById],
+      ["APPROVED", FAMILY1, FAMILY2, IDS.adminUser],
+    );
+    const moved = (await api("list", ["FamilyMember", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body.find((m) => m.membershipId === "NPSI-MEM-000001");
+    assert.ok(moved, "member now in the target family");
+    assert.equal((await api("list", ["Family", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body[0].memberCount, before + 1);
+    assertError(
+      await api("review", ["TransferRequest", request.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" }),
+      409,
+      "This transfer request has already been approved.",
     );
   });
 });

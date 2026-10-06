@@ -2,7 +2,6 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Res
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
-  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -14,9 +13,9 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import type { Response } from "express";
-import { CurrentUser, OptionalUser } from "../common/decorators/current-user.decorator.js";
+import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard, OptionalUserGuard, UserGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { CreateNotificationDto, NotificationBatchDto, NotificationListQueryDto, UpdateNotificationDto } from "./dto/notification.dto.js";
 import { NotificationsService } from "./notifications.service.js";
@@ -39,19 +38,14 @@ export class NotificationsController {
   }
 
   @Post()
-  @UseGuards(OptionalUserGuard)
-  @ApiOperation({
-    summary: "Send a notification",
-    description:
-      "Admins: to anyone (blank recipient = everyone). Members: to their own family, or to a family they just requested a transfer to. " +
-      "Anyone: the one notice for an application submitted in the last 15 minutes.",
-  })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: "Send a notification", description: "Admin only. A blank recipient means everyone." })
   @ApiCreatedResponse({ type: NotificationVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Title, message or type missing, or a field contains < or >" })
-  @ApiForbiddenResponse({ type: ErrorVo, description: "Not allowed to notify this recipient" })
-  @ApiConflictResponse({ type: ErrorVo, description: "This application has already been notified" })
-  create(@Body() body: CreateNotificationDto, @OptionalUser() user: UserRow | null): Promise<NotificationVo> {
-    return this.notifications.create(body, user);
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  create(@Body() body: CreateNotificationDto): Promise<NotificationVo> {
+    return this.notifications.create(body);
   }
 
   @Post("batch")

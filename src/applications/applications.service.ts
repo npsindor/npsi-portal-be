@@ -12,18 +12,30 @@ import { toJsonInput } from "../common/utils/json.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
 import { blank, EMAIL_PATTERN, normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
+import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { AvailabilityService } from "../lookups/availability.service.js";
+import { workflowNotification } from "../notifications/notification-texts.js";
+import { NotificationsRepository } from "../notifications/notifications.repository.js";
+import { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { ApplicationsRepository } from "./applications.repository.js";
 import type { ApplicationListQueryDto, CreateApplicationDto, UpdateApplicationDto } from "./dto/applications.dto.js";
 import { type ApplicationVo, toApplicationVo } from "./vo/applications.vo.js";
 
+// The family registration fee (no payment gateway: recorded as PENDING for admins to reconcile).
+export const REGISTRATION_FEE = 500;
+
 // Family registration applications. Anyone may submit one (public form with
-// reCAPTCHA); it always starts PENDING_VERIFICATION and admins review it.
+// reCAPTCHA); it always starts PENDING_VERIFICATION and admins review it. A
+// public submission also records the registration fee and a "submitted"
+// notification, in the same transaction.
 @Injectable()
 export class ApplicationsService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly repo: ApplicationsRepository,
+    private readonly transactions: TransactionsRepository,
+    private readonly notifications: NotificationsRepository,
     private readonly availability: AvailabilityService,
     private readonly recaptcha: RecaptchaService,
     private readonly mail: MailService,
@@ -36,8 +48,9 @@ export class ApplicationsService {
   }
 
   async create(dto: CreateApplicationDto, user: UserRow | null): Promise<ApplicationVo> {
-    const { recaptchaToken, ...input } = dto;
-    if (user?.role !== "admin") {
+    const { recaptchaToken, lang, ...input } = dto;
+    const isPublic = user?.role !== "admin";
+    if (isPublic) {
       assertNoMarkup(input);
       input.status = "PENDING_VERIFICATION";
       delete input.adminRemarks;
@@ -46,11 +59,37 @@ export class ApplicationsService {
     }
     if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     await this.validate(input);
-    const row = await createWithDisplayId(
-      `NPSI-APP-${new Date().getFullYear()}-`,
-      (prefix) => this.repo.latestDisplayIds(prefix),
-      (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input) }),
-    );
+    const row = await this.prisma.$transaction(async (tx) => {
+      const application = await createWithDisplayId(
+        `NPSI-APP-${new Date().getFullYear()}-`,
+        (prefix) => this.repo.latestDisplayIds(prefix, tx),
+        (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input) }, tx),
+      );
+      if (isPublic) {
+        await createWithDisplayId(
+          "TXN-",
+          (prefix) => this.transactions.latestDisplayIds(prefix, tx),
+          (transactionId) =>
+            this.transactions.create(
+              {
+                id: randomId(),
+                transactionId,
+                type: "Family Registration",
+                amount: REGISTRATION_FEE,
+                paymentMethod: "UPI",
+                paymentStatus: "PENDING",
+                referenceId: application.applicationId,
+                date: new Date(),
+                remarks: "Family registration fee",
+              },
+              tx,
+            ),
+        );
+        const { applicationId } = application;
+        await this.notifications.create(workflowNotification("applicationSubmitted", applicationId, { applicationId }, lang), tx);
+      }
+      return application;
+    });
     const application = toApplicationVo(row);
     this.sendEmails(application).catch((error: unknown) => console.error("[mailer] application email failed:", error instanceof Error ? error.message : error));
     return application;
@@ -66,7 +105,7 @@ export class ApplicationsService {
     return this.repo.delete(id);
   }
 
-  private async validate(input: Omit<CreateApplicationDto, "recaptchaToken">): Promise<void> {
+  private async validate(input: Omit<CreateApplicationDto, "recaptchaToken" | "lang">): Promise<void> {
     if (!input.mobile || normalizeMobile(input.mobile).length !== 10) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (blank(input.familyName)) throw new ApiError(400, "Family name is required.");
     if (!input.email || !EMAIL_PATTERN.test(input.email)) throw new ApiError(400, "A valid email address is required.");
@@ -100,7 +139,7 @@ export class ApplicationsService {
 
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
 // Required columns are checked by validate() first.
-const toCreateData = (input: Omit<CreateApplicationDto, "recaptchaToken">): Omit<Prisma.ApplicationUncheckedCreateInput, "id" | "applicationId"> => ({
+const toCreateData = (input: Omit<CreateApplicationDto, "recaptchaToken" | "lang">): Omit<Prisma.ApplicationUncheckedCreateInput, "id" | "applicationId"> => ({
   status: input.status,
   familyHeadName: input.familyHeadName as string,
   mobile: input.mobile,

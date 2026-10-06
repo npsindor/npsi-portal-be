@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, Transaction } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class TransactionsRepository {
     return this.prisma.transaction.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Transaction | null> {
-    return this.prisma.transaction.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Transaction | null> {
+    return db.transaction.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.TransactionUncheckedCreateInput): Promise<Transaction> {
-    return this.prisma.transaction.create({ data });
+  create(data: Prisma.TransactionUncheckedCreateInput, db: Db = this.prisma): Promise<Transaction> {
+    return db.transaction.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.TransactionUncheckedUpdateInput): Promise<Transaction | null> {
-    const { count } = await this.prisma.transaction.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.TransactionUncheckedUpdateInput, db: Db = this.prisma): Promise<Transaction | null> {
+    const { count } = await db.transaction.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -29,7 +29,14 @@ export class TransactionsRepository {
     await this.prisma.transaction.deleteMany({ where: { id } });
   }
 
-  async existsForReference(referenceId: string): Promise<boolean> {
-    return (await this.prisma.transaction.count({ where: { referenceId } })) > 0;
+  // The latest TXN- ids, for allocating the next one.
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.transaction.findMany({
+      where: { transactionId: { startsWith: prefix } },
+      orderBy: { transactionId: "desc" },
+      take: 20,
+      select: { transactionId: true },
+    });
+    return rows.map((row) => row.transactionId);
   }
 }

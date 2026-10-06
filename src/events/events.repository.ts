@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Event, Prisma } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class EventsRepository {
     return this.prisma.event.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Event | null> {
-    return this.prisma.event.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Event | null> {
+    return db.event.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.EventUncheckedCreateInput): Promise<Event> {
-    return this.prisma.event.create({ data });
+  create(data: Prisma.EventUncheckedCreateInput, db: Db = this.prisma): Promise<Event> {
+    return db.event.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.EventUncheckedUpdateInput): Promise<Event | null> {
-    const { count } = await this.prisma.event.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.EventUncheckedUpdateInput, db: Db = this.prisma): Promise<Event | null> {
+    const { count } = await db.event.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -29,9 +29,9 @@ export class EventsRepository {
     await this.prisma.event.deleteMany({ where: { id } });
   }
 
-  // An event's fee per member, or null when the event doesn't exist.
-  async feeOf(id: string): Promise<number | null> {
-    const event = await this.prisma.event.findUnique({ where: { id }, select: { fee: true } });
-    return event ? (event.fee?.toNumber() ?? 0) : null;
+  // An event's title and fee per member, or null when the event doesn't exist.
+  async feeOf(id: string, db: Db = this.prisma): Promise<{ title: string; fee: number } | null> {
+    const event = await db.event.findUnique({ where: { id }, select: { title: true, fee: true } });
+    return event ? { title: event.title, fee: event.fee?.toNumber() ?? 0 } : null;
   }
 }

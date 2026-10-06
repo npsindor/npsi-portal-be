@@ -2,11 +2,10 @@ import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalDate, OptionalInt, OptionalJson, OptionalNumber, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
+// The registration id (EVT-REG-…) is assigned by the server.
 export class CreateEventRegistrationDto {
-  @RequiredText("Registration id is required.", 255)
-  registrationId!: string;
-
   @RequiredText("Event id is required.", 64)
   eventId!: string;
 
@@ -51,6 +50,11 @@ export class CreateEventRegistrationDto {
 
   @OptionalText(255)
   registrantEmail?: string | null;
+
+  @ApiPropertyOptional({ enum: LANGS, default: "en", description: "Language of the confirmation notification" })
+  @IsOptional()
+  @IsIn(LANGS)
+  lang?: Lang;
 }
 
 export class UpdateEventRegistrationDto extends PartialType(CreateEventRegistrationDto) {}

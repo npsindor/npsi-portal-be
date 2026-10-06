@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, StudentApplication } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class StudentApplicationsRepository {
     return this.prisma.studentApplication.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<StudentApplication | null> {
-    return this.prisma.studentApplication.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<StudentApplication | null> {
+    return db.studentApplication.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.StudentApplicationUncheckedCreateInput): Promise<StudentApplication> {
-    return this.prisma.studentApplication.create({ data });
+  create(data: Prisma.StudentApplicationUncheckedCreateInput, db: Db = this.prisma): Promise<StudentApplication> {
+    return db.studentApplication.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.StudentApplicationUncheckedUpdateInput): Promise<StudentApplication | null> {
-    const { count } = await this.prisma.studentApplication.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.StudentApplicationUncheckedUpdateInput, db: Db = this.prisma): Promise<StudentApplication | null> {
+    const { count } = await db.studentApplication.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -30,8 +30,8 @@ export class StudentApplicationsRepository {
   }
 
   // The latest display ids with this prefix, for allocating the next one.
-  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
-    const rows = await this.prisma.studentApplication.findMany({
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.studentApplication.findMany({
       where: { applicationId: { startsWith: prefix } },
       orderBy: { applicationId: "desc" },
       take: 20,

@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Family, Prisma } from "../generated/prisma/client.js";
 
 @Injectable()
@@ -10,18 +10,18 @@ export class FamiliesRepository {
     return this.prisma.family.findMany({ where, orderBy, take });
   }
 
-  findById(id: string): Promise<Family | null> {
-    return this.prisma.family.findUnique({ where: { id } });
+  findById(id: string, db: Db = this.prisma): Promise<Family | null> {
+    return db.family.findUnique({ where: { id } });
   }
 
-  create(data: Prisma.FamilyUncheckedCreateInput): Promise<Family> {
-    return this.prisma.family.create({ data });
+  create(data: Prisma.FamilyUncheckedCreateInput, db: Db = this.prisma): Promise<Family> {
+    return db.family.create({ data });
   }
 
   // null when the id doesn't exist.
-  async update(id: string, data: Prisma.FamilyUncheckedUpdateInput): Promise<Family | null> {
-    const { count } = await this.prisma.family.updateMany({ where: { id }, data });
-    return count ? this.findById(id) : null;
+  async update(id: string, data: Prisma.FamilyUncheckedUpdateInput, db: Db = this.prisma): Promise<Family | null> {
+    const { count } = await db.family.updateMany({ where: { id }, data });
+    return count ? this.findById(id, db) : null;
   }
 
   // Deleting an id that doesn't exist is not an error.
@@ -30,13 +30,23 @@ export class FamiliesRepository {
   }
 
   // The latest display ids with this prefix, for allocating the next one.
-  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
-    const rows = await this.prisma.family.findMany({
+  async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
+    const rows = await db.family.findMany({
       where: { familyId: { startsWith: prefix } },
       orderBy: { familyId: "desc" },
       take: 20,
       select: { familyId: true },
     });
     return rows.map((row) => row.familyId);
+  }
+
+  findByFamilyId(familyId: string, db: Db = this.prisma, status?: string): Promise<Family | null> {
+    return db.family.findFirst({ where: { familyId, status } });
+  }
+
+  // Never below zero.
+  async changeMemberCount(id: string, delta: number, db: Db = this.prisma): Promise<void> {
+    const family = await db.family.findUnique({ where: { id }, select: { memberCount: true } });
+    if (family) await db.family.update({ where: { id }, data: { memberCount: Math.max((family.memberCount ?? 0) + delta, 0), updatedAt: new Date() } });
   }
 }

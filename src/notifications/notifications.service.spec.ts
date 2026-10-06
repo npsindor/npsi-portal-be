@@ -30,7 +30,6 @@ const build = () => {
           "n-other": { recipientFamilyId: "OTHER" },
         })[id] ?? null,
     ),
-    exists: mock.fn(async (recipient: string) => recipient === "APP-DONE"),
     create: mock.fn(async (data: Row) => {
       stored.push(data);
       return dbRow(data);
@@ -42,11 +41,8 @@ const build = () => {
     update: mock.fn(async (..._args: unknown[]) => undefined),
     delete: mock.fn(async (..._args: unknown[]) => undefined),
   };
-  // "APP-NEW"/"APP-DONE" are applications submitted moments ago; "APP-DONE" was already notified.
   const membership = {
     ownFamilyId: mock.fn(async (u: UserRow | null) => (u?.id === "u-m" ? FAM : null)),
-    recentApplicationKind: mock.fn(async (id: unknown) => (id === "APP-NEW" || id === "APP-DONE" ? "Application" : null)),
-    recentTransferTo: mock.fn(async (userId: string, familyId: string) => userId === "u-m" && familyId === "TARGET"),
   };
   return { service: new NotificationsService(as<NotificationsRepository>(repo), as<MembershipRepository>(membership)), repo };
 };
@@ -95,10 +91,10 @@ describe("NotificationsService.list", () => {
   });
 });
 
-describe("NotificationsService.create", () => {
-  test("admins: anything; a blank recipient becomes a broadcast; ids are always the server's", async () => {
+describe("NotificationsService.create (admins)", () => {
+  test("anything, server id, blank recipient becomes a broadcast", async () => {
     const { service, repo } = build();
-    await service.create(notice({ recipientFamilyId: " ", deepLink: "/events", read: true, date: "2026-02-01T10:00:00.000Z" }), admin());
+    await service.create(notice({ recipientFamilyId: " ", deepLink: "/events", read: true, date: "2026-02-01T10:00:00.000Z" }));
     const { id, ...row } = repo.stored[0];
     assert.equal(typeof id, "string");
     assert.deepEqual(row, {
@@ -110,30 +106,8 @@ describe("NotificationsService.create", () => {
       date: new Date("2026-02-01T10:00:00.000Z"),
       deepLink: "/events",
     });
-  });
-  test("anonymous: only the one notice for a just-submitted application; type, link and read are the server's", async () => {
-    const { service, repo } = build();
-    await rejectsWith(service.create(notice(), null), 403, "Only admins can send notifications to everyone.");
-    const created = await service.create(notice({ type: "Alert", recipientFamilyId: " APP-NEW ", deepLink: "https://evil", read: true }), null);
-    assert.equal(created.type, "Registration");
-    const row = repo.stored[0];
-    assert.deepEqual([row.recipientFamilyId, row.type, row.deepLink, row.read], ["APP-NEW", "Registration", undefined, undefined]);
-    await rejectsWith(service.create(notice({ recipientFamilyId: "APP-DONE" }), null), 409, "This application has already been notified.");
-    await rejectsWith(service.create(notice({ recipientFamilyId: FAM }), null), 403, "You can't send a notification to this family.");
-    await rejectsWith(service.create(notice({ title: "<b>", recipientFamilyId: "APP-NEW" }), null), 400, 'The "title" field cannot contain < or > characters.');
-  });
-  test("members: own family or a just-requested transfer target only", async () => {
-    const { service, repo } = build();
-    await service.create(notice({ recipientFamilyId: FAM }), member());
-    await service.create(notice({ type: "Approval", recipientFamilyId: "TARGET" }), member());
-    assert.deepEqual(
-      repo.stored.map((row) => [row.recipientFamilyId, row.type]),
-      [
-        [FAM, "Event"],
-        ["TARGET", "Approval"],
-      ],
-    );
-    await rejectsWith(service.create(notice({ recipientFamilyId: "OTHER" }), member()), 403, "You can't send a notification to this family.");
+    await service.create(notice({ recipientFamilyId: FAM }));
+    assert.equal(repo.stored[1].recipientFamilyId, FAM);
   });
 });
 

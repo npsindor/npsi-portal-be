@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Use
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
+  ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiNoContentResponse,
@@ -13,18 +14,24 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import { OptionalUser } from "../common/decorators/current-user.decorator.js";
+import { ReviewDto } from "../common/dto/review.dto.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
+import { ApplicationReviewService } from "./application-review.service.js";
 import { ApplicationsService } from "./applications.service.js";
 import { ApplicationListQueryDto, CreateApplicationDto, UpdateApplicationDto } from "./dto/applications.dto.js";
+import { ApplicationReviewVo } from "./vo/application-review.vo.js";
 import { ApplicationVo } from "./vo/applications.vo.js";
 
 @ApiTags("applications")
 @ApiBearerAuth()
 @Controller("applications")
 export class ApplicationsController {
-  constructor(private readonly applications: ApplicationsService) {}
+  constructor(
+    private readonly applications: ApplicationsService,
+    private readonly reviews: ApplicationReviewService,
+  ) {}
 
   @Get()
   @UseGuards(AdminGuard)
@@ -44,6 +51,26 @@ export class ApplicationsController {
   @ApiBadRequestResponse({ type: ErrorVo })
   create(@Body() body: CreateApplicationDto, @OptionalUser() user: UserRow | null): Promise<ApplicationVo> {
     return this.applications.create(body, user);
+  }
+
+  @Post(":id/review")
+  @HttpCode(200)
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: "Approve, reject or ask for a correction",
+    description:
+      "Admin only. Approving creates the ACTIVE family and its members from the application, notifies the family and invites the applicant; " +
+      "rejecting or asking for a correction (remarks required) notifies the applicant. All in one transaction.",
+  })
+  @ApiParam({ name: "id", description: "Record id" })
+  @ApiOkResponse({ type: ApplicationReviewVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid decision, or remarks missing" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  @ApiNotFoundResponse({ type: ErrorVo, description: "Application not found" })
+  @ApiConflictResponse({ type: ErrorVo, description: "Already approved" })
+  review(@Param("id") id: string, @Body() body: ReviewDto): Promise<ApplicationReviewVo> {
+    return this.reviews.review(id, body);
   }
 
   @Patch(":id")
