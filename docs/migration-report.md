@@ -234,6 +234,20 @@ credentials, photo upload + profile save, fake image refused, paging (100 + 54 =
 - **Uptime check:** `.github/workflows/uptime.yml`, every 15 minutes on both sites; GitHub emails on
   failure. Active once on `main`.
 
+### Test data removed (migration `20261009000000_remove_test_data`)
+
+Runs once with the production deploy. Every row is named by id (reviewed against the production copy):
+8 test applications (HTTP-TEST-…, VERIFY-…, PSI-APP-TEST/VERIFY/FLOW-…), 6 test families with their 2
+members (PSI-FAM-TEST/FINAL/FLOW/VERIFY-…, all example.com addresses), their fake fee
+TXN-FLOW-REVENUE-001, the invited test account flowmemberverify@example.com, and 8 notifications with no
+title, message or type; one fee stored with an empty family id gets NULL. Verified on a copy with the
+real foreign keys: exactly those rows go, nothing else, no orphans left. Kept on purpose: the 3
+registrations of family PSI-FAM-000018 for the deleted "Holi Milan 2027" event (history), so event
+registrations get no foreign key.
+
+Frontend: Playwright browser tests (`npm run test:browser`, run in its pipeline) cover public pages for
+anonymous visitors, the login redirect, cookie login without localStorage, one-call approval and paging.
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 
