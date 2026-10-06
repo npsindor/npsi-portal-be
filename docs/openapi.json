@@ -241,6 +241,38 @@
         "tags": [
           "auth"
         ]
+      },
+      "delete": {
+        "description": "Ends every session of the logged-in user, on all devices.",
+        "operationId": "AuthController_logoutEverywhere",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "All sessions ended"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded (auth and OTP routes)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Log out everywhere",
+        "tags": [
+          "auth"
+        ]
       }
     },
     "/api/v1/auth/password-resets": {

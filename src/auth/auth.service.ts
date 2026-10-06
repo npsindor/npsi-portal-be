@@ -117,7 +117,7 @@ export class AuthService {
     const { resetToken, newPassword } = body || {};
     if (!resetToken || !newPassword || newPassword.length < 6)
       throw new ApiError(400, "A valid reset token and password of at least 6 characters are required.");
-    const changed = await this.users.resetPassword(hashPassword(newPassword), sha256(resetToken));
+    const changed = await this.users.resetPassword(hashPassword(newPassword), sha256(resetToken)); // also logs out every device
     if (!changed) throw new ApiError(400, "This reset link is invalid or expired.");
     return OK;
   }
@@ -149,11 +149,12 @@ export class AuthService {
     return { ok: true, username, password: defaultPassword };
   }
 
-  async changePassword(user: UserRow, body: ChangePasswordDto): Promise<OkVo> {
+  // The device making the change stays logged in; the user's other devices are logged out.
+  async changePassword(user: UserRow, body: ChangePasswordDto, currentToken?: string): Promise<OkVo> {
     const { currentPassword, newPassword } = body || {};
     if (!newPassword || newPassword.length < 6) throw new ApiError(400, "New password must be at least 6 characters.");
     if (!verifyPassword(currentPassword || "", user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
-    await this.users.updatePassword(user.id, hashPassword(newPassword));
+    await this.users.updatePassword(user.id, hashPassword(newPassword), currentToken ? sha256(currentToken) : undefined);
     return OK;
   }
 
@@ -185,6 +186,11 @@ export class AuthService {
   async logout(token: string | undefined): Promise<void> {
     if (!token) return;
     await this.users.clearSession(sha256(token));
+  }
+
+  // "Log out everywhere": ends every session of this user, this device's included.
+  async logoutEverywhere(user: UserRow): Promise<void> {
+    await this.users.clearAllSessions(user.id);
   }
 
   // Fresh single-use OTP, valid 10 minutes, sent by email.

@@ -16,8 +16,8 @@ afterEach(() => mock.restoreAll());
 
 describe("SessionService", () => {
   const sessions = (row: unknown) => {
-    const first = mock.fn(async (_args: { where: { sessionToken: string; sessionExpiresAt: { gt: Date } } }) => row ?? null);
-    return { first, service: new SessionService(as<PrismaService>({ user: { findFirst: first } })) };
+    const first = mock.fn(async (_args: { where: { id: string; expiresAt: { gt: Date } } }) => (row ? { user: row } : null));
+    return { first, service: new SessionService(as<PrismaService>({ session: { findFirst: first } })) };
   };
 
   test("reads the token after an optional Bearer prefix", () => {
@@ -38,8 +38,8 @@ describe("SessionService", () => {
     const { first, service } = sessions(user());
     assert.equal((await service.getBearerUser(request({ authorization: "Bearer t" })))?.id, "u-1");
     const { where } = first.mock.calls[0].arguments[0];
-    assert.equal(where.sessionToken, sha256("t"), "looks up the token's hash");
-    assert.ok(where.sessionExpiresAt.gt instanceof Date, "only unexpired sessions");
+    assert.equal(where.id, sha256("t"), "looks up the token's hash");
+    assert.ok(where.expiresAt.gt instanceof Date, "only unexpired sessions");
     assert.equal(await sessions(undefined).service.getBearerUser(request({ authorization: "Bearer t" })), null);
   });
   test("requireUser / requireAdmin", async () => {

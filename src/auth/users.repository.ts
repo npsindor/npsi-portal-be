@@ -46,15 +46,21 @@ export class UsersRepository {
     await this.prisma.user.update({ where: { id: userId }, data: { otpHash, otpExpiresAt: fromNow(OTP_TTL) } });
   }
 
+  // OTP verified: the account is verified and this device gets a session, together.
   async verifyAndStartSession(userId: string, tokenHash: string): Promise<void> {
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { isVerified: true, sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL), otpHash: null, otpExpiresAt: null },
-    });
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { isVerified: true, otpHash: null, otpExpiresAt: null } }),
+      this.prisma.session.create({ data: { id: tokenHash, userId, expiresAt: fromNow(SESSION_TTL) } }),
+    ]);
   }
 
+  // A new session for this device; the user's other devices stay logged in.
+  // Their expired sessions are tidied up on the way.
   async startSession(userId: string, tokenHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL) } });
+    await this.prisma.$transaction([
+      this.prisma.session.deleteMany({ where: { userId, expiresAt: { lte: new Date() } } }),
+      this.prisma.session.create({ data: { id: tokenHash, userId, expiresAt: fromNow(SESSION_TTL) } }),
+    ]);
   }
 
   async setResetTokenByEmail(email: string, tokenHash: string): Promise<void> {
@@ -64,13 +70,19 @@ export class UsersRepository {
     });
   }
 
-  // Returns the number of users changed (0 when the token is unknown or expired).
-  async resetPassword(passwordHash: string, tokenHash: string): Promise<number> {
-    const { count } = await this.prisma.user.updateMany({
-      where: { resetTokenHash: tokenHash, resetTokenExpiresAt: { gt: new Date() } },
-      data: { passwordHash, resetTokenHash: null, resetTokenExpiresAt: null, isVerified: true },
-    });
-    return count;
+  // Sets the new password for the holder of a valid reset token and logs out
+  // all of their devices. Returns false when the token is unknown or expired.
+  async resetPassword(passwordHash: string, tokenHash: string): Promise<boolean> {
+    const user = await this.prisma.user.findFirst({ where: { resetTokenHash: tokenHash, resetTokenExpiresAt: { gt: new Date() } }, select: { id: true } });
+    if (!user) return false;
+    const [{ count }] = await this.prisma.$transaction([
+      this.prisma.user.updateMany({
+        where: { id: user.id, resetTokenHash: tokenHash },
+        data: { passwordHash, resetTokenHash: null, resetTokenExpiresAt: null, isVerified: true },
+      }),
+      this.prisma.session.deleteMany({ where: { userId: user.id } }),
+    ]);
+    return count > 0;
   }
 
   async insertInvited(id: string, email: string, fullName: unknown, phone: unknown, passwordHash: string, role: "admin" | "user"): Promise<void> {
@@ -104,12 +116,21 @@ export class UsersRepository {
     return this.prisma.user.update({ where: { id: userId }, data: { ...data } });
   }
 
-  async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
+  // New password; every other device is logged out (the one making the change stays).
+  async updatePassword(userId: string, passwordHash: string, keepTokenHash?: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash } }),
+      this.prisma.session.deleteMany({ where: { userId, ...(keepTokenHash ? { id: { not: keepTokenHash } } : {}) } }),
+    ]);
   }
 
-  // Never called without a token: an empty filter would match every user.
+  // Logs out one device.
   async clearSession(tokenHash: string): Promise<void> {
-    await this.prisma.user.updateMany({ where: { sessionToken: tokenHash }, data: { sessionToken: null, sessionExpiresAt: null } });
+    await this.prisma.session.deleteMany({ where: { id: tokenHash } });
+  }
+
+  // Logs out every device of this user.
+  async clearAllSessions(userId: string): Promise<void> {
+    await this.prisma.session.deleteMany({ where: { userId } });
   }
 }

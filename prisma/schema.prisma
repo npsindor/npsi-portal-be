@@ -195,16 +195,17 @@ model Feedback {
 }
 
 model Notification {
-  id                String    @id @db.VarChar(64)
-  title             String    @db.Text
-  message           String    @db.Text
-  type              String    @db.VarChar(255)
-  recipientFamilyId String?   @map("recipient_family_id") @db.VarChar(255)
-  read              Boolean   @default(false)
-  date              DateTime? @db.DateTime(0)
-  deepLink          String?   @map("deep_link") @db.Text
-  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  id                String             @id @db.VarChar(64)
+  title             String             @db.Text
+  message           String             @db.Text
+  type              String             @db.VarChar(255)
+  recipientFamilyId String?            @map("recipient_family_id") @db.VarChar(255)
+  read              Boolean            @default(false)
+  date              DateTime?          @db.DateTime(0)
+  deepLink          String?            @map("deep_link") @db.Text
+  createdAt         DateTime           @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime           @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  reads             NotificationRead[]
 
   @@index([recipientFamilyId, date], map: "notifications_recipient_idx")
   @@map("notifications")
@@ -383,25 +384,54 @@ model TransferRequest {
 }
 
 model User {
-  id                  String    @id @db.VarChar(64)
-  email               String?   @unique(map: "email") @db.VarChar(255)
-  fullName            String?   @map("full_name") @db.VarChar(255)
-  role                String?   @default("user") @db.VarChar(64)
-  passwordHash        String?   @map("password_hash") @db.Text
-  isVerified          Boolean   @default(true) @map("is_verified")
-  status              String    @default("active") @db.VarChar(64)
-  sessionToken        String?   @map("session_token") @db.Text
-  sessionExpiresAt    DateTime? @map("session_expires_at") @db.DateTime(0)
-  resetTokenHash      String?   @map("reset_token_hash") @db.Text
-  resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.DateTime(0)
-  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
-  phone               String?   @db.VarChar(20)
-  otpHash             String?   @map("otp_hash") @db.VarChar(255)
-  otpExpiresAt        DateTime? @map("otp_expires_at") @db.DateTime(0)
-  photoUrl            String?   @map("photo_url") @db.Text
+  id                  String             @id @db.VarChar(64)
+  email               String?            @unique(map: "email") @db.VarChar(255)
+  fullName            String?            @map("full_name") @db.VarChar(255)
+  role                String?            @default("user") @db.VarChar(64)
+  passwordHash        String?            @map("password_hash") @db.Text
+  isVerified          Boolean            @default(true) @map("is_verified")
+  status              String             @default("active") @db.VarChar(64)
+  sessionToken        String?            @map("session_token") @db.Text
+  sessionExpiresAt    DateTime?          @map("session_expires_at") @db.DateTime(0)
+  resetTokenHash      String?            @map("reset_token_hash") @db.Text
+  resetTokenExpiresAt DateTime?          @map("reset_token_expires_at") @db.DateTime(0)
+  createdAt           DateTime           @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt           DateTime           @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  phone               String?            @db.VarChar(20)
+  otpHash             String?            @map("otp_hash") @db.VarChar(255)
+  otpExpiresAt        DateTime?          @map("otp_expires_at") @db.DateTime(0)
+  photoUrl            String?            @map("photo_url") @db.Text
+  sessions            Session[]
+  notificationReads   NotificationRead[]
 
   @@index([resetTokenHash(length: 255)], map: "users_reset_token_idx")
   @@index([sessionToken(length: 255)])
   @@map("users")
+}
+
+// One row per logged-in device: the SHA-256 of its session token (the token
+// itself is never stored), whose session it is, and when it expires.
+model Session {
+  id        String   @id @db.VarChar(64)
+  userId    String   @map("user_id") @db.VarChar(64)
+  expiresAt DateTime @map("expires_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "sessions_user_id_fkey")
+
+  @@index([userId], map: "sessions_user_idx")
+  @@map("sessions")
+}
+
+// Which member has read which broadcast (a notification for everyone): each
+// member marks broadcasts read for themselves only.
+model NotificationRead {
+  notificationId String       @map("notification_id") @db.VarChar(64)
+  userId         String       @map("user_id") @db.VarChar(64)
+  readAt         DateTime     @default(now()) @map("read_at") @db.DateTime(0)
+  notification   Notification @relation(fields: [notificationId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "notification_reads_notification_id_fkey")
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "notification_reads_user_id_fkey")
+
+  @@id([notificationId, userId])
+  @@index([userId], map: "notification_reads_user_idx")
+  @@map("notification_reads")
 }

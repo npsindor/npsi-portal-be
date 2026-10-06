@@ -116,6 +116,8 @@ const seed = async () => {
     user(IDS.otpUser, "otp@test.local", PASSWORDS.unverified, { is_verified: 0, phone: "9100000005", otp_hash: sha256(OTP_CODE) }),
     user(IDS.loginUser, "login@test.local", PASSWORDS.login, { phone: "9100000006" }),
     user(IDS.noFamilyUser, "nofamily@test.local", PASSWORDS.member, { phone: "9100000007", session_token: TOKENS.noFamily }),
+    // Logs in and out on several "devices" (tests/contract: sessions).
+    user("u-devices", "devices@test.local", PASSWORDS.member, { phone: "9100000008" }),
   ];
   for (const u of users) {
     await query(
@@ -220,6 +222,8 @@ export const setup = async () => {
   }
   await seed();
   await backfillContactDigits();
+  // Seeded users carry their session hash like legacy rows; the sessions table is what the app reads.
+  await query("INSERT INTO sessions (id, user_id, expires_at) SELECT session_token, id, session_expires_at FROM users WHERE session_token IS NOT NULL");
 };
 
 export const teardown = async () => {

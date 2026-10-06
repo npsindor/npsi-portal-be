@@ -27,6 +27,7 @@ const fakeUsers = () => ({
     user({ id, ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) }),
   ),
   clearSession: mock.fn(async (_token: string | undefined) => undefined),
+  clearAllSessions: mock.fn(async (..._args: unknown[]) => undefined),
 });
 
 let users: ReturnType<typeof fakeUsers>;
@@ -315,5 +316,17 @@ describe("AuthService.updateMe", () => {
       "The photo must be an image uploaded to the portal.",
     );
     await rejectsWith(service.updateMe(user(), { fullName: "<script>" }), 400, 'The "fullName" field cannot contain < or > characters.');
+  });
+});
+
+describe("AuthService sessions across devices", () => {
+  test("changing the password keeps the current device's session (by its hash)", async () => {
+    await service.changePassword(user({ passwordHash: hashPassword(PASSWORD) }), { currentPassword: PASSWORD, newPassword: "NewPass1" }, "this-device-token");
+    const [, , keep] = users.updatePassword.mock.calls[0].arguments;
+    assert.equal(keep, sha256("this-device-token"));
+  });
+  test("log out everywhere ends all of the user's sessions", async () => {
+    await service.logoutEverywhere(user({ id: "u-9" }));
+    assert.deepEqual(users.clearAllSessions.mock.calls[0].arguments, ["u-9"]);
   });
 });

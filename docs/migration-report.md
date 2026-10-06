@@ -259,6 +259,15 @@ anonymous visitors, the login redirect, cookie login without localStorage, one-c
 - **Frontend ↔ backend contract:** `npm run openapi` writes `docs/openapi.json` (CI fails when stale);
   the frontend keeps a copy and its unit tests fail if any endpoint it calls is missing from it.
 
+### Several devices, per-member read (migration `20261011000000_sessions_and_notification_reads`)
+
+- **Sessions table:** logging in on a second device no longer logs out the first. Logout ends one
+  device; "Log out of all devices" (Settings, `DELETE /auth/sessions`) ends all; a password reset ends
+  all and a password change ends the others. Everyone logged in at deploy time stays logged in (the
+  migration copies current sessions: 22 on the production copy).
+- **Broadcast notifications are read per member** (`notification_reads`): one member marking an
+  "everyone" notification read no longer marks it read for every member.
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 
@@ -268,9 +277,9 @@ a breaking redesign, to be planned separately).
 |---|---|---|
 | Backend | `npm run check` (Biome lint + format, 70 files) | pass, 0 diagnostics |
 | Backend | `npm run build` (tsc, strict) | pass |
-| Backend | `npm test` (unit, 136 tests) | 136/136 pass |
+| Backend | `npm test` (unit, 139 tests) | 139/139 pass |
 | Backend | `npm run test:e2e` (31 tests, every v1 endpoint, real MySQL) | 31/31 pass |
-| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 104/104 pass |
+| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 108/108 pass |
 | Backend | Final comparison before removing the legacy app: same 88 contract tests on Express + Sequelize, old paths | 88/88 pass |
 | Backend | `npm audit` | 0 vulnerabilities |
 | Backend | Clean production-only install → build → start on a fresh DB | pass (Prisma client generated, `0_init` applied, 10 principles seeded) |

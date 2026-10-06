@@ -120,8 +120,8 @@ export class AuthController {
   @ApiOkResponse({ type: OkVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "New password too short" })
   @ApiUnauthorizedResponse({ type: ErrorVo, description: "Not logged in, or current password wrong" })
-  changePassword(@CurrentUser() user: UserRow, @Body() body: ChangePasswordDto): Promise<OkVo> {
-    return this.auth.changePassword(user, body);
+  changePassword(@CurrentUser() user: UserRow, @Body() body: ChangePasswordDto, @Req() request: Request): Promise<OkVo> {
+    return this.auth.changePassword(user, body, bearerToken(request));
   }
 
   @Get(R.me)
@@ -144,6 +144,18 @@ export class AuthController {
   @ApiConflictResponse({ type: ErrorVo, description: "Mobile already registered to another account" })
   updateMe(@CurrentUser() user: UserRow, @Body() body: UpdateMeDto): Promise<PublicUserVo> {
     return this.auth.updateMe(user, body);
+  }
+
+  @Delete(R.login)
+  @HttpCode(204)
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Log out everywhere", description: "Ends every session of the logged-in user, on all devices." })
+  @ApiNoContentResponse({ description: "All sessions ended" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  async logoutEverywhere(@CurrentUser() user: UserRow, @Res({ passthrough: true }) response: Response): Promise<void> {
+    await this.auth.logoutEverywhere(user);
+    clearSessionCookie(response, this.secureCookies);
   }
 
   @Delete(R.logout)

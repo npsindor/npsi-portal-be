@@ -31,7 +31,13 @@ export class NotificationsService {
     const order = query.order ?? "-createdAt";
     const recipient = user.role === "admin" ? null : (await this.membership.ownFamilyId(user)) || "__none__";
     const rows = await this.repo.list(recipient, toOrderBy(order), query.limit ?? DEFAULT_LIMIT, query.offset);
-    return rows.map(toNotificationVo);
+    if (user.role === "admin") return rows.map(toNotificationVo);
+    // A broadcast's read state is the member's own (family notifications share the family's flag).
+    const readByMe = await this.repo.readBy(
+      user.id,
+      rows.filter(isBroadcast).map((row) => row.id),
+    );
+    return rows.map((row) => ({ ...toNotificationVo(row), read: isBroadcast(row) ? readByMe.has(row.id) : row.read }));
   }
 
   async create(dto: CreateNotificationDto): Promise<NotificationVo> {
@@ -55,7 +61,13 @@ export class NotificationsService {
       if (!notification || (notification.recipientFamilyId && notification.recipientFamilyId !== ownFamilyId)) {
         throw new ApiError(403, "You can only update your own notifications.");
       }
-      // Members may only mark notifications read.
+      // Members may only mark notifications read; a broadcast only for themselves.
+      if (!notification.recipientFamilyId) {
+        if (input.read !== undefined) await this.repo.setReadBy(user.id, id, input.read);
+        const row = await this.repo.findById(id);
+        if (!row) throw new ApiError(404, "Record not found");
+        return { ...toNotificationVo(row), read: (await this.repo.readBy(user.id, [id])).has(id) };
+      }
       input = input.read === undefined ? {} : { read: input.read };
     }
     const data = toUpdateData(input);
@@ -69,6 +81,9 @@ export class NotificationsService {
     return this.repo.delete(id);
   }
 }
+
+// A notification for everyone (no recipient; older admin screens stored an empty one).
+const isBroadcast = (row: { recipientFamilyId: string | null }): boolean => !row.recipientFamilyId;
 
 // An admin's blank recipient means everyone, stored as NULL (an empty string matched no member).
 const blankToNull = (value: string | null | undefined): string | null => (value?.trim() ? value : null);

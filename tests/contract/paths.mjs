@@ -32,6 +32,7 @@ const v1 = {
   me: () => ["GET", "/api/v1/auth/me"],
   updateMe: () => ["PATCH", "/api/v1/auth/me"],
   logout: () => ["DELETE", "/api/v1/auth/sessions/current"],
+  logoutEverywhere: () => ["DELETE", "/api/v1/auth/sessions"],
   myFamily: () => ["GET", "/api/v1/me/family"],
   myFeedback: () => ["GET", "/api/v1/me/feedback"],
   verifyFamily: (familyId) => ["GET", `/api/v1/family-verifications/${encodeURIComponent(familyId)}`],

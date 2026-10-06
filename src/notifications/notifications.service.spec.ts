@@ -39,6 +39,15 @@ const build = () => {
       return rows.map(dbRow);
     }),
     update: mock.fn(async (..._args: unknown[]) => undefined),
+    // Per-member read marks on broadcasts, as "userId|notificationId".
+    reads: new Set<string>(),
+    readBy: mock.fn(async function (this: { reads: Set<string> }, userId: string, ids: string[]) {
+      return new Set(ids.filter((id) => this.reads.has(`${userId}|${id}`)));
+    }),
+    setReadBy: mock.fn(async function (this: { reads: Set<string> }, userId: string, id: string, read: boolean) {
+      if (read) this.reads.add(`${userId}|${id}`);
+      else this.reads.delete(`${userId}|${id}`);
+    }),
     delete: mock.fn(async (..._args: unknown[]) => undefined),
   };
   const membership = {
@@ -129,21 +138,29 @@ describe("NotificationsService.createBatch", () => {
 });
 
 describe("NotificationsService.update", () => {
-  test("members may only mark their own or broadcast notifications read", async () => {
+  test("members mark their family's notifications read (shared by the family), only read, nothing else", async () => {
     const { service, repo } = build();
     await rejectsWith(service.update("n-other", { read: true }, member()), 403, "You can only update your own notifications.");
     await rejectsWith(service.update("n-missing", { read: true }, member()), 403, "You can only update your own notifications.");
-    for (const id of ["n-own", "n-all", "n-blank"]) await service.update(id, { read: true, title: "ignored" }, member());
-    assert.deepEqual(
-      repo.update.mock.calls.map((call) => [call.arguments[0], (call.arguments[1] as Row).read, (call.arguments[1] as Row).title]),
-      [
-        ["n-own", true, undefined],
-        ["n-all", true, undefined],
-        ["n-blank", true, undefined],
-      ],
-    );
+    await service.update("n-own", { read: true, title: "ignored" }, member());
+    assert.deepEqual(repo.update.mock.calls[0].arguments.slice(0, 2), [
+      "n-own",
+      { read: true, title: undefined, message: undefined, type: undefined, recipientFamilyId: undefined, date: undefined, deepLink: undefined },
+    ]);
     await service.update("n-own", { title: "only a title" }, member());
-    assert.equal(repo.update.mock.callCount(), 3);
+    assert.equal(repo.update.mock.callCount(), 1);
+  });
+  test("broadcasts are read per member: marking one read doesn't change it for anyone else", async () => {
+    const { service, repo } = build();
+    const marked = await service.update("n-all", { read: true, title: "ignored" }, member());
+    assert.equal(marked.read, true);
+    assert.equal(repo.update.mock.callCount(), 0, "the shared row is untouched");
+    assert.deepEqual([...repo.reads], ["u-m|n-all"]);
+    repo.list.mock.mockImplementation(async () => [dbRow({ id: "n-all", title: "T", message: "M", type: "Event", read: false })]);
+    assert.equal((await service.list(member(), {}))[0].read, true, "read for this member");
+    assert.equal((await service.list(user({ id: "u-other" }), {}))[0].read, false, "still unread for another member");
+    assert.equal((await service.update("n-blank", { read: true }, member())).read, true, "empty-recipient rows are broadcasts too");
+    assert.equal((await service.update("n-all", { read: false }, member())).read, false, "and can be marked unread again");
   });
   test("admins: any field, blank recipient becomes a broadcast; 404 when it doesn't exist", async () => {
     const { service, repo } = build();

@@ -1119,3 +1119,52 @@ describe("reviews (end to end, last: they create families and move members)", ()
     );
   });
 });
+
+describe("sessions: several devices", () => {
+  const login = async () => (await api("login").send({ email: "devices@test.local", password: PASSWORDS.member })).body.accessToken;
+  const me = async (token) => (await api("me", [], { token })).status;
+
+  test("two devices stay logged in; logging out one leaves the other", async () => {
+    const laptop = await login();
+    const phone = await login();
+    assert.notEqual(laptop, phone);
+    assert.deepEqual([await me(laptop), await me(phone)], [200, 200]);
+    assert.equal((await api("logout", [], { token: laptop })).status, 204);
+    assert.deepEqual([await me(laptop), await me(phone)], [401, 200]);
+    await api("logout", [], { token: phone });
+  });
+  test("changing the password keeps this device and logs out the others", async () => {
+    const laptop = await login();
+    const phone = await login();
+    const res = await api("changePassword", [], { token: laptop }).send({ currentPassword: PASSWORDS.member, newPassword: "Devices@456" });
+    assert.equal(res.status, 200);
+    assert.deepEqual([await me(laptop), await me(phone)], [200, 401]);
+    await api("changePassword", [], { token: laptop }).send({ currentPassword: "Devices@456", newPassword: PASSWORDS.member });
+    await api("logout", [], { token: laptop });
+  });
+  test("log out everywhere ends every session and clears the cookie", async () => {
+    assertError(await api("logoutEverywhere"), 401, "Authentication required.");
+    const laptop = await login();
+    const phone = await login();
+    const res = await api("logoutEverywhere", [], { token: phone });
+    assert.equal(res.status, 204);
+    assert.match([res.headers["set-cookie"]].flat().join(";"), /npsi_session=;/);
+    assert.deepEqual([await me(laptop), await me(phone)], [401, 401]);
+  });
+});
+
+describe("notifications: broadcasts are read per member", () => {
+  test("one member marking a broadcast read doesn't mark it for another", async () => {
+    const broadcast = await api("create", ["Notification"], { token: TOKENS.admin }).send({ title: "For all", message: "M", type: "Announcement" });
+    const id = broadcast.body.id;
+    const readFor = async (token) => (await api("list", ["Notification", "?limit=500"], { token })).body.find((n) => n.id === id)?.read;
+    assert.deepEqual([await readFor(TOKENS.member), await readFor(TOKENS.other)], [false, false]);
+    const marked = await api("update", ["Notification", id], { token: TOKENS.member }).send({ read: true });
+    assert.deepEqual([marked.status, marked.body.read], [200, true]);
+    assert.deepEqual([await readFor(TOKENS.member), await readFor(TOKENS.other)], [true, false]);
+    const [row] = await query("SELECT `read` FROM notifications WHERE id = ?", [id]);
+    assert.equal(row.read, 0, "the shared row is untouched");
+    const unread = await api("update", ["Notification", id], { token: TOKENS.member }).send({ read: false });
+    assert.equal(unread.body.read, false);
+  });
+});

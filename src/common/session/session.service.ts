@@ -23,7 +23,8 @@ export class SessionService {
     const token = bearerToken(request);
     if (!token) return null;
     // Only a SHA-256 of each session token is stored, so a database copy can't be used to log in.
-    return this.prisma.user.findFirst({ where: { sessionToken: sha256(token), sessionExpiresAt: { gt: new Date() } } });
+    const session = await this.prisma.session.findFirst({ where: { id: sha256(token), expiresAt: { gt: new Date() } }, include: { user: true } });
+    return session?.user ?? null;
   }
 
   async requireUser(request: Request): Promise<UserRow> {

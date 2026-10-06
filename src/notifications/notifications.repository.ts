@@ -45,4 +45,24 @@ export class NotificationsRepository {
   async delete(id: string): Promise<void> {
     await this.prisma.notification.deleteMany({ where: { id } });
   }
+
+  // Of these notifications, the ones this member has marked read.
+  async readBy(userId: string, notificationIds: string[]): Promise<Set<string>> {
+    if (!notificationIds.length) return new Set();
+    const rows = await this.prisma.notificationRead.findMany({ where: { userId, notificationId: { in: notificationIds } }, select: { notificationId: true } });
+    return new Set(rows.map((row) => row.notificationId));
+  }
+
+  // A member marks a broadcast read (or unread again) for themselves only.
+  async setReadBy(userId: string, notificationId: string, read: boolean): Promise<void> {
+    if (read) {
+      await this.prisma.notificationRead.upsert({
+        where: { notificationId_userId: { notificationId, userId } },
+        create: { notificationId, userId },
+        update: {},
+      });
+    } else {
+      await this.prisma.notificationRead.deleteMany({ where: { notificationId, userId } });
+    }
+  }
 }
