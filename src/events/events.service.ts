@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
+import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -12,8 +13,9 @@ import { type EventVo, toEventVo } from "./vo/events.vo.js";
 export class EventsService {
   constructor(private readonly repo: EventsRepository) {}
 
-  async list(query: EventListQueryDto): Promise<EventVo[]> {
-    const where: Prisma.EventWhereInput = {};
+  // Drafts and archived ones are only for admins.
+  async list(query: EventListQueryDto, user: UserRow | null): Promise<EventVo[]> {
+    const where: Prisma.EventWhereInput = user?.role === "admin" ? {} : { status: "PUBLISHED" };
     const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toEventVo);
   }

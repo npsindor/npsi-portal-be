@@ -4,6 +4,7 @@ import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
+import { EventRegistrationVo } from "../event-registrations/vo/event-registrations.vo.js";
 import { FeedbackVo } from "../feedback/vo/feedback.vo.js";
 import { MeService } from "./me.service.js";
 import { MyFamilyVo } from "./vo/me.vo.js";
@@ -29,5 +30,13 @@ export class MeController {
   @ApiUnauthorizedResponse({ type: ErrorVo })
   feedback(@CurrentUser() user: UserRow): Promise<FeedbackVo[]> {
     return this.me.feedback(user);
+  }
+
+  @Get("event-registrations")
+  @ApiOperation({ summary: "The logged-in member's family's event registrations, cancelled ones included (newest first)" })
+  @ApiOkResponse({ type: EventRegistrationVo, isArray: true })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  eventRegistrations(@CurrentUser() user: UserRow): Promise<EventRegistrationVo[]> {
+    return this.me.eventRegistrations(user);
   }
 }

@@ -12,8 +12,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
+import { OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
+import type { UserRow } from "../common/session/session.service.js";
 import { AnnouncementsService } from "./announcements.service.js";
 import { AnnouncementListQueryDto, CreateAnnouncementDto, UpdateAnnouncementDto } from "./dto/announcements.dto.js";
 import { AnnouncementVo } from "./vo/announcements.vo.js";
@@ -25,11 +27,12 @@ export class AnnouncementsController {
   constructor(private readonly announcements: AnnouncementsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List announcements", description: "Public." })
+  @UseGuards(OptionalUserGuard)
+  @ApiOperation({ summary: "List announcements", description: "Public: active announcements only; admins see all." })
   @ApiOkResponse({ type: AnnouncementVo, isArray: true })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid order, limit or filter" })
-  list(@Query() query: AnnouncementListQueryDto): Promise<AnnouncementVo[]> {
-    return this.announcements.list(query);
+  list(@Query() query: AnnouncementListQueryDto, @OptionalUser() user: UserRow | null): Promise<AnnouncementVo[]> {
+    return this.announcements.list(query, user);
   }
 
   @Post()

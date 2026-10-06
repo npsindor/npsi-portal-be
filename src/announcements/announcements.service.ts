@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
+import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -12,8 +13,9 @@ import { type AnnouncementVo, toAnnouncementVo } from "./vo/announcements.vo.js"
 export class AnnouncementsService {
   constructor(private readonly repo: AnnouncementsRepository) {}
 
-  async list(query: AnnouncementListQueryDto): Promise<AnnouncementVo[]> {
-    const where: Prisma.AnnouncementWhereInput = {};
+  // Drafts and archived ones are only for admins.
+  async list(query: AnnouncementListQueryDto, user: UserRow | null): Promise<AnnouncementVo[]> {
+    const where: Prisma.AnnouncementWhereInput = user?.role === "admin" ? {} : { status: "Active" };
     const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toAnnouncementVo);
   }

@@ -77,7 +77,7 @@ All routes are under `/api/v1` (full details in Swagger at `/api/docs`):
 
 - `GET /health`
 - Auth: `POST /auth/registrations`, `POST /auth/otp-verifications`, `POST /auth/otps`, `POST /auth/sessions` (login), `DELETE /auth/sessions/current` (logout), `POST /auth/password-resets`, `POST /auth/password-resets/confirmations`, `PUT /auth/password`, `POST /auth/invitations` (admin), `GET /auth/me`
-- Current user: `GET /me/family`, `GET /me/feedback`
+- Current user: `GET /me/family`, `GET /me/feedback`, `GET /me/event-registrations`
 - Public lookups: `GET /family-verifications/:familyId`, `GET /application-status?applicationId=&mobile=`, `GET /mobile-availability?mobile=`, `GET /email-availability?email=`, `GET /stats`
 - Uploads: `POST /uploads` (multipart, field `file`); files are served from `/uploads/<name>` (outside `/api/v1`)
 - Entities, one resource each (`announcements`, `applications`, `events`, `event-registrations`, `families`, `family-members`, `feedback`, `notifications`, `principles`, `rules`, `samitis`, `samiti-members`, `students`, `student-applications`, `transactions`, `transfer-requests`): `GET|POST /<resource>`, `PATCH|DELETE /<resource>/:id` (plus `POST /family-members/batch` and `POST /notifications/batch`). Fields are camelCase; lists take `?order=<field>|-<field>&limit=1..500` and the resource's own filters (`/families?familyId=&status=`, `/family-members?familyId=`, `/samiti-members?samitiId=`)

@@ -60,7 +60,8 @@ export class EventRegistrationsService {
     if (await this.repo.activeExists(familyId, input.eventId)) throw new ApiError(409, "Your family is already registered for this event.");
     const row = await this.prisma.$transaction(async (tx) => {
       const event = await this.events.feeOf(input.eventId, tx);
-      if (!event) throw new ApiError(404, "Event not found.");
+      // Drafts and archived events aren't open to members.
+      if (event?.status !== "PUBLISHED") throw new ApiError(404, "Event not found.");
       const totalFee = event.fee * memberIds.length;
       const paymentStatus = totalFee === 0 ? "SUCCESS" : "PENDING";
       const registration = await this.insert(

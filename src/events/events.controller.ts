@@ -13,8 +13,10 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
+import { OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
+import type { UserRow } from "../common/session/session.service.js";
 import { CreateEventDto, EventListQueryDto, UpdateEventDto } from "./dto/events.dto.js";
 import { EventsService } from "./events.service.js";
 import { EventVo } from "./vo/events.vo.js";
@@ -26,11 +28,12 @@ export class EventsController {
   constructor(private readonly events: EventsService) {}
 
   @Get()
-  @ApiOperation({ summary: "List events", description: "Public." })
+  @UseGuards(OptionalUserGuard)
+  @ApiOperation({ summary: "List events", description: "Public: published events only; admins see all." })
   @ApiOkResponse({ type: EventVo, isArray: true })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid order, limit or filter" })
-  list(@Query() query: EventListQueryDto): Promise<EventVo[]> {
-    return this.events.list(query);
+  list(@Query() query: EventListQueryDto, @OptionalUser() user: UserRow | null): Promise<EventVo[]> {
+    return this.events.list(query, user);
   }
 
   @Post()

@@ -69,6 +69,7 @@ describe("EventRegistrationsService.create (members)", () => {
     await rejectsWith(service.create(registration(), user()), 403, "You can only register your own family for events.");
     await rejectsWith(service.create(registration({ memberIds: ["m-other"] }), member()), 403, "You can only register members of your own family.");
     await rejectsWith(service.create(registration({ eventId: "nope" }), member()), 404, "Event not found.");
+    await rejectsWith(service.create(registration({ eventId: "draft" }), member()), 404, "Event not found.");
     await rejectsWith(service.create(registration({ registrantName: "<b>" }), member()), 400, 'The "registrantName" field cannot contain < or > characters.');
     assert.equal(transactions.stored.length, 0);
   });

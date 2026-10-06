@@ -713,6 +713,46 @@
         ]
       }
     },
+    "/api/v1/me/event-registrations": {
+      "get": {
+        "operationId": "MeController_eventRegistrations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EventRegistrationVo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The logged-in member's family's event registrations, cancelled ones included (newest first)",
+        "tags": [
+          "me"
+        ]
+      }
+    },
     "/api/v1/family-verifications/{familyId}": {
       "get": {
         "operationId": "LookupsController_verifyFamily",
@@ -994,7 +1034,7 @@
     },
     "/api/v1/announcements": {
       "get": {
-        "description": "Public.",
+        "description": "Public: active announcements only; admins see all.",
         "operationId": "AnnouncementsController_list",
         "parameters": [
           {
@@ -3485,7 +3525,7 @@
     },
     "/api/v1/events": {
       "get": {
-        "description": "Public.",
+        "description": "Public: published events only; admins see all.",
         "operationId": "EventsController_list",
         "parameters": [
           {
@@ -7395,6 +7435,122 @@
           "updatedAt"
         ]
       },
+      "EventRegistrationVo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "registrationId": {
+            "type": "string"
+          },
+          "eventId": {
+            "type": "string"
+          },
+          "eventTitle": {
+            "type": "string",
+            "nullable": true
+          },
+          "familyId": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberIds": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "array",
+                "items": {}
+              }
+            ]
+          },
+          "memberNames": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "object"
+              },
+              {
+                "type": "array",
+                "items": {}
+              }
+            ]
+          },
+          "count": {
+            "type": "integer",
+            "nullable": true
+          },
+          "feePerMember": {
+            "type": "number",
+            "nullable": true
+          },
+          "totalFee": {
+            "type": "number",
+            "nullable": true
+          },
+          "paymentStatus": {
+            "type": "string",
+            "nullable": true
+          },
+          "transactionId": {
+            "type": "string",
+            "nullable": true
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "registeredById": {
+            "type": "string",
+            "nullable": true
+          },
+          "registeredDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "registrantName": {
+            "type": "string",
+            "nullable": true
+          },
+          "registrantEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "registrationId",
+          "eventId",
+          "eventTitle",
+          "familyId",
+          "memberIds",
+          "memberNames",
+          "count",
+          "feePerMember",
+          "totalFee",
+          "paymentStatus",
+          "transactionId",
+          "status",
+          "registeredById",
+          "registeredDate",
+          "registrantName",
+          "registrantEmail",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "PublicFamilyVo": {
         "type": "object",
         "properties": {
@@ -8725,122 +8881,6 @@
             "nullable": true
           }
         }
-      },
-      "EventRegistrationVo": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "registrationId": {
-            "type": "string"
-          },
-          "eventId": {
-            "type": "string"
-          },
-          "eventTitle": {
-            "type": "string",
-            "nullable": true
-          },
-          "familyId": {
-            "type": "string",
-            "nullable": true
-          },
-          "memberIds": {
-            "nullable": true,
-            "oneOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "array",
-                "items": {}
-              }
-            ]
-          },
-          "memberNames": {
-            "nullable": true,
-            "oneOf": [
-              {
-                "type": "object"
-              },
-              {
-                "type": "array",
-                "items": {}
-              }
-            ]
-          },
-          "count": {
-            "type": "integer",
-            "nullable": true
-          },
-          "feePerMember": {
-            "type": "number",
-            "nullable": true
-          },
-          "totalFee": {
-            "type": "number",
-            "nullable": true
-          },
-          "paymentStatus": {
-            "type": "string",
-            "nullable": true
-          },
-          "transactionId": {
-            "type": "string",
-            "nullable": true
-          },
-          "status": {
-            "type": "string",
-            "nullable": true
-          },
-          "registeredById": {
-            "type": "string",
-            "nullable": true
-          },
-          "registeredDate": {
-            "type": "string",
-            "format": "date-time",
-            "nullable": true
-          },
-          "registrantName": {
-            "type": "string",
-            "nullable": true
-          },
-          "registrantEmail": {
-            "type": "string",
-            "nullable": true
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          }
-        },
-        "required": [
-          "id",
-          "registrationId",
-          "eventId",
-          "eventTitle",
-          "familyId",
-          "memberIds",
-          "memberNames",
-          "count",
-          "feePerMember",
-          "totalFee",
-          "paymentStatus",
-          "transactionId",
-          "status",
-          "registeredById",
-          "registeredDate",
-          "registrantName",
-          "registrantEmail",
-          "createdAt",
-          "updatedAt"
-        ]
       },
       "CreateEventRegistrationDto": {
         "type": "object",

@@ -12,7 +12,7 @@ import { SamitiMembersService } from "../samiti-members/samiti-members.service.j
 import { SamitisService } from "../samitis/samitis.service.js";
 import { StudentsService } from "../students/students.service.js";
 import { fakeModelRepo } from "../testing/fake-repo.js";
-import { as, rejectsWith } from "../testing/fakes.js";
+import { as, rejectsWith, user } from "../testing/fakes.js";
 import { announcementRow, eventRow, principleRow, ruleRow, samitiMemberRow, samitiRow, studentRow } from "../testing/rows.js";
 import { orderValues, toOrderBy } from "./dto/list-query.dto.js";
 import { parseDate, toDateOnly } from "./utils/dates.js";
@@ -68,6 +68,20 @@ describe("plain CRUD services", () => {
     >;
     assert.deepEqual([created.fee, created.date], [99.5, "2026-12-01"]);
     assert.ok(repo.stored[0].fee instanceof Prisma.Decimal || typeof repo.stored[0].fee === "number");
+  });
+  test("events and announcements: visitors and members get published/active ones, admins everything", async () => {
+    for (const [service, repo, visible] of [
+      ...[fakeModelRepo(eventRow)].map((r) => [new EventsService(as(r)), r, "PUBLISHED"] as const),
+      ...[fakeModelRepo(announcementRow)].map((r) => [new AnnouncementsService(as(r)), r, "Active"] as const),
+    ]) {
+      await service.list({}, null);
+      await service.list({}, user());
+      await service.list({}, user({ role: "admin" }));
+      assert.deepEqual(
+        repo.list.mock.calls.map((call) => call.arguments[0]),
+        [{ status: visible }, { status: visible }, {}],
+      );
+    }
   });
   test("an event with registrations can't be deleted", async () => {
     const repo = fakeModelRepo(eventRow);

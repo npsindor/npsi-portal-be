@@ -35,6 +35,7 @@ const v1 = {
   logoutEverywhere: () => ["DELETE", "/api/v1/auth/sessions"],
   myFamily: () => ["GET", "/api/v1/me/family"],
   myFeedback: () => ["GET", "/api/v1/me/feedback"],
+  myEventRegistrations: () => ["GET", "/api/v1/me/event-registrations"],
   verifyFamily: (familyId) => ["GET", `/api/v1/family-verifications/${encodeURIComponent(familyId)}`],
   trackApplication: (qs = "") => ["GET", `/api/v1/application-status${qs}`],
   checkMobile: (qs = "") => ["GET", `/api/v1/mobile-availability${qs}`],

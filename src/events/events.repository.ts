@@ -30,9 +30,9 @@ export class EventsRepository {
   }
 
   // An event's title and fee per member, or null when the event doesn't exist.
-  async feeOf(id: string, db: Db = this.prisma): Promise<{ title: string; fee: number } | null> {
-    const event = await db.event.findUnique({ where: { id }, select: { title: true, fee: true } });
-    return event ? { title: event.title, fee: event.fee?.toNumber() ?? 0 } : null;
+  async feeOf(id: string, db: Db = this.prisma): Promise<{ title: string; fee: number; status: string | null } | null> {
+    const event = await db.event.findUnique({ where: { id }, select: { title: true, fee: true, status: true } });
+    return event ? { title: event.title, fee: event.fee?.toNumber() ?? 0, status: event.status } : null;
   }
 
   async hasRegistrations(id: string): Promise<boolean> {

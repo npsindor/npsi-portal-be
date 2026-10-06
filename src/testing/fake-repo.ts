@@ -60,7 +60,15 @@ export const fakeMembership = () => ({
 
 // EventsRepository stand-in: "ev" costs 250 per member, "free" nothing.
 export const fakeEvents = () => ({
-  feeOf: mock.fn(async (id: string) => (id === "ev" ? { title: "Garba", fee: 250 } : id === "free" ? { title: "Puja", fee: 0 } : null)),
+  feeOf: mock.fn(async (id: string) =>
+    id === "ev"
+      ? { title: "Garba", fee: 250, status: "PUBLISHED" }
+      : id === "free"
+        ? { title: "Puja", fee: 0, status: "PUBLISHED" }
+        : id === "draft"
+          ? { title: "Diwali", fee: 0, status: "DRAFT" }
+          : null,
+  ),
 });
 
 // PrismaService stand-in for services that open a transaction: runs the work

@@ -1141,6 +1141,50 @@ describe("events: deleting one with registrations", () => {
   });
 });
 
+describe("drafts stay private", () => {
+  test("visitors and members see published events and active announcements; admins see all", async () => {
+    const draft = (await api("create", ["Event"], { token: TOKENS.admin }).send({ title: "Draft Event", date: "2026-12-05", venue: "Hall", status: "DRAFT" }))
+      .body;
+    const archived = (await api("create", ["Announcement"], { token: TOKENS.admin }).send({ title: "Old", body: "News", status: "Archived" })).body;
+    for (const [entity, id] of [
+      ["Event", draft.id],
+      ["Announcement", archived.id],
+    ]) {
+      const ids = async (token) => (await api("list", [entity, "?limit=500"], { token })).body.map((row) => row.id);
+      assert.equal((await ids()).includes(id), false, `${entity}: hidden from visitors`);
+      assert.equal((await ids(TOKENS.member)).includes(id), false, `${entity}: hidden from members`);
+      assert.equal((await ids(TOKENS.admin)).includes(id), true, `${entity}: shown to admins`);
+    }
+    assert.ok((await api("list", ["Event"])).body.every((event) => event.status === "PUBLISHED"));
+    // Members can't register for an event they can't see.
+    assertError(
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: draft.id, familyId: FAMILY1, memberIds: [] }),
+      404,
+      "Event not found.",
+    );
+    assert.equal((await api("remove", ["Event", draft.id], { token: TOKENS.admin })).status, 204);
+    assert.equal((await api("remove", ["Announcement", archived.id], { token: TOKENS.admin })).status, 204);
+  });
+});
+
+describe("me: event registrations", () => {
+  test("401 without a token", async () => {
+    assertError(await api("myEventRegistrations"), 401, "Authentication required.");
+  });
+  test("the member's own family's registrations, cancelled ones included", async () => {
+    const res = await api("myEventRegistrations", [], { token: TOKENS.member });
+    assert.equal(res.status, 200);
+    assert.ok(res.body.length >= 2);
+    assert.ok(res.body.every((registration) => registration.familyId === FAMILY1));
+    assert.ok(res.body.some((registration) => registration.status === "CANCELLED"));
+    assertRecord(res.body[0]);
+  });
+  test("a user without a family gets an empty list", async () => {
+    const res = await api("myEventRegistrations", [], { token: TOKENS.noFamily });
+    assert.deepEqual([res.status, res.body], [200, []]);
+  });
+});
+
 describe("sessions: several devices", () => {
   const login = async () => (await api("login").send({ email: "devices@test.local", password: PASSWORDS.member })).body.accessToken;
   const me = async (token) => (await api("me", [], { token })).status;

@@ -233,6 +233,15 @@ credentials, photo upload + profile save, fake image refused, paging (100 + 54 =
   an event that has registrations is a 409 ("Archive it instead"). A family can register for an event
   once (409 while a registration that isn't `CANCELLED` exists; admins are not limited). Verified on a
   production copy with the 3 rows present: exactly those 6 rows go, the key applies, no orphans.
+- **Drafts stay private:** `GET /events` returns only PUBLISHED events and `GET /announcements` only
+  Active ones, except to admins (before, drafts were public and only hidden by the pages). Members get
+  404 "Event not found." when registering for an event that isn't published.
+- **`GET /me/event-registrations`:** the member's family's registrations (cancelled ones included);
+  the member events page shows "Registered" instead of the register button.
+- Frontend: removed the unused Base44 leftovers (feedback popup with an AI call that didn't exist,
+  OAuth consent page, public-settings and "user not registered" paths); `openapi.test.js` now also
+  checks list orders and filters, literal request bodies (fields and known values) and the admin
+  dropdown values against the spec.
 - **CORS** no longer allows any `*.hostingersite.com` site; only npsindore.org sites and localhost.
 - **Prisma `@updatedAt`** replaces the hand-set timestamps (no database change).
 - Removed the unused legacy PostgreSQL migrations (`db/migrations/`).
