@@ -1,6 +1,6 @@
 # nps-be
 
-Backend API for the NPS Indore (Patidar Samaj) portal: NestJS + TypeScript (strict) backed by MySQL through Prisma 7. It replaced the Base44 hosted backend while keeping the frontend's `base44.entities.*` call shape.
+Backend API for the NPS Indore (Patidar Samaj) portal: NestJS + TypeScript (strict) backed by MySQL through Prisma 7. It replaced the Base44 hosted backend; the frontend's `base44.entities.*` client maps onto one REST resource per model.
 
 The frontend lives in a separate repo and talks to this API through `VITE_API_BASE_URL` (default `http://localhost:4000`). Interactive API docs: **`/api/docs`** (Swagger UI), JSON at `/api/docs-json`.
 
@@ -56,10 +56,10 @@ The e2e and contract tests create and drop their own databases (`npsi_e2e_test`,
 src/
   main.ts, app.module.ts, configure-app.ts   Bootstrap and HTTP setup (CORS, JSON limit, prefix, pipes, filter, Swagger)
   config/       Env loading (.env.local, .env), validated env schema, typed AppConfigService
-  database/     PrismaService (client + boot-time migrations) and the column codec (legacy MySQL value formats)
+  database/     PrismaService (client + boot-time migrations)
   generated/    Prisma client (generated, git-ignored)
   common/       Error filter and { error } body, auth guards, rate limiters, mail, reCAPTCHA, sessions, helpers
-  auth/, entities/, health/, lookups/, me/, uploads/   Feature modules (one folder each, directly under src/)
+  <resource>/   One module per model (announcements … transfer-requests), plus auth/, health/, lookups/, me/, uploads/, membership/
   testing/      Unit-test fakes and the e2e harness
   e2e/          e2e tests
 tests/contract/ Black-box contract tests (every endpoint)
@@ -80,13 +80,13 @@ All routes are under `/api/v1` (full details in Swagger at `/api/docs`):
 - Current user: `GET /me/family`, `GET /me/feedback`
 - Public lookups: `GET /family-verifications/:familyId`, `GET /application-status?applicationId=&mobile=`, `GET /mobile-availability?mobile=`, `GET /email-availability?email=`, `GET /stats`
 - Uploads: `POST /uploads` (multipart, field `file`); files are served from `/uploads/<name>` (outside `/api/v1`)
-- Entities, one resource each (`announcements`, `applications`, `events`, `event-registrations`, `families`, `family-members`, `feedback`, `notifications`, `principles`, `rules`, `samitis`, `samiti-members`, `students`, `student-applications`, `transactions`, `transfer-requests`): `GET|POST /<resource>`, `POST /<resource>/batch`, `PATCH|DELETE /<resource>/:id`
+- Entities, one resource each (`announcements`, `applications`, `events`, `event-registrations`, `families`, `family-members`, `feedback`, `notifications`, `principles`, `rules`, `samitis`, `samiti-members`, `students`, `student-applications`, `transactions`, `transfer-requests`): `GET|POST /<resource>`, `PATCH|DELETE /<resource>/:id` (plus `POST /family-members/batch` and `POST /notifications/batch`). Fields are camelCase; lists take `?order=<field>|-<field>&limit=1..500` and the resource's own filters (`/families?familyId=&status=`, `/family-members?familyId=`, `/samiti-members?samitiId=`)
 
 Errors are always `{ "error": "<message>" }`. Auth uses a bearer token (`Authorization: Bearer <token>`) returned by login or OTP verification. Admin-only actions require `users.role = 'admin'`.
 
 ## Uploads, rate limiting and reCAPTCHA
 
-- Uploaded files are stored in `UPLOADS_DIR` (default `./uploads`, git-ignored). **On Hostinger, set `UPLOADS_DIR` to a folder outside the app**: every deploy creates a new code folder, so the default is wiped. Back this folder up; it is not in the database.
+- Uploaded files are stored in `UPLOADS_DIR` (default `./uploads`, git-ignored). **On Hostinger, set `UPLOADS_DIR` to a folder outside the app**: every deploy creates a new code folder, so the default is wiped. One folder per site: test uses `/home/u465324772/uploads-test`, production `/home/u465324772/uploads-prod` (the app creates it on startup). Back this folder up; it is not in the database.
 - Auth, OTP, public lookup, availability-check and upload endpoints are rate-limited per IP (`express-rate-limit`); uploads also have a daily cap.
 - Security headers via helmet; session tokens are stored hashed; Swagger is off when `APP_ENV=production`.
 - Every response has an `X-Request-Id`; each request is logged as one JSON line (no query strings), and 5xx errors are logged with the same id.

@@ -1,24 +1,21 @@
 import { Controller, Get, Param, Query } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
-  ApiExtraModels,
   ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiTooManyRequestsResponse,
-  getSchemaPath,
 } from "@nestjs/swagger";
+import { ApplicationVo } from "../applications/vo/applications.vo.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { ENTITY_VOS, type EntityVo } from "../entities/vo/entity.vo.js";
 import { ApplicationStatusQueryDto, EmailQueryDto, FamilyIdParamDto, MobileQueryDto } from "./dto/lookups.dto.js";
 import { LOOKUP_ROUTES as R } from "./lookups.routes.js";
 import { LookupsService } from "./lookups.service.js";
 import { AvailabilityVo, FamilyVerificationVo, StatsVo } from "./vo/lookups.vo.js";
 
 @ApiTags("public lookups")
-@ApiExtraModels(ENTITY_VOS.Application)
 @Controller()
 export class LookupsController {
   constructor(private readonly lookups: LookupsService) {}
@@ -34,11 +31,11 @@ export class LookupsController {
 
   @Get(R.applicationStatus)
   @ApiOperation({ summary: "Track a family application by its id and the applicant's mobile" })
-  @ApiOkResponse({ schema: { $ref: getSchemaPath(ENTITY_VOS.Application) } })
+  @ApiOkResponse({ type: ApplicationVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "applicationId or mobile missing" })
   @ApiNotFoundResponse({ type: ErrorVo })
   @ApiTooManyRequestsResponse({ description: "Rate limit exceeded" })
-  applicationStatus(@Query() query: ApplicationStatusQueryDto): Promise<EntityVo> {
+  applicationStatus(@Query() query: ApplicationStatusQueryDto): Promise<ApplicationVo> {
     return this.lookups.applicationStatus(query);
   }
 

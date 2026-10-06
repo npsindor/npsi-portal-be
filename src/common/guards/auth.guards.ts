@@ -25,3 +25,15 @@ export class AdminGuard implements CanActivate {
     return true;
   }
 }
+
+// Public routes that behave differently for admins/members: attaches the user
+// when a valid token is sent, never rejects.
+@Injectable()
+export class OptionalUserGuard implements CanActivate {
+  constructor(private readonly sessions: SessionService) {}
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    request.user = (await this.sessions.getBearerUser(request)) ?? undefined;
+    return true;
+  }
+}

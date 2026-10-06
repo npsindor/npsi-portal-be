@@ -1,0 +1,42 @@
+import { Injectable } from "@nestjs/common";
+import { PrismaService } from "../database/prisma.service.js";
+import type { Feedback, Prisma } from "../generated/prisma/client.js";
+
+@Injectable()
+export class FeedbackRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  list(where: Prisma.FeedbackWhereInput, orderBy: Prisma.FeedbackOrderByWithRelationInput, take: number): Promise<Feedback[]> {
+    return this.prisma.feedback.findMany({ where, orderBy, take });
+  }
+
+  findById(id: string): Promise<Feedback | null> {
+    return this.prisma.feedback.findUnique({ where: { id } });
+  }
+
+  create(data: Prisma.FeedbackUncheckedCreateInput): Promise<Feedback> {
+    return this.prisma.feedback.create({ data });
+  }
+
+  // null when the id doesn't exist.
+  async update(id: string, data: Prisma.FeedbackUncheckedUpdateInput): Promise<Feedback | null> {
+    const { count } = await this.prisma.feedback.updateMany({ where: { id }, data });
+    return count ? this.findById(id) : null;
+  }
+
+  // Deleting an id that doesn't exist is not an error.
+  async delete(id: string): Promise<void> {
+    await this.prisma.feedback.deleteMany({ where: { id } });
+  }
+
+  // The latest display ids with this prefix, for allocating the next one.
+  async latestDisplayIds(prefix: string): Promise<(string | null)[]> {
+    const rows = await this.prisma.feedback.findMany({
+      where: { feedbackId: { startsWith: prefix } },
+      orderBy: { feedbackId: "desc" },
+      take: 20,
+      select: { feedbackId: true },
+    });
+    return rows.map((row) => row.feedbackId);
+  }
+}

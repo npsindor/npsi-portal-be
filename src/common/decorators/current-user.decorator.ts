@@ -8,3 +8,8 @@ export const CurrentUser = createParamDecorator((_data: unknown, context: Execut
   if (!user) throw new Error("CurrentUser used on a route without UserGuard/AdminGuard");
   return user;
 });
+
+// The user attached by OptionalUserGuard, or null for anonymous requests.
+export const OptionalUser = createParamDecorator(
+  (_data: unknown, context: ExecutionContext): UserRow | null => context.switchToHttp().getRequest<AuthenticatedRequest>().user ?? null,
+);

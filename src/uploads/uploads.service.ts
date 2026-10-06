@@ -9,6 +9,6 @@ export class UploadsService {
   // proxy is set, so it is https behind Hostinger's proxy).
   toUploadedFile(request: Request, file: Express.Multer.File | undefined): UploadedFileVo {
     if (!file) throw new ApiError(400, "No file uploaded.");
-    return { file_url: `${request.protocol}://${request.get("host")}/uploads/${file.filename}` };
+    return { fileUrl: `${request.protocol}://${request.get("host")}/uploads/${file.filename}` };
   }
 }

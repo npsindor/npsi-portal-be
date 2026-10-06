@@ -23,35 +23,46 @@ Tests run on Node's built-in test runner (`node:test`), not Jest: Nest 12 ships 
 ```
 src/
   main.ts                 Bootstrap (imports config/load-env.js first)
-  configure-app.ts        HTTP setup shared by main.ts and e2e: trust proxy, CORS, 2 MB JSON, Express error handler,
+  configure-app.ts        HTTP setup shared by main.ts and e2e: helmet, request logging, CORS, 2 MB JSON, Express error handler,
                           /uploads static files, /api/v1 prefix, ValidationPipe, HttpErrorFilter, Swagger
   app.module.ts
-  config/                 load-env.ts (.env.local then .env), env.validation.ts, AppConfigService (typed, legacy defaults)
-  database/               PrismaService (client + migrations on boot, with the legacy baseline), column-codec.ts
-                          (Prisma ⇄ legacy MySQL value formats), database.types.ts
+  config/                 load-env.ts (.env.local then .env), env.validation.ts, AppConfigService
+  database/               PrismaService (the client, migrations on boot, one-time adoption of the legacy database)
   generated/              Prisma client (generated, git-ignored)
-  common/                 filters/ (ApiError, HttpErrorFilter, ErrorVo/OkVo), guards/ (UserGuard, AdminGuard),
-                          decorators/ (@CurrentUser), rate-limit/ (shared limiter instances), mail/, recaptcha/,
-                          session/ (bearer-token lookup), utils/ (records, crypto)
-  <feature>/              One folder per feature directly under src/ (auth, entities, health, lookups, me, uploads):
-                          <feature>.module.ts, .controller.ts, .service.ts, .repository.ts, .routes.ts,
-                          dto/, vo/, <feature>.service.spec.ts
-  testing/                fakes.ts (unit-test fakes), e2e-app.ts (e2e harness)
+  common/                 filters/ (ApiError, HttpErrorFilter, ErrorVo/OkVo), guards/ (UserGuard, AdminGuard, OptionalUserGuard),
+                          decorators/ (@CurrentUser, @OptionalUser), dto/ (ListQueryDto: limit + order helpers),
+                          validation/ (field decorators for DTOs), rate-limit/, logging/, mail/, recaptcha/, session/,
+                          utils/ (crypto, dates, display-ids, json, markup, objects, text)
+  <resource>/             One module per model, directly under src/ (announcements, applications, events, event-registrations,
+                          families, family-members, feedback, notifications, principles, rules, samitis, samiti-members,
+                          students, student-applications, transactions, transfer-requests):
+                          <resource>.module.ts, .controller.ts, .service.ts, .repository.ts, dto/, vo/, .service.spec.ts
+  auth/, me/, lookups/, uploads/, health/   Non-model features (same layout; lookups/ keeps lookups.routes.ts for its rate limits)
+  membership/             Shared queries: a user's family, a family's members, what a user just submitted
+  testing/                fakes.ts, fake-repo.ts (in-memory repository + membership/event fakes), rows.ts (typed row builders), e2e-app.ts
   e2e/                    *.e2e-spec.ts
-prisma/                   schema.prisma (models named after entities, @@map to the existing tables) and migrations/ (0_init = baseline)
+prisma/                   schema.prisma (camelCase fields, @map/@@map to the existing snake_case columns/tables) and migrations/
 tests/contract/           Contract suite (paths.mjs holds the endpoint table)
 db/migrations-sequelize/  Frozen history of the original sequelize-cli migrations (already contained in 0_init; not run)
 ```
 
-Feature modules: `health`, `auth`, `me`, `lookups` (public lookups + duplicate-contact checks), `uploads`, `entities` (one generated controller per entity).
+Every model has its own module (template: `src/notifications/` or any other model folder):
+  - controller with the path written directly (`@Controller("families")`), guards per route, full Swagger docs;
+  - DTOs that validate with the shared field decorators (`RequiredText("Title is required.")`, `OptionalText(255)`,
+    `OptionalInt`, `OptionalNumber`, `OptionalBoolean`, `OptionalDate`, `OptionalJson`); list queries extend `ListQueryDto`
+    with an `order` enum and the resource's own filters (`?familyId=&status=`), nothing generic;
+  - VO in camelCase with real types: booleans, numbers for decimals, ISO date-times, `YYYY-MM-DD` for DATE columns, JSON values;
+  - typed Prisma repository (`prisma.<model>.*`, Prisma types, no raw SQL);
+  - service with the business rules (who may do what, member field whitelists, display ids, validation messages).
 
 ## Conventions
 
 - **Thin controllers**: Swagger decorators, DTO in, call one service method, VO out. No business logic or SQL.
-- **Services** hold business rules; **repositories** hold all data access through `PrismaService`. Use the typed client; tagged-template `$queryRaw`/`$executeRaw` only where SQL must stay as it was (expiry checks against the database clock `NOW()`, sequential display ids). Never use the `Unsafe` raw variants in app code.
-- Repository results for entity tables go through `toApiRow` (column codec): Prisma returns `true`/`false`, `Decimal` and `Date` for DATE columns, but the API has always returned `1`/`0`, `"100.00"` and `"YYYY-MM-DD"`. Writes go through `toDbValue`, which applies MySQL's old implicit conversions.
-- **DTOs** (`dto/`) for every body/query/param: class-validator + `@ApiProperty`. The global `ValidationPipe` (`whitelist`, `transform`, `forbidUnknownValues: false`) strips unknown fields. DTO fields are deliberately `@IsOptional()`: services validate with the exact user-facing messages and status codes, so don't move that validation into DTO decorators without updating the contract tests.
-- **VOs** (`vo/`) for every response: `@ApiProperty` classes; never return raw DB rows. Entity rows go out through `toEntityVo` (renames `created_at`/`updated_at` to `created_date`/`updated_date`, parses JSON strings).
+- **Services** hold business rules; **repositories** hold all data access through `PrismaService`, using the typed client. Raw SQL (tagged-template `$queryRaw` only, never the `Unsafe` variants) is limited to what Prisma can't express: the duplicate mobile/email checks in `lookups.repository.ts` (digits-only `REGEXP_REPLACE`) and the legacy-database adoption in `PrismaService`.
+- Dates: request dates are ISO 8601; a date-time without a zone is UTC (`parseDate`). The database, the Prisma connection (`timezone: "+00:00"`) and production MySQL all run on UTC, so expiry checks compare against `new Date()`.
+- Display ids (`NPSI-FAM-000123`, `NPSI-MEM-…`, `NPSI-STU-…`, `NPSI-APP-<year>-…`, `NPSI-STU-APP-<year>-…`, `FB-…`, `TRF-…`) come from `createWithDisplayId` (`common/utils/display-ids.ts`), which retries when two creates pick the same id.
+- **DTOs** (`dto/`) for every body/query/param, camelCase. The global `ValidationPipe` (`whitelist`, `transform`, `forbidUnknownValues: false`, `stopAtFirstError`) strips unknown fields and reports one message per field; validators run in the order listed, so put the required check first. Ids are always generated by the server. `auth/` keeps its legacy-message validation in the service.
+- **VOs** (`vo/`) for every response: `@ApiProperty` classes and a `to<Model>Vo(row)` mapper; never return raw DB rows.
 - **Errors**: throw `ApiError(status, message)`; every error body is `{ "error": "<message>" }` (`HttpErrorFilter`, plus the Express error handler for CORS/JSON-parse errors).
 - **Status codes**: POSTs that don't create anything use `@HttpCode(200)`; deletes and logout return 204.
 - Every endpoint has `@ApiTags`, `@ApiOperation`, and `@ApiResponse` variants for success and each error case.
@@ -63,18 +74,18 @@ Feature modules: `health`, `auth`, `me`, `lookups` (public lookups + duplicate-c
 - Everything is under `/api/v1` (`API_PREFIX` in `configure-app.ts`); Swagger stays at `/api/docs`; uploaded files at `/uploads/<file>`.
 - Plural, kebab-case resource nouns; no verbs (`POST /auth/sessions` to log in, `DELETE /auth/sessions/current` to log out, `PUT /auth/password`).
 - At most one level of nesting (`/password-resets/confirmations`, `/<resource>/batch`, `/<resource>/:id`).
-- Route strings live in each module's `*.routes.ts` and are reused by the rate-limit middleware wiring; change them there.
+- Paths are written directly in the controller. Modules with rate limits keep them in `*.routes.ts`, shared with the middleware wiring in `configure(consumer)`.
 - Changing a path, method or response shape is a breaking change for `npsi-portal-fe` (`src/api/endpoints.js`): update the frontend, `tests/contract/paths.mjs`, `docs/migration-plan.md`, and bump to `/api/v2` if old clients must keep working.
 
 ## Adding a module
 
-1. `src/<feature>/` (next to `common/`, `config/`, `database/`): `<feature>.routes.ts` (paths), `dto/` and `vo/` classes, `<feature>.repository.ts` (Prisma via `PrismaService`), `<feature>.service.ts` (rules, throws `ApiError`), `<feature>.controller.ts` (thin, fully Swagger-decorated, guards via `@UseGuards(UserGuard | AdminGuard)`), `<feature>.module.ts`.
-2. Rate limits: in the module's `configure(consumer)`, apply an instance from `common/rate-limit/limiters.ts` to the routes from `*.routes.ts`.
+1. `src/<feature>/` (next to `common/`, `config/`, `database/`): `dto/` and `vo/` classes, `<feature>.repository.ts` (Prisma via `PrismaService`), `<feature>.service.ts` (rules, throws `ApiError`), `<feature>.controller.ts` (thin, fully Swagger-decorated, guards via `@UseGuards(UserGuard | AdminGuard)`), `<feature>.module.ts`.
+2. Rate limits: in the module's `configure(consumer)`, apply an instance from `common/rate-limit/limiters.ts`; keep those paths in `<feature>.routes.ts` so the controller and the middleware share them.
 3. Register the module in `app.module.ts`.
 4. Tests: `<feature>.service.spec.ts` with fakes from `src/testing/fakes.ts`; e2e cases in `src/e2e/`; contract cases plus path entries in `tests/contract/`.
 5. Run `npm run check`, `npm run build`, `npm run test:cov`, `npm run test:e2e`, `npm run test:contract`.
 
-New entity table: add the model to `prisma/schema.prisma` (`@@map` to the table) and create a migration, then add the entity to `entities/entity-definitions.ts` (table, resource, columns with their kinds; the column codec uses them) and to the access rules in `entity-rules.ts`; DTOs, VOs, controller and Swagger are generated from it. Add it to `ENTITY_RESOURCES` in the frontend.
+New table: add the model to `prisma/schema.prisma` (camelCase fields with `@map`, `@@map` to the table), create a migration, then add a module for it as above and register it in `app.module.ts`; add its resource to `ENTITY_RESOURCES` in the frontend.
 
 ## Database and environment
 
@@ -89,10 +100,10 @@ New entity table: add the model to `prisma/schema.prisma` (`@@map` to the table)
 
 ## Rules
 
-- Security already in place: session tokens are stored as SHA-256 (`common/session`), helmet security headers (uploads stay cross-origin embeddable), per-IP rate limits (`common/rate-limit/limiters.ts`: auth, OTP, public lookups, availability checks, uploads per 15 min and per day), Swagger disabled when `APP_ENV=production`.
+- Security already in place: session tokens are stored as SHA-256 (`common/session`), helmet security headers (uploads stay cross-origin embeddable), per-IP rate limits (`common/rate-limit/limiters.ts`: auth, OTP, public lookups, availability checks, uploads per 15 min and per day), Swagger disabled when `APP_ENV=production`. Non-admin creates are locked down: applications always start `PENDING_VERIFICATION` and transactions must belong to an application submitted in the last 15 minutes (once) or the member's own family/event, starting `PENDING` (`ApplicationsService`, `TransactionsService`); notifications go only to a just-submitted application (once), the member's own family or a just-requested transfer target, never as broadcasts or with links (`NotificationsService`).
 - Logging: `common/logging/request-logger.ts` writes one JSON line per request through console (Hostinger's log viewer captures console output) and sets `X-Request-Id`; 5xx errors are logged with the same id. Never log query strings or bodies (PII). `LOG_REQUESTS=false` silences it (tests).
-- Uploads: set `UPLOADS_DIR` on every deployed environment to a folder outside the app; each Hostinger deploy is a new code folder, so the default `./uploads` is wiped. The app warns at startup when it's missing on `APP_ENV=test|production`.
+- Uploads: set `UPLOADS_DIR` on every deployed environment to a folder outside the app; each Hostinger deploy is a new code folder, so the default `./uploads` is wiped. Hostinger values: test `/home/u465324772/uploads-test`, production `/home/u465324772/uploads-prod` (separate so test files never mix with member files). The app warns at startup when it's missing on `APP_ENV=test|production`.
 - Email: `MailService` retries transient failures (network, SMTP 4xx) twice; permanent 5xx rejections fail immediately.
 - Never commit `.env*` files (except `.env.example`), CSV exports, `uploads/`, or anything under `database/`; they contain credentials or member PII.
-- Keep behavior identical unless a change is intended: the contract tests are the source of truth for the API contract.
+- The contract tests are the source of truth for the API contract; change them together with any intended API change (and the frontend).
 - Keep changes focused and match the existing code style (Biome-formatted, 160-column lines).

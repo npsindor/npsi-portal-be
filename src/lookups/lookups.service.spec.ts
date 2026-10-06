@@ -1,17 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, mock, test } from "node:test";
 import { as, rejectsWith } from "../testing/fakes.js";
+import { applicationRow } from "../testing/rows.js";
 import { AvailabilityService } from "./availability.service.js";
 import type { LookupsRepository } from "./lookups.repository.js";
 import { LookupsService } from "./lookups.service.js";
 
 const fakeRepo = () => ({
   publicFamily: mock.fn(async (id: string) =>
-    id === "NPSI-FAM-000001" ? { family_id: id, family_name: "F", head_name: "H", status: "ACTIVE", city: "Indore", registration_date: null } : undefined,
+    id === "NPSI-FAM-000001" ? { familyId: id, familyName: "F", headName: "H", status: "ACTIVE", city: "Indore", registrationDate: null } : null,
   ),
   publicMembers: mock.fn(async () => [{ name: "M", relationship: "Self", gender: "Male", status: "ACTIVE" }]),
   application: mock.fn(async (id: string, mobile: string) =>
-    id === "APP-1" && mobile === "9876543210" ? { id: "a1", application_id: id, members_data: '[{"n":1}]', created_at: "c", updated_at: "u" } : undefined,
+    id === "APP-1" && mobile === "9876543210" ? applicationRow({ id: "a1", applicationId: id, membersData: [{ n: 1 }] }) : null,
   ),
   activeCounts: mock.fn(async () => ({ families: 3, members: 9 })),
   // Matching rules run in SQL (covered by the contract tests); here: which value is asked for.
@@ -30,7 +31,7 @@ describe("LookupsService", () => {
   test("verifyFamily returns the public summary or 404", async () => {
     const { service } = build();
     const result = await service.verifyFamily("NPSI-FAM-000001");
-    assert.equal(result.family.family_id, "NPSI-FAM-000001");
+    assert.equal(result.family.familyId, "NPSI-FAM-000001");
     assert.equal(result.members.length, 1);
     await rejectsWith(service.verifyFamily("NPSI-FAM-999999"), 404, "No family found for this ID.");
   });
@@ -39,13 +40,8 @@ describe("LookupsService", () => {
     await rejectsWith(service.applicationStatus({ applicationId: "APP-1" }), 400, "Application ID and mobile number are required.");
     await rejectsWith(service.applicationStatus({ mobile: " " }), 400, "Application ID and mobile number are required.");
     await rejectsWith(service.applicationStatus({ applicationId: "APP-1", mobile: "1" }), 404, "No application found for this ID and mobile number.");
-    assert.deepEqual(await service.applicationStatus({ applicationId: " APP-1 ", mobile: " 9876543210 " }), {
-      id: "a1",
-      application_id: "APP-1",
-      members_data: [{ n: 1 }],
-      created_date: "c",
-      updated_date: "u",
-    });
+    const found = await service.applicationStatus({ applicationId: " APP-1 ", mobile: " 9876543210 " });
+    assert.deepEqual([found.id, found.applicationId, found.membersData], ["a1", "APP-1", [{ n: 1 }]]);
   });
   test("availability checks and stats", async () => {
     const { service } = build();

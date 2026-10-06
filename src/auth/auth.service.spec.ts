@@ -8,10 +8,9 @@ import type { UsersRepository } from "./users.repository.js";
 const PASSWORD = "secret1";
 
 const fakeUsers = () => ({
-  findById: mock.fn(async (id: string) => user({ id, email: "new@example.com", full_name: "New", is_verified: 0 })),
+  findById: mock.fn(async (id: string) => user({ id, email: "new@example.com", fullName: "New", isVerified: false })),
   findIdByPhone: mock.fn(async (_phone: string): Promise<{ id: string } | undefined> => undefined),
   findByEmail: mock.fn(async (_email: string): Promise<ReturnType<typeof user> | undefined> => undefined),
-  findByEmailLimit1: mock.fn(async (_email: string): Promise<ReturnType<typeof user> | undefined> => undefined),
   findIdByEmail: mock.fn(async (_email: string): Promise<{ id: string } | undefined> => undefined),
   findForLogin: mock.fn(async (_identifier: string, _phone: string): Promise<ReturnType<typeof user> | undefined> => undefined),
   insertRegistered: mock.fn(async (..._args: unknown[]) => undefined),
@@ -40,7 +39,7 @@ const build = (recaptchaPasses = true) => {
 beforeEach(() => build());
 
 describe("AuthService.register", () => {
-  const valid = { email: " New@Example.com ", password: PASSWORD, full_name: " New ", phone: "9876543210", recaptchaToken: "t" };
+  const valid = { email: " New@Example.com ", password: PASSWORD, fullName: " New ", phone: "9876543210", recaptchaToken: "t" };
 
   test("rejects a failed reCAPTCHA before anything else", async () => {
     build(false);
@@ -80,7 +79,7 @@ describe("AuthService.register", () => {
     assert.equal(fullName, "New");
     assert.equal(phone, "9876543210");
     assert.match(hash, /^[0-9a-f]{32}:[0-9a-f]{128}$/);
-    assert.deepEqual(result, { user: { id, email: "new@example.com", full_name: "New", phone: "9876543210", role: "user" }, requiresOtp: true });
+    assert.deepEqual(result, { user: { id, email: "new@example.com", fullName: "New", phone: "9876543210", role: "user" }, requiresOtp: true });
     await flush();
     assert.equal(users.setOtp.mock.callCount(), 1);
     assert.equal((mail.send.mock.calls[0].arguments[0] as { subject: string }).subject, "Your verification code");
@@ -100,7 +99,7 @@ describe("AuthService.register", () => {
 
 describe("AuthService.verifyOtp", () => {
   const pending = (overrides = {}) =>
-    user({ id: "u-otp", email: "otp@example.com", is_verified: 0, otp_hash: hashOtp("123456"), otp_expires_at: new Date(Date.now() + 60_000), ...overrides });
+    user({ id: "u-otp", email: "otp@example.com", isVerified: false, otpHash: hashOtp("123456"), otpExpiresAt: new Date(Date.now() + 60_000), ...overrides });
 
   test("requires an email and a 6-digit code", async () => {
     await rejectsWith(service.verifyOtp({ email: "otp@example.com", otpCode: "12" }), 400, "A valid 6-digit verification code is required.");
@@ -112,23 +111,23 @@ describe("AuthService.verifyOtp", () => {
   test("400 for a wrong or expired code", async () => {
     users.findByEmail.mock.mockImplementation(async () => pending());
     await rejectsWith(service.verifyOtp({ email: "otp@example.com", otpCode: "000000" }), 400, "Invalid or expired verification code.");
-    users.findByEmail.mock.mockImplementation(async () => pending({ otp_expires_at: new Date(Date.now() - 1000) }));
+    users.findByEmail.mock.mockImplementation(async () => pending({ otpExpiresAt: new Date(Date.now() - 1000) }));
     await rejectsWith(service.verifyOtp({ email: "otp@example.com", otpCode: "123456" }), 400, "Invalid or expired verification code.");
   });
   test("starts a session and sends registration emails on first verification", async () => {
     users.findByEmail.mock.mockImplementation(async () => pending());
-    users.findById.mock.mockImplementation(async () => pending({ is_verified: 1 }));
+    users.findById.mock.mockImplementation(async () => pending({ isVerified: true }));
     const result = await service.verifyOtp({ email: " OTP@example.com ", otpCode: "123456" });
     assert.equal(users.findByEmail.mock.calls[0].arguments[0], "otp@example.com");
-    assert.match(result.access_token, /^[0-9a-f]{64}$/);
-    assert.equal(users.verifyAndStartSession.mock.calls[0].arguments[1], sha256(result.access_token), "only the hash is stored");
+    assert.match(result.accessToken, /^[0-9a-f]{64}$/);
+    assert.equal(users.verifyAndStartSession.mock.calls[0].arguments[1], sha256(result.accessToken), "only the hash is stored");
     await flush();
     await flush();
     const recipients = mail.send.mock.calls.map((call) => (call.arguments[0] as { to: string }).to);
     assert.deepEqual(recipients, ["otp@example.com", "admin@npsindore.org,info@npsindore.org"]);
   });
   test("no registration emails when already verified", async () => {
-    users.findByEmail.mock.mockImplementation(async () => pending({ is_verified: 1 }));
+    users.findByEmail.mock.mockImplementation(async () => pending({ isVerified: true }));
     await service.verifyOtp({ email: "otp@example.com", otpCode: "123456" });
     await flush();
     assert.equal(mail.send.mock.callCount(), 0);
@@ -141,15 +140,15 @@ describe("AuthService.resendOtp", () => {
   });
   test("same response for unknown, unverified and verified accounts; OTP only for unverified", async () => {
     assert.deepEqual(await service.resendOtp({ email: "ghost@example.com" }), { ok: true });
-    users.findByEmailLimit1.mock.mockImplementation(async () => user({ is_verified: 1 }));
+    users.findByEmail.mock.mockImplementation(async () => user({ isVerified: true }));
     assert.deepEqual(await service.resendOtp({ email: "member@example.com" }), { ok: true });
     assert.equal(users.setOtp.mock.callCount(), 0);
-    users.findByEmailLimit1.mock.mockImplementation(async () => user({ is_verified: 0 }));
+    users.findByEmail.mock.mockImplementation(async () => user({ isVerified: false }));
     assert.deepEqual(await service.resendOtp({ email: "member@example.com" }), { ok: true });
     assert.equal(users.setOtp.mock.callCount(), 1);
   });
   test("email failures are swallowed", async () => {
-    users.findByEmailLimit1.mock.mockImplementation(async () => user({ is_verified: 0 }));
+    users.findByEmail.mock.mockImplementation(async () => user({ isVerified: false }));
     mail.send.mock.mockImplementation(async () => {
       throw new Error("smtp");
     });
@@ -160,7 +159,7 @@ describe("AuthService.resendOtp", () => {
 });
 
 describe("AuthService.login", () => {
-  const account = () => user({ password_hash: hashPassword(PASSWORD) });
+  const account = () => user({ passwordHash: hashPassword(PASSWORD) });
 
   test("401 for unknown users and wrong passwords", async () => {
     await rejectsWith(service.login({ email: "x@example.com", password: PASSWORD }), 401, "Invalid email/phone or password.");
@@ -169,15 +168,15 @@ describe("AuthService.login", () => {
     await rejectsWith(service.login({ email: "member@example.com" }), 401, "Invalid email/phone or password.");
   });
   test("403 for unverified accounts", async () => {
-    users.findForLogin.mock.mockImplementation(async () => user({ password_hash: hashPassword(PASSWORD), is_verified: 0 }));
+    users.findForLogin.mock.mockImplementation(async () => user({ passwordHash: hashPassword(PASSWORD), isVerified: false }));
     await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD }), 403, "Please verify your account before logging in.");
   });
   test("looks users up by email or normalized phone and starts a session", async () => {
     users.findForLogin.mock.mockImplementation(async () => account());
     const result = await service.login({ phone: " +91 98765 43210 ", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[0].arguments, ["+91 98765 43210", "9876543210"]);
-    assert.deepEqual(result.user, { id: "u-1", email: "member@example.com", full_name: "Member", phone: "9876543210", role: "user" });
-    assert.equal(users.startSession.mock.calls[0].arguments[1], sha256(result.access_token), "only the hash is stored");
+    assert.deepEqual(result.user, { id: "u-1", email: "member@example.com", fullName: "Member", phone: "9876543210", role: "user" });
+    assert.equal(users.startSession.mock.calls[0].arguments[1], sha256(result.accessToken), "only the hash is stored");
     await service.login({ username: "member@example.com", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[1].arguments, ["member@example.com", "member@example.com"]);
   });
@@ -223,7 +222,7 @@ describe("AuthService.invite", () => {
     await rejectsWith(service.invite({}), 400, "Email is required.");
   });
   test("creates a new invited user with the requested role", async () => {
-    users.findById.mock.mockImplementation(async (id: string) => user({ id, email: "invitee@example.com", full_name: null }));
+    users.findById.mock.mockImplementation(async (id: string) => user({ id, email: "invitee@example.com", fullName: null }));
     const result = await service.invite({ email: " Invitee@Example.com ", role: "admin", phone: "9876543210" });
     const args = users.insertInvited.mock.calls[0].arguments;
     assert.equal(args[1], "invitee@example.com");
@@ -240,7 +239,7 @@ describe("AuthService.invite", () => {
     assert.equal(users.insertInvited.mock.calls[0].arguments[5], "user");
   });
   test("re-invites an existing user, keeping known details", async () => {
-    users.findByEmailLimit1.mock.mockImplementation(async () => user({ id: "u-9", full_name: "Old Name", phone: "9000000000" }));
+    users.findByEmail.mock.mockImplementation(async () => user({ id: "u-9", fullName: "Old Name", phone: "9000000000" }));
     users.findById.mock.mockImplementation(async () => user({ id: "u-9", email: null, phone: "9000000000" }));
     const result = await service.invite({ email: "member@example.com" });
     assert.deepEqual(users.updateInvited.mock.calls[0].arguments.slice(0, 3), ["u-9", "Old Name", "9000000000"]);
@@ -257,7 +256,7 @@ describe("AuthService.invite", () => {
 });
 
 describe("AuthService password change, me and logout", () => {
-  const me = () => user({ password_hash: hashPassword(PASSWORD) });
+  const me = () => user({ passwordHash: hashPassword(PASSWORD) });
 
   test("change: validates the new and current passwords", async () => {
     await rejectsWith(service.changePassword(me(), { currentPassword: PASSWORD, newPassword: "123" }), 400, "New password must be at least 6 characters.");
@@ -269,10 +268,10 @@ describe("AuthService password change, me and logout", () => {
     assert.equal(users.updatePassword.mock.calls[0].arguments[0], "u-1");
   });
   test("me returns only public fields", () => {
-    assert.deepEqual(service.me(user({ password_hash: "x", session_token: "y" })), {
+    assert.deepEqual(service.me(user({ passwordHash: "x", sessionToken: "y" })), {
       id: "u-1",
       email: "member@example.com",
-      full_name: "Member",
+      fullName: "Member",
       phone: "9876543210",
       role: "user",
     });

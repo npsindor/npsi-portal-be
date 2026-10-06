@@ -1,7 +1,9 @@
 import { Injectable } from "@nestjs/common";
 import type { UserRow } from "../common/session/session.service.js";
-import type { DbRow } from "../database/database.types.js";
-import { type EntityVo, toEntityVo } from "../entities/vo/entity.vo.js";
+import { toFamilyVo } from "../families/vo/families.vo.js";
+import { toFamilyMemberVo } from "../family-members/vo/family-members.vo.js";
+import { type FeedbackVo, toFeedbackVo } from "../feedback/vo/feedback.vo.js";
+import { toStudentVo } from "../students/vo/students.vo.js";
 import { MeRepository } from "./me.repository.js";
 import type { MyFamilyVo } from "./vo/me.vo.js";
 
@@ -12,21 +14,18 @@ export class MeService {
   constructor(private readonly repo: MeRepository) {}
 
   async family(user: UserRow): Promise<MyFamilyVo> {
-    let family: DbRow | null = null;
-    if (user.email) {
-      family = (await this.repo.activeFamilyByEmail(user.email)) || null;
-      if (!family) {
-        const member = await this.repo.memberFamilyIdByEmail(user.email);
-        if (member) family = (await this.repo.familyByFamilyId(member.family_id)) || null;
-      }
+    if (!user.email) return { family: null, members: [], student: null };
+    let family = await this.repo.activeFamilyByEmail(user.email);
+    if (!family) {
+      const familyId = await this.repo.memberFamilyIdByEmail(user.email);
+      if (familyId) family = await this.repo.familyByFamilyId(familyId);
     }
-    const members = family ? await this.repo.membersOfFamily(family.family_id) : [];
-    const student = user.email ? (await this.repo.studentByEmail(user.email)) || null : null;
-    return { family: family ? toEntityVo(family) : null, members: members.map(toEntityVo), student: student ? toEntityVo(student) : null };
+    const members = family?.familyId ? await this.repo.membersOfFamily(family.familyId) : [];
+    const student = await this.repo.studentByEmail(user.email);
+    return { family: family ? toFamilyVo(family) : null, members: members.map(toFamilyMemberVo), student: student ? toStudentVo(student) : null };
   }
 
-  async feedback(user: UserRow): Promise<EntityVo[]> {
-    const list = user.email ? await this.repo.feedbackByEmail(user.email) : [];
-    return list.map(toEntityVo);
+  async feedback(user: UserRow): Promise<FeedbackVo[]> {
+    return user.email ? (await this.repo.feedbackByEmail(user.email)).map(toFeedbackVo) : [];
   }
 }

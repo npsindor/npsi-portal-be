@@ -6,7 +6,7 @@ import { MailService } from "../common/mail/mail.service.js";
 import { RECAPTCHA_FAILED, RecaptchaService } from "../common/recaptcha/recaptcha.service.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { createToken, generateOtp, hashOtp, hashPassword, randomId, randomInvitePassword, safeEqual, sha256, verifyPassword } from "../common/utils/crypto.js";
-import { normalizeMobile } from "../common/utils/records.js";
+import { normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import type { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto } from "./dto/auth.dto.js";
 import { UsersRepository } from "./users.repository.js";
@@ -27,14 +27,14 @@ export class AuthService {
   ) {}
 
   async register(body: RegisterDto): Promise<RegistrationVo> {
-    const { email, password, full_name, phone, recaptchaToken } = body || {};
+    const { email, password, fullName, phone, recaptchaToken } = body || {};
     if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     if (!email || !password || password.length < 6) throw new ApiError(400, "Email and password are required; password must be at least 6 characters.");
     if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (await this.users.findIdByPhone(phone.trim())) throw new ApiError(409, "This mobile number is already registered.");
     const id = randomId();
     try {
-      await this.users.insertRegistered(id, email.trim(), full_name?.trim() || null, phone.trim(), hashPassword(password));
+      await this.users.insertRegistered(id, email.trim(), fullName?.trim() || null, phone.trim(), hashPassword(password));
     } catch (error) {
       // P2002 = unique constraint violation (users.email).
       if ((error as { code?: string }).code === "P2002") throw new ApiError(409, "An account with this email already exists.");
@@ -53,15 +53,15 @@ export class AuthService {
     if (!email || !/^\d{6}$/.test(code)) throw new ApiError(400, "A valid 6-digit verification code is required.");
     const existing = await this.users.findByEmail(email);
     if (!existing) throw new ApiError(404, "Account not found.");
-    const notExpired = existing.otp_expires_at && new Date(existing.otp_expires_at) > new Date();
-    const matches = existing.otp_hash && safeEqual(hashOtp(code), existing.otp_hash);
+    const notExpired = existing.otpExpiresAt && existing.otpExpiresAt > new Date();
+    const matches = existing.otpHash && safeEqual(hashOtp(code), existing.otpHash);
     if (!notExpired || !matches) throw new ApiError(400, "Invalid or expired verification code.");
-    const isFirstVerification = !existing.is_verified;
+    const isFirstVerification = !existing.isVerified;
     const token = createToken();
     await this.users.verifyAndStartSession(existing.id, sha256(token));
     const user = (await this.users.findById(existing.id)) as UserRow;
     if (isFirstVerification) this.sendRegistrationEmails(user).catch(logMailError("registration email"));
-    return { user: PublicUserVo.from(user), access_token: token };
+    return { user: PublicUserVo.from(user), accessToken: token };
   }
 
   // Same response whether or not the account exists, so this can't be used to
@@ -71,8 +71,8 @@ export class AuthService {
       .trim()
       .toLowerCase();
     if (!email) throw new ApiError(400, "Email is required.");
-    const user = await this.users.findByEmailLimit1(email);
-    if (user && !user.is_verified) await this.issueOtp(user).catch(logMailError("otp email"));
+    const user = await this.users.findByEmail(email);
+    if (user && !user.isVerified) await this.issueOtp(user).catch(logMailError("otp email"));
     return OK;
   }
 
@@ -81,11 +81,11 @@ export class AuthService {
     const identifier = String(rawIdentifier).trim();
     const phone = normalizeMobile(identifier);
     const user = await this.users.findForLogin(identifier, phone || identifier);
-    if (!user || !verifyPassword(body?.password || "", user.password_hash)) throw new ApiError(401, "Invalid email/phone or password.");
-    if (!user.is_verified) throw new ApiError(403, "Please verify your account before logging in.");
+    if (!user || !verifyPassword(body?.password || "", user.passwordHash)) throw new ApiError(401, "Invalid email/phone or password.");
+    if (!user.isVerified) throw new ApiError(403, "Please verify your account before logging in.");
     const token = createToken();
     await this.users.startSession(user.id, sha256(token));
-    return { user: PublicUserVo.from(user), access_token: token };
+    return { user: PublicUserVo.from(user), accessToken: token };
   }
 
   // Always the same response, and the reset token only ever travels by email.
@@ -122,17 +122,17 @@ export class AuthService {
   // account with a random temporary password, returned once in the response.
   async invite(body: InviteDto): Promise<InvitationVo> {
     const email = body?.email?.trim().toLowerCase();
-    const { role, full_name, phone } = body || {};
+    const { role, fullName, phone } = body || {};
     if (!email) throw new ApiError(400, "Email is required.");
     const loginPhone = normalizeMobile(phone || email);
     const defaultPassword = randomInvitePassword();
-    let user = await this.users.findByEmailLimit1(email);
+    let user = await this.users.findByEmail(email);
     if (!user) {
       const id = randomId();
-      await this.users.insertInvited(id, email, full_name, phone, hashPassword(defaultPassword), role === "admin" ? "admin" : "user");
+      await this.users.insertInvited(id, email, fullName, phone, hashPassword(defaultPassword), role === "admin" ? "admin" : "user");
       user = (await this.users.findById(id)) as UserRow;
     } else {
-      await this.users.updateInvited(user.id, full_name || user.full_name, phone || user.phone, hashPassword(defaultPassword));
+      await this.users.updateInvited(user.id, fullName || user.fullName, phone || user.phone, hashPassword(defaultPassword));
       user = (await this.users.findById(user.id)) as UserRow;
     }
     const token = createToken();
@@ -140,7 +140,7 @@ export class AuthService {
     const setPasswordUrl = `${this.config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
     const loginUrl = `${this.config.frontendUrl}/login`;
     const username = user.email || user.phone || loginPhone;
-    const invite = memberInviteEmail({ name: user.full_name || email.split("@")[0], setPasswordUrl, loginUrl, username, password: defaultPassword });
+    const invite = memberInviteEmail({ name: user.fullName || email.split("@")[0], setPasswordUrl, loginUrl, username, password: defaultPassword });
     await this.mail.send({ to: email, subject: invite.subject, html: invite.html, text: invite.text }).catch(logMailError("invite email"));
     return { ok: true, username, password: defaultPassword };
   }
@@ -148,7 +148,7 @@ export class AuthService {
   async changePassword(user: UserRow, body: ChangePasswordDto): Promise<OkVo> {
     const { currentPassword, newPassword } = body || {};
     if (!newPassword || newPassword.length < 6) throw new ApiError(400, "New password must be at least 6 characters.");
-    if (!verifyPassword(currentPassword || "", user.password_hash)) throw new ApiError(401, "Current password is incorrect.");
+    if (!verifyPassword(currentPassword || "", user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
     await this.users.updatePassword(user.id, hashPassword(newPassword));
     return OK;
   }
@@ -177,7 +177,7 @@ export class AuthService {
 
   async sendRegistrationEmails(user: UserRow): Promise<void> {
     const email = user.email as string;
-    const name = user.full_name || email.split("@")[0];
+    const name = user.fullName || email.split("@")[0];
     const welcome = memberWelcomeEmail({ name, loginUrl: `${this.config.frontendUrl}/login` });
     await this.mail.send({ to: email, subject: welcome.subject, html: welcome.html, text: welcome.text });
     const registeredAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });

@@ -33,11 +33,20 @@ export const fakeRecaptcha = (passes = true) => {
 export const user = (overrides: Partial<UserRow> = {}): UserRow => ({
   id: "u-1",
   email: "member@example.com",
-  full_name: "Member",
+  fullName: "Member",
   phone: "9876543210",
   role: "user",
-  password_hash: null,
-  is_verified: 1,
+  passwordHash: null,
+  isVerified: true,
+  status: "active",
+  sessionToken: null,
+  sessionExpiresAt: null,
+  resetTokenHash: null,
+  resetTokenExpiresAt: null,
+  otpHash: null,
+  otpExpiresAt: null,
+  createdAt: new Date("2026-01-01T00:00:00Z"),
+  updatedAt: new Date("2026-01-01T00:00:00Z"),
   ...overrides,
 });
 export const admin = (overrides: Partial<UserRow> = {}): UserRow => user({ id: "u-admin", email: "admin@example.com", role: "admin", ...overrides });

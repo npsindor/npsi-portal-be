@@ -57,7 +57,7 @@ export const configureApp = (app: NestExpressApplication): void => {
   app.setGlobalPrefix(API_PREFIX);
   // Request DTOs document and whitelist inputs; business validation (with the
   // legacy messages) stays in the services. Bodiless requests are allowed.
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: false }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: false, stopAtFirstError: true }));
   app.useGlobalFilters(new HttpErrorFilter());
 
   // API docs everywhere except production (they map every endpoint and field for an attacker).

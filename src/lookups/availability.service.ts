@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import { normalizeMobile } from "../common/utils/records.js";
+import { normalizeMobile } from "../common/utils/text.js";
 import { LookupsRepository } from "./lookups.repository.js";
 
 // Duplicate-contact rules, unchanged from the legacy app: mobiles match on

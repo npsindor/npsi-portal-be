@@ -5,12 +5,12 @@ import type { UserRow } from "../../common/session/session.service.js";
 export class PublicUserVo {
   @ApiProperty({ example: "5f0c…" }) id: string;
   @ApiProperty({ example: "member@example.com", nullable: true }) email: string | null;
-  @ApiProperty({ example: "Ram Patidar", nullable: true }) full_name: string | null;
+  @ApiProperty({ type: "string", example: "Ram Patidar", nullable: true }) fullName: string | null;
   @ApiProperty({ example: "9876543210", nullable: true }) phone: string | null;
   @ApiProperty({ example: "user", enum: ["user", "admin"], nullable: true }) role: string | null;
 
   static from(user: UserRow): PublicUserVo {
-    return { id: user.id, email: user.email, full_name: user.full_name, phone: user.phone, role: user.role };
+    return { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone, role: user.role };
   }
 }
 
@@ -21,7 +21,7 @@ export class RegistrationVo {
 
 export class SessionVo {
   @ApiProperty({ type: PublicUserVo }) user: PublicUserVo;
-  @ApiProperty({ example: "64 hex characters", description: "Bearer token, valid for 30 days" }) access_token: string;
+  @ApiProperty({ example: "64 hex characters", description: "Bearer token, valid for 30 days" }) accessToken: string;
 }
 
 export class InvitationVo {

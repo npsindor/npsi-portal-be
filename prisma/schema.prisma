@@ -14,233 +14,233 @@ model SequelizeMeta {
 }
 
 model Announcement {
-  id         String    @id @db.VarChar(64)
-  title      String    @db.Text
-  body       String    @db.Text
-  date       DateTime? @db.DateTime(0)
-  type       String?   @db.VarChar(255)
-  status     String?   @default("Active") @db.VarChar(64)
-  created_at DateTime  @default(now()) @db.DateTime(0)
-  updated_at DateTime  @default(now()) @db.DateTime(0)
-  title_hi   String?   @db.Text
-  body_hi    String?   @db.Text
+  id        String    @id @db.VarChar(64)
+  title     String    @db.Text
+  body      String    @db.Text
+  date      DateTime? @db.DateTime(0)
+  type      String?   @db.VarChar(255)
+  status    String?   @default("Active") @db.VarChar(64)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  titleHi   String?   @map("title_hi") @db.Text
+  bodyHi    String?   @map("body_hi") @db.Text
 
   @@map("announcements")
 }
 
 model Application {
-  id                  String    @id @db.VarChar(64)
-  application_id      String    @unique(map: "application_id") @db.VarChar(255)
-  status              String?   @default("SUBMITTED") @db.VarChar(64)
-  family_head_name    String    @db.Text
-  mobile              String?   @db.VarChar(255)
-  email               String?   @db.VarChar(255)
-  family_name         String    @db.Text
-  address             String?   @db.Text
-  city                String?   @db.VarChar(255)
-  district            String?   @db.VarChar(255)
-  state               String?   @db.VarChar(255)
-  pincode             String?   @db.VarChar(255)
-  gotra               String?   @db.VarChar(255)
-  native_place        String?   @db.VarChar(255)
-  village             String?   @db.VarChar(255)
-  members_data        Json?
-  submitted_date      DateTime? @db.DateTime(0)
-  admin_remarks       String?   @db.Text
-  reviewed_date       DateTime? @db.DateTime(0)
-  resulting_family_id String?   @db.VarChar(255)
-  created_at          DateTime  @default(now()) @db.DateTime(0)
-  updated_at          DateTime  @default(now()) @db.DateTime(0)
+  id                String    @id @db.VarChar(64)
+  applicationId     String    @unique(map: "application_id") @map("application_id") @db.VarChar(255)
+  status            String?   @default("SUBMITTED") @db.VarChar(64)
+  familyHeadName    String    @map("family_head_name") @db.Text
+  mobile            String?   @db.VarChar(255)
+  email             String?   @db.VarChar(255)
+  familyName        String    @map("family_name") @db.Text
+  address           String?   @db.Text
+  city              String?   @db.VarChar(255)
+  district          String?   @db.VarChar(255)
+  state             String?   @db.VarChar(255)
+  pincode           String?   @db.VarChar(255)
+  gotra             String?   @db.VarChar(255)
+  nativePlace       String?   @map("native_place") @db.VarChar(255)
+  village           String?   @db.VarChar(255)
+  membersData       Json?     @map("members_data")
+  submittedDate     DateTime? @map("submitted_date") @db.DateTime(0)
+  adminRemarks      String?   @map("admin_remarks") @db.Text
+  reviewedDate      DateTime? @map("reviewed_date") @db.DateTime(0)
+  resultingFamilyId String?   @map("resulting_family_id") @db.VarChar(255)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
-  @@index([application_id, mobile], map: "applications_lookup_idx")
+  @@index([applicationId, mobile], map: "applications_lookup_idx")
   @@map("applications")
 }
 
 model EventRegistration {
-  id               String    @id @db.VarChar(64)
-  registration_id  String    @unique(map: "registration_id") @db.VarChar(255)
-  event_id         String    @db.VarChar(64)
-  event_title      String?   @db.VarChar(255)
-  family_id        String?   @db.VarChar(255)
-  member_ids       Json?
-  member_names     Json?
-  count            Int?      @default(0)
-  fee_per_member   Decimal?  @default(0.00) @db.Decimal(12, 2)
-  total_fee        Decimal?  @default(0.00) @db.Decimal(12, 2)
-  payment_status   String?   @default("PENDING") @db.VarChar(64)
-  transaction_id   String?   @db.VarChar(255)
-  status           String?   @default("REGISTERED") @db.VarChar(64)
-  registered_by_id String?   @db.VarChar(255)
-  registered_date  DateTime? @db.DateTime(0)
-  registrant_name  String?   @db.VarChar(255)
-  registrant_email String?   @db.VarChar(255)
-  created_at       DateTime  @default(now()) @db.DateTime(0)
-  updated_at       DateTime  @default(now()) @db.DateTime(0)
+  id              String    @id @db.VarChar(64)
+  registrationId  String    @unique(map: "registration_id") @map("registration_id") @db.VarChar(255)
+  eventId         String    @map("event_id") @db.VarChar(64)
+  eventTitle      String?   @map("event_title") @db.VarChar(255)
+  familyId        String?   @map("family_id") @db.VarChar(255)
+  memberIds       Json?     @map("member_ids")
+  memberNames     Json?     @map("member_names")
+  count           Int?      @default(0)
+  feePerMember    Decimal?  @default(0.00) @map("fee_per_member") @db.Decimal(12, 2)
+  totalFee        Decimal?  @default(0.00) @map("total_fee") @db.Decimal(12, 2)
+  paymentStatus   String?   @default("PENDING") @map("payment_status") @db.VarChar(64)
+  transactionId   String?   @map("transaction_id") @db.VarChar(255)
+  status          String?   @default("REGISTERED") @db.VarChar(64)
+  registeredById  String?   @map("registered_by_id") @db.VarChar(255)
+  registeredDate  DateTime? @map("registered_date") @db.DateTime(0)
+  registrantName  String?   @map("registrant_name") @db.VarChar(255)
+  registrantEmail String?   @map("registrant_email") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@map("event_registrations")
 }
 
 model Event {
-  id                 String    @id @db.VarChar(64)
-  title              String    @db.Text
-  slug               String?   @db.VarChar(255)
-  banner_url         String?   @db.Text
-  description        String?   @db.Text
-  date               DateTime  @db.Date
-  start_time         String?   @db.VarChar(255)
-  end_time           String?   @db.VarChar(255)
-  venue              String    @db.Text
-  map_location       String?   @db.Text
-  organizer          String?   @db.VarChar(255)
-  contact            String?   @db.VarChar(255)
-  registration_open  DateTime? @db.DateTime(0)
-  registration_close DateTime? @db.DateTime(0)
-  fee                Decimal?  @default(0.00) @db.Decimal(12, 2)
-  capacity           Int?
-  rules              String?   @db.Text
-  terms              String?   @db.Text
-  status             String?   @default("DRAFT") @db.VarChar(64)
-  created_at         DateTime  @default(now()) @db.DateTime(0)
-  updated_at         DateTime  @default(now()) @db.DateTime(0)
-  title_hi           String?   @db.Text
-  description_hi     String?   @db.Text
+  id                String    @id @db.VarChar(64)
+  title             String    @db.Text
+  slug              String?   @db.VarChar(255)
+  bannerUrl         String?   @map("banner_url") @db.Text
+  description       String?   @db.Text
+  date              DateTime  @db.Date
+  startTime         String?   @map("start_time") @db.VarChar(255)
+  endTime           String?   @map("end_time") @db.VarChar(255)
+  venue             String    @db.Text
+  mapLocation       String?   @map("map_location") @db.Text
+  organizer         String?   @db.VarChar(255)
+  contact           String?   @db.VarChar(255)
+  registrationOpen  DateTime? @map("registration_open") @db.DateTime(0)
+  registrationClose DateTime? @map("registration_close") @db.DateTime(0)
+  fee               Decimal?  @default(0.00) @db.Decimal(12, 2)
+  capacity          Int?
+  rules             String?   @db.Text
+  terms             String?   @db.Text
+  status            String?   @default("DRAFT") @db.VarChar(64)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  titleHi           String?   @map("title_hi") @db.Text
+  descriptionHi     String?   @map("description_hi") @db.Text
 
   @@index([status, date])
   @@map("events")
 }
 
 model Family {
-  id                String    @id @db.VarChar(64)
-  family_id         String?   @unique(map: "family_id") @db.VarChar(255)
-  family_name       String?   @db.Text
-  head_name         String?   @db.Text
-  status            String?   @default("PENDING") @db.VarChar(64)
-  address           String?   @db.Text
-  city              String?   @db.VarChar(255)
-  district          String?   @db.VarChar(255)
-  state             String?   @db.VarChar(255)
-  pincode           String?   @db.VarChar(255)
-  native_place      String?   @db.VarChar(255)
-  village           String?   @db.VarChar(255)
-  gotra             String?   @db.VarChar(255)
-  contact_number    String?   @db.VarChar(255)
-  email             String?   @db.VarChar(255)
-  registration_date DateTime? @db.DateTime(0)
-  member_count      Int?      @default(0)
-  application_id    String?   @db.VarChar(255)
-  created_at        DateTime  @default(now()) @db.DateTime(0)
-  updated_at        DateTime  @default(now()) @db.DateTime(0)
+  id               String    @id @db.VarChar(64)
+  familyId         String?   @unique(map: "family_id") @map("family_id") @db.VarChar(255)
+  familyName       String?   @map("family_name") @db.Text
+  headName         String?   @map("head_name") @db.Text
+  status           String?   @default("PENDING") @db.VarChar(64)
+  address          String?   @db.Text
+  city             String?   @db.VarChar(255)
+  district         String?   @db.VarChar(255)
+  state            String?   @db.VarChar(255)
+  pincode          String?   @db.VarChar(255)
+  nativePlace      String?   @map("native_place") @db.VarChar(255)
+  village          String?   @db.VarChar(255)
+  gotra            String?   @db.VarChar(255)
+  contactNumber    String?   @map("contact_number") @db.VarChar(255)
+  email            String?   @db.VarChar(255)
+  registrationDate DateTime? @map("registration_date") @db.DateTime(0)
+  memberCount      Int?      @default(0) @map("member_count")
+  applicationId    String?   @map("application_id") @db.VarChar(255)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt        DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@index([email], map: "families_email_idx")
   @@map("families")
 }
 
 model FamilyMember {
-  id                String    @id @db.VarChar(64)
-  family_id         String    @db.VarChar(64)
-  membership_id     String?   @db.VarChar(255)
-  name              String    @db.Text
-  relationship      String    @db.VarChar(255)
-  gender            String?   @db.VarChar(255)
-  dob               DateTime? @db.Date
-  mobile            String?   @db.VarChar(255)
-  email             String?   @db.VarChar(255)
-  education         String?   @db.VarChar(255)
-  occupation        String?   @db.VarChar(255)
-  address           String?   @db.Text
-  photo_url         String?   @db.Text
-  status            String?   @default("PENDING") @db.VarChar(64)
-  linked_student_id String?   @db.VarChar(255)
-  created_at        DateTime  @default(now()) @db.DateTime(0)
-  updated_at        DateTime  @default(now()) @db.DateTime(0)
+  id              String    @id @db.VarChar(64)
+  familyId        String    @map("family_id") @db.VarChar(64)
+  membershipId    String?   @map("membership_id") @db.VarChar(255)
+  name            String    @db.Text
+  relationship    String    @db.VarChar(255)
+  gender          String?   @db.VarChar(255)
+  dob             DateTime? @db.Date
+  mobile          String?   @db.VarChar(255)
+  email           String?   @db.VarChar(255)
+  education       String?   @db.VarChar(255)
+  occupation      String?   @db.VarChar(255)
+  address         String?   @db.Text
+  photoUrl        String?   @map("photo_url") @db.Text
+  status          String?   @default("PENDING") @db.VarChar(64)
+  linkedStudentId String?   @map("linked_student_id") @db.VarChar(255)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
-  @@index([family_id], map: "family_members_family_idx")
+  @@index([familyId], map: "family_members_family_idx")
   @@index([email], map: "family_members_email_idx")
-  @@index([membership_id], map: "family_members_membership_idx")
+  @@index([membershipId], map: "family_members_membership_idx")
   @@map("family_members")
 }
 
 model Feedback {
-  id             String    @id @db.VarChar(64)
-  feedback_id    String?   @unique(map: "feedback_id") @db.VarChar(255)
-  member_name    String    @db.Text
-  family_id      String?   @db.VarChar(255)
-  email          String?   @db.VarChar(255)
-  feedback_type  String?   @db.VarChar(255)
-  subject        String?   @db.VarChar(255)
-  message        String?   @db.Text
-  attachment_url String?   @db.Text
-  questions      Json?
-  rating         Int?
-  status         String?   @default("Submitted") @db.VarChar(64)
-  reply          String?   @db.Text
-  replied_date   DateTime? @db.DateTime(0)
-  replied_by_id  String?   @db.VarChar(255)
-  internal_note  String?   @db.Text
-  archived       Boolean   @default(false)
-  submitted_date DateTime? @db.DateTime(0)
-  created_at     DateTime  @default(now()) @db.DateTime(0)
-  updated_at     DateTime  @default(now()) @db.DateTime(0)
+  id            String    @id @db.VarChar(64)
+  feedbackId    String?   @unique(map: "feedback_id") @map("feedback_id") @db.VarChar(255)
+  memberName    String    @map("member_name") @db.Text
+  familyId      String?   @map("family_id") @db.VarChar(255)
+  email         String?   @db.VarChar(255)
+  feedbackType  String?   @map("feedback_type") @db.VarChar(255)
+  subject       String?   @db.VarChar(255)
+  message       String?   @db.Text
+  attachmentUrl String?   @map("attachment_url") @db.Text
+  questions     Json?
+  rating        Int?
+  status        String?   @default("Submitted") @db.VarChar(64)
+  reply         String?   @db.Text
+  repliedDate   DateTime? @map("replied_date") @db.DateTime(0)
+  repliedById   String?   @map("replied_by_id") @db.VarChar(255)
+  internalNote  String?   @map("internal_note") @db.Text
+  archived      Boolean   @default(false)
+  submittedDate DateTime? @map("submitted_date") @db.DateTime(0)
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@index([email], map: "feedback_email_idx")
   @@map("feedback")
 }
 
 model Notification {
-  id                  String    @id @db.VarChar(64)
-  title               String    @db.Text
-  message             String    @db.Text
-  type                String    @db.VarChar(255)
-  recipient_family_id String?   @db.VarChar(255)
-  read                Boolean   @default(false)
-  date                DateTime? @db.DateTime(0)
-  deep_link           String?   @db.Text
-  created_at          DateTime  @default(now()) @db.DateTime(0)
-  updated_at          DateTime  @default(now()) @db.DateTime(0)
+  id                String    @id @db.VarChar(64)
+  title             String    @db.Text
+  message           String    @db.Text
+  type              String    @db.VarChar(255)
+  recipientFamilyId String?   @map("recipient_family_id") @db.VarChar(255)
+  read              Boolean   @default(false)
+  date              DateTime? @db.DateTime(0)
+  deepLink          String?   @map("deep_link") @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
-  @@index([recipient_family_id, date], map: "notifications_recipient_idx")
+  @@index([recipientFamilyId, date], map: "notifications_recipient_idx")
   @@map("notifications")
 }
 
 model Principle {
-  id             String   @id @db.VarChar(64)
-  section_number Int?
-  title_en       String   @db.Text
-  title_hi       String   @db.Text
-  content_en     String   @db.Text
-  content_hi     String   @db.Text
-  status         String   @default("Active") @db.VarChar(64)
-  created_at     DateTime @default(now()) @db.DateTime(0)
-  updated_at     DateTime @default(now()) @db.DateTime(0)
+  id            String   @id @db.VarChar(64)
+  sectionNumber Int?     @map("section_number")
+  titleEn       String   @map("title_en") @db.Text
+  titleHi       String   @map("title_hi") @db.Text
+  contentEn     String   @map("content_en") @db.Text
+  contentHi     String   @map("content_hi") @db.Text
+  status        String   @default("Active") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.DateTime(0)
 
-  @@index([section_number], map: "principles_section_idx")
+  @@index([sectionNumber], map: "principles_section_idx")
   @@map("principles")
 }
 
 model Rule {
-  id             String   @id @db.VarChar(64)
-  section_number Int?
-  title_en       String   @db.Text
-  title_hi       String   @db.Text
-  content_en     String   @db.Text
-  content_hi     String   @db.Text
-  status         String?  @default("Active") @db.VarChar(64)
-  created_at     DateTime @default(now()) @db.DateTime(0)
-  updated_at     DateTime @default(now()) @db.DateTime(0)
+  id            String   @id @db.VarChar(64)
+  sectionNumber Int?     @map("section_number")
+  titleEn       String   @map("title_en") @db.Text
+  titleHi       String   @map("title_hi") @db.Text
+  contentEn     String   @map("content_en") @db.Text
+  contentHi     String   @map("content_hi") @db.Text
+  status        String?  @default("Active") @db.VarChar(64)
+  createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@map("rules")
 }
 
 model SamitiMember {
-  id         String   @id @db.VarChar(64)
-  samiti_id  String   @db.VarChar(64)
-  name       String   @db.Text
-  position   String?  @db.VarChar(255)
-  mobile     String?  @db.VarChar(255)
-  email      String?  @db.VarChar(255)
-  status     String?  @default("Active") @db.VarChar(64)
-  created_at DateTime @default(now()) @db.DateTime(0)
-  updated_at DateTime @default(now()) @db.DateTime(0)
+  id        String   @id @db.VarChar(64)
+  samitiId  String   @map("samiti_id") @db.VarChar(64)
+  name      String   @db.Text
+  position  String?  @db.VarChar(255)
+  mobile    String?  @db.VarChar(255)
+  email     String?  @db.VarChar(255)
+  status    String?  @default("Active") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@map("samiti_members")
 }
@@ -249,144 +249,144 @@ model Samiti {
   id          String    @id @db.VarChar(64)
   name        String    @db.Text
   description String?   @db.Text
-  formed_date DateTime? @db.Date
+  formedDate  DateTime? @map("formed_date") @db.Date
   status      String?   @default("Active") @db.VarChar(64)
-  created_at  DateTime  @default(now()) @db.DateTime(0)
-  updated_at  DateTime  @default(now()) @db.DateTime(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
   @@map("samitis")
 }
 
 model StudentApplication {
-  id                   String    @id @db.VarChar(64)
-  application_id       String    @unique(map: "application_id") @db.VarChar(255)
-  status               String?   @default("SUBMITTED") @db.VarChar(64)
-  student_name         String    @db.Text
-  mobile               String    @db.VarChar(255)
-  email                String?   @db.VarChar(255)
-  dob                  DateTime? @db.Date
-  gender               String?   @db.VarChar(255)
-  course               String?   @db.VarChar(255)
-  institution          String?   @db.VarChar(255)
-  academic_year        String?   @db.VarChar(255)
-  guardian_name        String?   @db.VarChar(255)
-  guardian_mobile      String?   @db.VarChar(255)
-  address              String?   @db.Text
-  city                 String?   @db.VarChar(255)
-  district             String?   @db.VarChar(255)
-  state                String?   @db.VarChar(255)
-  pincode              String?   @db.VarChar(255)
-  photo_url            String?   @db.Text
-  submitted_date       DateTime? @db.DateTime(0)
-  admin_remarks        String?   @db.Text
-  reviewed_date        DateTime? @db.DateTime(0)
-  resulting_student_id String?   @db.VarChar(255)
-  created_at           DateTime  @default(now()) @db.DateTime(0)
-  updated_at           DateTime  @default(now()) @db.DateTime(0)
-  father_name          String?   @db.VarChar(255)
+  id                 String    @id @db.VarChar(64)
+  applicationId      String    @unique(map: "application_id") @map("application_id") @db.VarChar(255)
+  status             String?   @default("SUBMITTED") @db.VarChar(64)
+  studentName        String    @map("student_name") @db.Text
+  mobile             String    @db.VarChar(255)
+  email              String?   @db.VarChar(255)
+  dob                DateTime? @db.Date
+  gender             String?   @db.VarChar(255)
+  course             String?   @db.VarChar(255)
+  institution        String?   @db.VarChar(255)
+  academicYear       String?   @map("academic_year") @db.VarChar(255)
+  guardianName       String?   @map("guardian_name") @db.VarChar(255)
+  guardianMobile     String?   @map("guardian_mobile") @db.VarChar(255)
+  address            String?   @db.Text
+  city               String?   @db.VarChar(255)
+  district           String?   @db.VarChar(255)
+  state              String?   @db.VarChar(255)
+  pincode            String?   @db.VarChar(255)
+  photoUrl           String?   @map("photo_url") @db.Text
+  submittedDate      DateTime? @map("submitted_date") @db.DateTime(0)
+  adminRemarks       String?   @map("admin_remarks") @db.Text
+  reviewedDate       DateTime? @map("reviewed_date") @db.DateTime(0)
+  resultingStudentId String?   @map("resulting_student_id") @db.VarChar(255)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  fatherName         String?   @map("father_name") @db.VarChar(255)
 
   @@map("student_applications")
 }
 
 model Student {
-  id                   String    @id @db.VarChar(64)
-  student_id           String?   @unique(map: "student_id") @db.VarChar(255)
-  student_name         String    @db.Text
-  status               String?   @default("PENDING") @db.VarChar(64)
-  mobile               String?   @db.VarChar(255)
-  email                String?   @db.VarChar(255)
-  dob                  DateTime? @db.Date
-  gender               String?   @db.VarChar(255)
-  course               String?   @db.VarChar(255)
-  institution          String?   @db.VarChar(255)
-  academic_year        String?   @db.VarChar(255)
-  guardian_name        String?   @db.VarChar(255)
-  guardian_mobile      String?   @db.VarChar(255)
-  address              String?   @db.Text
-  city                 String?   @db.VarChar(255)
-  district             String?   @db.VarChar(255)
-  state                String?   @db.VarChar(255)
-  pincode              String?   @db.VarChar(255)
-  photo_url            String?   @db.Text
-  registration_date    DateTime? @db.DateTime(0)
-  application_id       String?   @db.VarChar(255)
-  linked_family_id     String?   @db.VarChar(255)
-  linked_membership_id String?   @db.VarChar(255)
-  created_at           DateTime  @default(now()) @db.DateTime(0)
-  updated_at           DateTime  @default(now()) @db.DateTime(0)
-  father_name          String?   @db.VarChar(255)
+  id                 String    @id @db.VarChar(64)
+  studentId          String?   @unique(map: "student_id") @map("student_id") @db.VarChar(255)
+  studentName        String    @map("student_name") @db.Text
+  status             String?   @default("PENDING") @db.VarChar(64)
+  mobile             String?   @db.VarChar(255)
+  email              String?   @db.VarChar(255)
+  dob                DateTime? @db.Date
+  gender             String?   @db.VarChar(255)
+  course             String?   @db.VarChar(255)
+  institution        String?   @db.VarChar(255)
+  academicYear       String?   @map("academic_year") @db.VarChar(255)
+  guardianName       String?   @map("guardian_name") @db.VarChar(255)
+  guardianMobile     String?   @map("guardian_mobile") @db.VarChar(255)
+  address            String?   @db.Text
+  city               String?   @db.VarChar(255)
+  district           String?   @db.VarChar(255)
+  state              String?   @db.VarChar(255)
+  pincode            String?   @db.VarChar(255)
+  photoUrl           String?   @map("photo_url") @db.Text
+  registrationDate   DateTime? @map("registration_date") @db.DateTime(0)
+  applicationId      String?   @map("application_id") @db.VarChar(255)
+  linkedFamilyId     String?   @map("linked_family_id") @db.VarChar(255)
+  linkedMembershipId String?   @map("linked_membership_id") @db.VarChar(255)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  fatherName         String?   @map("father_name") @db.VarChar(255)
 
   @@index([email], map: "students_email_idx")
   @@map("students")
 }
 
 model Transaction {
-  id             String    @id @db.VarChar(64)
-  transaction_id String    @unique(map: "transaction_id") @db.VarChar(255)
-  type           String    @db.VarChar(255)
-  amount         Decimal   @db.Decimal(12, 2)
-  payment_method String?   @db.VarChar(255)
-  payment_status String?   @default("PENDING") @db.VarChar(64)
-  family_id      String?   @db.VarChar(255)
-  member_id      String?   @db.VarChar(255)
-  event_id       String?   @db.VarChar(255)
-  reference_id   String?   @db.VarChar(255)
-  date           DateTime? @db.DateTime(0)
-  remarks        String?   @db.Text
-  created_at     DateTime  @default(now()) @db.DateTime(0)
-  updated_at     DateTime  @default(now()) @db.DateTime(0)
+  id            String    @id @db.VarChar(64)
+  transactionId String    @unique(map: "transaction_id") @map("transaction_id") @db.VarChar(255)
+  type          String    @db.VarChar(255)
+  amount        Decimal   @db.Decimal(12, 2)
+  paymentMethod String?   @map("payment_method") @db.VarChar(255)
+  paymentStatus String?   @default("PENDING") @map("payment_status") @db.VarChar(64)
+  familyId      String?   @map("family_id") @db.VarChar(255)
+  memberId      String?   @map("member_id") @db.VarChar(255)
+  eventId       String?   @map("event_id") @db.VarChar(255)
+  referenceId   String?   @map("reference_id") @db.VarChar(255)
+  date          DateTime? @db.DateTime(0)
+  remarks       String?   @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
 
-  @@index([family_id, date], map: "transactions_family_idx")
+  @@index([familyId, date], map: "transactions_family_idx")
   @@map("transactions")
 }
 
 model TransferRequest {
-  id                      String    @id @db.VarChar(64)
-  request_id              String    @unique(map: "request_id") @db.VarChar(255)
-  request_type            String    @db.VarChar(255)
-  status                  String    @default("PENDING") @db.VarChar(64)
-  reason                  String?   @db.Text
-  source_student_id       String?   @db.VarChar(255)
-  source_membership_id    String?   @db.VarChar(255)
-  source_family_id        String?   @db.VarChar(255)
-  target_family_id        String?   @db.VarChar(255)
-  requester_id            String?   @db.VarChar(255)
-  admin_remarks           String?   @db.Text
-  approved_by_id          String?   @db.VarChar(255)
-  approved_date           DateTime? @db.DateTime(0)
-  resulting_membership_id String?   @db.VarChar(255)
-  old_family_id           String?   @db.VarChar(255)
-  new_family_id           String?   @db.VarChar(255)
-  created_at              DateTime  @default(now()) @db.DateTime(0)
-  updated_at              DateTime  @default(now()) @db.DateTime(0)
-  requester_name          String?   @db.VarChar(255)
-  requester_email         String?   @db.VarChar(255)
-  requester_mobile        String?   @db.VarChar(255)
-  target_family_name      String?   @db.Text
-  requested_date          DateTime? @db.DateTime(0)
+  id                    String    @id @db.VarChar(64)
+  requestId             String    @unique(map: "request_id") @map("request_id") @db.VarChar(255)
+  requestType           String    @map("request_type") @db.VarChar(255)
+  status                String    @default("PENDING") @db.VarChar(64)
+  reason                String?   @db.Text
+  sourceStudentId       String?   @map("source_student_id") @db.VarChar(255)
+  sourceMembershipId    String?   @map("source_membership_id") @db.VarChar(255)
+  sourceFamilyId        String?   @map("source_family_id") @db.VarChar(255)
+  targetFamilyId        String?   @map("target_family_id") @db.VarChar(255)
+  requesterId           String?   @map("requester_id") @db.VarChar(255)
+  adminRemarks          String?   @map("admin_remarks") @db.Text
+  approvedById          String?   @map("approved_by_id") @db.VarChar(255)
+  approvedDate          DateTime? @map("approved_date") @db.DateTime(0)
+  resultingMembershipId String?   @map("resulting_membership_id") @db.VarChar(255)
+  oldFamilyId           String?   @map("old_family_id") @db.VarChar(255)
+  newFamilyId           String?   @map("new_family_id") @db.VarChar(255)
+  createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt             DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  requesterName         String?   @map("requester_name") @db.VarChar(255)
+  requesterEmail        String?   @map("requester_email") @db.VarChar(255)
+  requesterMobile       String?   @map("requester_mobile") @db.VarChar(255)
+  targetFamilyName      String?   @map("target_family_name") @db.Text
+  requestedDate         DateTime? @map("requested_date") @db.DateTime(0)
 
   @@map("transfer_requests")
 }
 
 model User {
-  id                     String    @id @db.VarChar(64)
-  email                  String?   @unique(map: "email") @db.VarChar(255)
-  full_name              String?   @db.VarChar(255)
-  role                   String?   @default("user") @db.VarChar(64)
-  password_hash          String?   @db.Text
-  is_verified            Boolean   @default(true)
-  status                 String    @default("active") @db.VarChar(64)
-  session_token          String?   @db.Text
-  session_expires_at     DateTime? @db.DateTime(0)
-  reset_token_hash       String?   @db.Text
-  reset_token_expires_at DateTime? @db.DateTime(0)
-  created_at             DateTime  @default(now()) @db.DateTime(0)
-  updated_at             DateTime  @default(now()) @db.DateTime(0)
-  phone                  String?   @db.VarChar(20)
-  otp_hash               String?   @db.VarChar(255)
-  otp_expires_at         DateTime? @db.DateTime(0)
+  id                  String    @id @db.VarChar(64)
+  email               String?   @unique(map: "email") @db.VarChar(255)
+  fullName            String?   @map("full_name") @db.VarChar(255)
+  role                String?   @default("user") @db.VarChar(64)
+  passwordHash        String?   @map("password_hash") @db.Text
+  isVerified          Boolean   @default(true) @map("is_verified")
+  status              String    @default("active") @db.VarChar(64)
+  sessionToken        String?   @map("session_token") @db.Text
+  sessionExpiresAt    DateTime? @map("session_expires_at") @db.DateTime(0)
+  resetTokenHash      String?   @map("reset_token_hash") @db.Text
+  resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.DateTime(0)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  phone               String?   @db.VarChar(20)
+  otpHash             String?   @map("otp_hash") @db.VarChar(255)
+  otpExpiresAt        DateTime? @map("otp_expires_at") @db.DateTime(0)
 
-  @@index([reset_token_hash(length: 255)], map: "users_reset_token_idx")
-  @@index([session_token(length: 255)])
+  @@index([resetTokenHash(length: 255)], map: "users_reset_token_idx")
+  @@index([sessionToken(length: 255)])
   @@map("users")
 }

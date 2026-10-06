@@ -1,21 +1,11 @@
 import { Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { PrismaService } from "../../database/prisma.service.js";
+import type { User } from "../../generated/prisma/client.js";
 import { ApiError } from "../filters/api-error.js";
 import { sha256 } from "../utils/crypto.js";
 
-export interface UserRow {
-  [column: string]: unknown;
-  id: string;
-  email: string | null;
-  full_name: string | null;
-  phone: string | null;
-  role: string | null;
-  password_hash: string | null;
-  is_verified: number | boolean;
-  otp_hash?: string | null;
-  otp_expires_at?: Date | string | null;
-}
+export type UserRow = User;
 
 export const AUTH_REQUIRED = "Authentication required.";
 export const ADMIN_REQUIRED = "Admin access required.";
@@ -32,9 +22,7 @@ export class SessionService {
     const token = bearerToken(request);
     if (!token) return null;
     // Only a SHA-256 of each session token is stored, so a database copy can't be used to log in.
-    // Expiry is checked against the database clock (sessions are written with NOW()).
-    const [user] = await this.prisma.$queryRaw<UserRow[]>`SELECT * FROM users WHERE session_token = ${sha256(token)} AND session_expires_at > NOW() LIMIT 1`;
-    return user || null;
+    return this.prisma.user.findFirst({ where: { sessionToken: sha256(token), sessionExpiresAt: { gt: new Date() } } });
   }
 
   async requireUser(request: Request): Promise<UserRow> {

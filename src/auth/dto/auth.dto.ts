@@ -9,7 +9,7 @@ import { IsOptional } from "class-validator";
 export class RegisterDto {
   @ApiPropertyOptional({ example: "member@example.com" }) @IsOptional() email?: string;
   @ApiPropertyOptional({ example: "secret1", minLength: 6 }) @IsOptional() password?: string;
-  @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() full_name?: string;
+  @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() fullName?: string;
   @ApiPropertyOptional({ example: "9876543210", description: "10-digit Indian mobile starting 6-9" }) @IsOptional() phone?: string;
   @ApiPropertyOptional({ description: "Google reCAPTCHA v3 token (required when the server has a secret configured)" }) @IsOptional() recaptchaToken?: string;
 }
@@ -38,7 +38,7 @@ export class ResetPasswordDto {
 export class InviteDto {
   @ApiPropertyOptional({ example: "new.member@example.com" }) @IsOptional() email?: string;
   @ApiPropertyOptional({ enum: ["user", "admin"], default: "user" }) @IsOptional() role?: string;
-  @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() full_name?: string;
+  @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() fullName?: string;
   @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() phone?: string;
 }
 

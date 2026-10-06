@@ -4,7 +4,6 @@
 // auth failures where they apply.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { ENTITY_DEFINITIONS, ENTITY_NAMES } from "../entities/entity-definitions.js";
 import { api, FAMILY, OTP, PASSWORD, startApp, stopApp, TOKENS } from "../testing/e2e-app.js";
 
 const V1 = "/api/v1";
@@ -74,7 +73,7 @@ describe("auth", () => {
     });
     const res = await api("post", `${V1}/auth/otp-verifications`).send({ email: "otp@e2e.local", otpCode: OTP });
     assert.equal(res.status, 200);
-    assert.match(res.body.access_token, /^[0-9a-f]{64}$/);
+    assert.match(res.body.accessToken, /^[0-9a-f]{64}$/);
   });
   test("POST /auth/otps", async () => {
     assert.equal((await api("post", `${V1}/auth/otps`).send({})).status, 400);
@@ -87,7 +86,7 @@ describe("auth", () => {
     });
     const login = await api("post", `${V1}/auth/sessions`).send({ email: "otp@e2e.local", password: PASSWORD });
     assert.equal(login.status, 200);
-    const token = login.body.access_token as string;
+    const token = login.body.accessToken as string;
     assert.equal((await api("get", `${V1}/auth/me`, token)).status, 200);
     const logout = await api("delete", `${V1}/auth/sessions/current`, token);
     assert.equal(logout.status, 204);
@@ -120,7 +119,7 @@ describe("auth", () => {
     assert.deepEqual((await api("get", `${V1}/auth/me`, TOKENS.member)).body, {
       id: "u-member",
       email: "member@e2e.local",
-      full_name: "Member",
+      fullName: "Member",
       phone: "9100000002",
       role: "user",
     });
@@ -131,7 +130,7 @@ describe("me", () => {
   test("GET /me/family", async () => {
     assert.deepEqual((await api("get", `${V1}/me/family`)).body, AUTH_REQUIRED);
     const res = await api("get", `${V1}/me/family`, TOKENS.member);
-    assert.equal(res.body.family.family_id, FAMILY);
+    assert.equal(res.body.family.familyId, FAMILY);
     assert.equal(res.body.members.length, 1);
   });
   test("GET /me/feedback", async () => {
@@ -143,14 +142,14 @@ describe("me", () => {
 describe("public lookups", () => {
   test("GET /family-verifications/:familyId", async () => {
     const res = await api("get", `${V1}/family-verifications/${FAMILY}`);
-    assert.equal(res.body.family.family_id, FAMILY);
+    assert.equal(res.body.family.familyId, FAMILY);
     assert.equal((await api("get", `${V1}/family-verifications/NPSI-FAM-999999`)).status, 404);
   });
   test("GET /application-status", async () => {
     assert.equal((await api("get", `${V1}/application-status`)).status, 400);
     assert.equal((await api("get", `${V1}/application-status?applicationId=NPSI-APP-2026-000001&mobile=1`)).status, 404);
     const res = await api("get", `${V1}/application-status?applicationId=NPSI-APP-2026-000001&mobile=9400000001`);
-    assert.equal(res.body.application_id, "NPSI-APP-2026-000001");
+    assert.equal(res.body.applicationId, "NPSI-APP-2026-000001");
   });
   test("GET /mobile-availability and /email-availability", async () => {
     assert.deepEqual((await api("get", `${V1}/mobile-availability?mobile=9300000001`)).body, { taken: true });
@@ -179,61 +178,91 @@ describe("uploads", () => {
     assert.equal((await api("post", `${V1}/uploads`).attach("file", Buffer.from("x"), { filename: "a.txt", contentType: "text/plain" })).status, 400);
     const res = await api("post", `${V1}/uploads`).attach("file", PNG, { filename: "a.png", contentType: "image/png" });
     assert.equal(res.status, 201);
-    const path = new URL(res.body.file_url).pathname;
+    const path = new URL(res.body.fileUrl).pathname;
     assert.match(path, /^\/uploads\/[0-9a-f-]{36}\.png$/);
     assert.equal((await api("get", path)).status, 200);
   });
 });
 
-describe("entity resources", () => {
+const RESOURCES = [
+  "announcements",
+  "applications",
+  "event-registrations",
+  "events",
+  "families",
+  "family-members",
+  "feedback",
+  "notifications",
+  "principles",
+  "rules",
+  "samiti-members",
+  "samitis",
+  "student-applications",
+  "students",
+  "transactions",
+  "transfer-requests",
+];
+
+describe("model resources", () => {
   test("every resource lists for admins and rejects anonymous admin-only reads", async () => {
-    for (const name of ENTITY_NAMES) {
-      const { resource } = ENTITY_DEFINITIONS[name];
+    for (const resource of RESOURCES) {
       const res = await api("get", `${V1}/${resource}`, TOKENS.admin);
       assert.equal(res.status, 200, resource);
       if (["events", "announcements", "rules", "principles"].includes(resource)) assert.equal((await api("get", `${V1}/${resource}`)).status, 200, resource);
       else assert.equal((await api("get", `${V1}/${resource}`)).status, 401, resource);
     }
   });
-  test("GET with filter/order/limit", async () => {
-    const res = await api("get", `${V1}/events?filter=${encodeURIComponent('{"title":"Event"}')}&order=title&limit=5`);
+  test("GET with order/limit and the resource's filters; anything else is a 400", async () => {
+    const res = await api("get", `${V1}/events?order=title&limit=5`);
     assert.deepEqual(
       res.body.map((e: { id: string }) => e.id),
       ["ev-1"],
     );
+    const families = await api("get", `${V1}/families?familyId=${FAMILY}&status=ACTIVE`, TOKENS.admin);
+    assert.deepEqual(
+      families.body.map((f: { familyId: string }) => f.familyId),
+      [FAMILY],
+    );
+    assert.equal((await api("get", `${V1}/events?order=nope`)).status, 400);
+    assert.equal((await api("get", `${V1}/events?limit=0`)).status, 400);
   });
   test("POST /families: auth, ownership, sequential ids, field whitelist", async () => {
     assert.deepEqual((await api("post", `${V1}/families`).send({})).body, AUTH_REQUIRED);
     assert.deepEqual((await api("post", `${V1}/families`, TOKENS.member).send({})).body, ADMIN_REQUIRED);
-    const res = await api("post", `${V1}/families`, TOKENS.admin).send({ family_name: "New", notAColumn: "dropped" });
+    const res = await api("post", `${V1}/families`, TOKENS.admin).send({ familyName: "New", notAColumn: "dropped" });
     assert.equal(res.status, 201);
-    assert.equal(res.body.family_id, "NPSI-FAM-000002");
+    assert.equal(res.body.familyId, "NPSI-FAM-000002");
     assert.ok(!("notAColumn" in res.body));
   });
-  test("POST /family-members accepts camelCase field names", async () => {
-    const res = await api("post", `${V1}/family-members`, TOKENS.member).send({ familyId: FAMILY, name: "Kid", relationship: "Son" });
-    assert.equal(res.status, 403, "member's family_id check uses the snake_case field");
-    const ok = await api("post", `${V1}/family-members`, TOKENS.admin).send({ familyId: FAMILY, name: "Kid", relationship: "Son" });
+  test("POST /family-members: required fields, ownership, camelCase in and out", async () => {
+    assert.deepEqual((await api("post", `${V1}/family-members`, TOKENS.admin).send({ familyId: FAMILY, relationship: "Son" })).body, {
+      error: "Name is required.",
+    });
+    const ok = await api("post", `${V1}/family-members`, TOKENS.admin).send({ familyId: FAMILY, name: "Kid", relationship: "Son", dob: "2015-03-04" });
     assert.equal(ok.status, 201);
-    assert.equal(ok.body.family_id, FAMILY);
+    assert.deepEqual([ok.body.familyId, ok.body.dob, ok.body.membershipId], [FAMILY, "2015-03-04", "NPSI-MEM-000002"]);
   });
   test("POST /applications: validation and duplicate checks", async () => {
     assert.deepEqual((await api("post", `${V1}/applications`).send({ mobile: "1" })).body, { error: "A valid 10-digit mobile number is required." });
-    const valid = { family_head_name: "H", mobile: "9876500001", family_name: "F", email: "f@e2e.local", address: "A", city: "C", district: "D" };
+    const valid = { familyHeadName: "H", mobile: "9876500001", familyName: "F", email: "f@e2e.local", address: "A", city: "C", district: "D" };
     assert.equal((await api("post", `${V1}/applications`).send({ ...valid, mobile: "9300000001" })).status, 409);
     const res = await api("post", `${V1}/applications`).send({ ...valid, recaptchaToken: "t" });
     assert.equal(res.status, 201);
     assert.ok(!("recaptchaToken" in res.body));
   });
-  test("POST /:resource/batch", async () => {
-    assert.deepEqual((await api("post", `${V1}/samitis/batch`).send({ records: [] })).body, AUTH_REQUIRED);
-    assert.deepEqual((await api("post", `${V1}/samitis/batch`, TOKENS.member).send({ records: [] })).body, ADMIN_REQUIRED);
-    const empty = await api("post", `${V1}/samitis/batch`, TOKENS.admin).send({ records: [] });
+  test("POST /family-members/batch", async () => {
+    assert.deepEqual((await api("post", `${V1}/family-members/batch`).send({ records: [] })).body, AUTH_REQUIRED);
+    assert.deepEqual((await api("post", `${V1}/family-members/batch`, TOKENS.member).send({ records: [] })).body, ADMIN_REQUIRED);
+    const empty = await api("post", `${V1}/family-members/batch`, TOKENS.admin).send({ records: [] });
     assert.deepEqual([empty.status, empty.body], [200, []]);
-    const res = await api("post", `${V1}/samitis/batch`, TOKENS.admin).send({ records: [{ name: "A" }, { name: "B" }] });
+    const records = [
+      { familyId: FAMILY, name: "A", relationship: "Son" },
+      { familyId: FAMILY, name: "B", relationship: "Daughter" },
+    ];
+    const res = await api("post", `${V1}/family-members/batch`, TOKENS.admin).send({ records });
     assert.equal(res.status, 201);
     assert.deepEqual(
-      res.body.map((s: { name: string }) => s.name),
+      res.body.map((m: { name: string }) => m.name),
       ["A", "B"],
     );
   });

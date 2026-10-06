@@ -1,42 +1,52 @@
 import { Injectable } from "@nestjs/common";
-import { toApiRow } from "../database/column-codec.js";
-import type { DbRow } from "../database/database.types.js";
 import { PrismaService } from "../database/prisma.service.js";
-import { ENTITY_DEFINITIONS } from "../entities/entity-definitions.js";
-import { Prisma } from "../generated/prisma/client.js";
+import { type Application, Prisma } from "../generated/prisma/client.js";
 
 const NOT_REJECTED = Prisma.sql`(status IS NULL OR status <> 'REJECTED')`;
 const notId = (id?: string) => (id === undefined ? Prisma.sql`TRUE` : Prisma.sql`id <> ${id}`);
-// Digits only, last 10 — the same normalization as normalizeMobile().
+// Digits only, last 10: the same normalization as normalizeMobile().
 const mobileEquals = (target: string) => (column: Prisma.Sql) => Prisma.sql`RIGHT(REGEXP_REPLACE(COALESCE(${column}, ''), '[^0-9]', ''), 10) = ${target}`;
+
+export interface PublicFamily {
+  familyId: string | null;
+  familyName: string | null;
+  headName: string | null;
+  status: string | null;
+  city: string | null;
+  registrationDate: Date | null;
+}
+
+export interface PublicMember {
+  name: string;
+  relationship: string;
+  gender: string | null;
+  status: string | null;
+}
 
 // Reads behind the public lookups and the duplicate-contact checks.
 @Injectable()
 export class LookupsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async publicFamily(familyId: string): Promise<DbRow | undefined> {
-    const row = await this.prisma.family.findFirst({
-      where: { family_id: familyId },
-      select: { family_id: true, family_name: true, head_name: true, status: true, city: true, registration_date: true },
+  publicFamily(familyId: string): Promise<PublicFamily | null> {
+    return this.prisma.family.findFirst({
+      where: { familyId },
+      select: { familyId: true, familyName: true, headName: true, status: true, city: true, registrationDate: true },
     });
-    return row ?? undefined;
   }
 
-  publicMembers(familyId: string): Promise<DbRow[]> {
+  publicMembers(familyId: string): Promise<PublicMember[]> {
     return this.prisma.familyMember.findMany({
-      where: { family_id: familyId },
+      where: { familyId },
       select: { name: true, relationship: true, gender: true, status: true },
-      orderBy: { created_at: "asc" },
+      orderBy: { createdAt: "asc" },
     });
   }
 
-  async application(applicationId: string, mobile: string): Promise<DbRow | undefined> {
-    const row = await this.prisma.application.findFirst({ where: { application_id: applicationId, mobile } });
-    return row ? toApiRow(ENTITY_DEFINITIONS.Application.columns, row) : undefined;
+  application(applicationId: string, mobile: string): Promise<Application | null> {
+    return this.prisma.application.findFirst({ where: { applicationId, mobile } });
   }
 
-  // Counts come back as numbers, like COUNT(*) did.
   async activeCounts(): Promise<{ families: number; members: number }> {
     const [families, members] = await Promise.all([
       this.prisma.family.count({ where: { status: "ACTIVE" } }),
@@ -45,10 +55,10 @@ export class LookupsRepository {
     return { families, members };
   }
 
-  // Duplicate-contact checks, evaluated in MySQL instead of loading whole
-  // tables: mobiles compare on their last 10 digits, emails trimmed and
-  // case-insensitively, and rejected applications never count (a NULL status
-  // does count, as it always did).
+  // Duplicate-contact checks run as one SQL query each: mobiles compare on
+  // their last 10 digits whatever was typed (REGEXP_REPLACE, which Prisma's
+  // query API can't express), emails trimmed and case-insensitively, and
+  // rejected applications never count (a NULL status does).
 
   // Public "is this mobile free?" check (all five contact sources).
   mobileUsedAnywhere(target: string): Promise<boolean> {

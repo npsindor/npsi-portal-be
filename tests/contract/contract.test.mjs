@@ -11,7 +11,7 @@ const api = (key, args = [], opts = {}) => {
   return call(method, url, opts);
 };
 const YEAR = new Date().getFullYear();
-const PUBLIC_USER_KEYS = ["email", "full_name", "id", "phone", "role"];
+const PUBLIC_USER_KEYS = ["email", "fullName", "id", "phone", "role"];
 const keys = (obj) => Object.keys(obj).sort();
 const assertError = (res, status, message) => {
   assert.equal(res.status, status, `expected ${status}, got ${res.status}: ${JSON.stringify(res.body)}`);
@@ -20,8 +20,8 @@ const assertError = (res, status, message) => {
 };
 const assertRecord = (record) => {
   assert.ok(record.id, "record has id");
-  assert.ok("created_date" in record && "updated_date" in record, "timestamps renamed to *_date");
-  assert.ok(!("created_at" in record) && !("updated_at" in record), "raw timestamps not exposed");
+  assert.ok("createdAt" in record && "updatedAt" in record, "camelCase timestamps");
+  assert.ok(!Object.keys(record).some((key) => key.includes("_")), "no snake_case fields");
 };
 
 before(setup, { timeout: 120000 });
@@ -102,7 +102,7 @@ describe("auth: register", () => {
     const res = await api("register").send({
       email: "  New.User@Test.Local ",
       password: "secret1",
-      full_name: " New User ",
+      fullName: " New User ",
       phone: "9811111111",
       recaptchaToken: "ignored",
     });
@@ -112,7 +112,7 @@ describe("auth: register", () => {
     assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
     assert.deepEqual(
       { ...res.body.user, id: undefined },
-      { id: undefined, email: "new.user@test.local", full_name: "New User", phone: "9811111111", role: "user" },
+      { id: undefined, email: "new.user@test.local", fullName: "New User", phone: "9811111111", role: "user" },
     );
     const [row] = await query("SELECT is_verified, otp_hash FROM users WHERE id = ?", [res.body.user.id]);
     assert.equal(row.is_verified, 0);
@@ -132,10 +132,10 @@ describe("auth: OTP", () => {
   test("200 verifies the account and returns a session", async () => {
     const res = await api("verifyOtp").send({ email: "OTP@test.local", otpCode: OTP_CODE });
     assert.equal(res.status, 200);
-    assert.deepEqual(keys(res.body), ["access_token", "user"]);
-    assert.match(res.body.access_token, /^[0-9a-f]{64}$/);
+    assert.deepEqual(keys(res.body), ["accessToken", "user"]);
+    assert.match(res.body.accessToken, /^[0-9a-f]{64}$/);
     assert.equal(res.body.user.email, "otp@test.local");
-    const me = await api("me", [], { token: res.body.access_token });
+    const me = await api("me", [], { token: res.body.accessToken });
     assert.equal(me.status, 200);
   });
   test("resend: 400 without email", async () => {
@@ -168,7 +168,7 @@ describe("auth: login", () => {
     for (const body of [{ email: "LOGIN@test.local" }, { phone: "+91 91000 00006" }, { username: "login@test.local" }]) {
       const res = await api("login").send({ ...body, password: PASSWORDS.login });
       assert.equal(res.status, 200, JSON.stringify(body));
-      assert.deepEqual(keys(res.body), ["access_token", "user"]);
+      assert.deepEqual(keys(res.body), ["accessToken", "user"]);
       assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
       assert.equal(res.body.user.id, IDS.loginUser);
     }
@@ -185,14 +185,14 @@ describe("auth: me and logout", () => {
   test("200 returns only public user fields", async () => {
     const res = await api("me", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { id: IDS.memberUser, email: "member@test.local", full_name: "member", phone: "9100000002", role: "user" });
+    assert.deepEqual(res.body, { id: IDS.memberUser, email: "member@test.local", fullName: "member", phone: "9100000002", role: "user" });
   });
   test("logout returns 204 and ends the session", async () => {
     const login = await api("login").send({ email: "login@test.local", password: PASSWORDS.login });
-    const res = await api("logout", [], { token: login.body.access_token });
+    const res = await api("logout", [], { token: login.body.accessToken });
     assert.equal(res.status, 204);
     assert.equal(res.text, "");
-    assertError(await api("me", [], { token: login.body.access_token }), 401, "Authentication required.");
+    assertError(await api("me", [], { token: login.body.accessToken }), 401, "Authentication required.");
   });
   // Without a token there is no session to end: still a 204, nothing changes.
   test("logout without a token is a no-op 204", async () => {
@@ -275,7 +275,7 @@ describe("auth: invite", () => {
     assertError(await api("invite", [], { token: TOKENS.admin }).send({}), 400, "Email is required.");
   });
   test("201 creates an invited user with a random password", async () => {
-    const res = await api("invite", [], { token: TOKENS.admin }).send({ email: " Invitee@Test.Local ", full_name: "Invitee", role: "admin" });
+    const res = await api("invite", [], { token: TOKENS.admin }).send({ email: " Invitee@Test.Local ", fullName: "Invitee", role: "admin" });
     assert.equal(res.status, 201);
     assert.deepEqual(keys(res.body), ["ok", "password", "username"]);
     assert.equal(res.body.ok, true);
@@ -295,13 +295,13 @@ describe("me", () => {
     const res = await api("myFamily", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
     assert.deepEqual(keys(res.body), ["family", "members", "student"]);
-    assert.equal(res.body.family.family_id, FAMILY1);
+    assert.equal(res.body.family.familyId, FAMILY1);
     assertRecord(res.body.family);
     assert.deepEqual(
       res.body.members.map((m) => m.id),
       [IDS.member1],
     );
-    assert.equal(res.body.student.student_id, "NPSI-STU-000001");
+    assert.equal(res.body.student.studentId, "NPSI-STU-000001");
   });
   test("family: nulls for a user without a family", async () => {
     const res = await api("myFamily", [], { token: TOKENS.noFamily });
@@ -314,7 +314,7 @@ describe("me", () => {
     const res = await api("myFeedback", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
     assert.deepEqual(
-      res.body.map((f) => f.feedback_id),
+      res.body.map((f) => f.feedbackId),
       ["FB-000001"],
     );
     assertRecord(res.body[0]);
@@ -325,7 +325,7 @@ describe("public lookups", () => {
   test("verify family: 200 with limited columns", async () => {
     const res = await api("verifyFamily", [FAMILY1]);
     assert.equal(res.status, 200);
-    assert.deepEqual(keys(res.body.family), ["city", "family_id", "family_name", "head_name", "registration_date", "status"]);
+    assert.deepEqual(keys(res.body.family), ["city", "familyId", "familyName", "headName", "registrationDate", "status"]);
     assert.deepEqual(res.body.members, [{ name: "Member One", relationship: "Self", gender: "Male", status: "ACTIVE" }]);
   });
   test("verify family: 404 for an unknown id", async () => {
@@ -345,7 +345,7 @@ describe("public lookups", () => {
     const res = await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001&mobile=9400000001"]);
     assert.equal(res.status, 200);
     assertRecord(res.body);
-    assert.deepEqual(res.body.members_data, [{ name: "A" }]);
+    assert.deepEqual(res.body.membersData, [{ name: "A" }]);
   });
   test("mobile availability", async () => {
     assert.deepEqual((await api("checkMobile", ["?mobile=%2B91%2093000%2000001"])).body, { taken: true });
@@ -378,9 +378,9 @@ describe("uploads", () => {
   test("201 stores the image and serves it from /uploads", async () => {
     const res = await api("upload").attach("file", png, { filename: "../../evil.php", contentType: "image/png" });
     assert.equal(res.status, 201);
-    assert.deepEqual(keys(res.body), ["file_url"]);
-    const match = res.body.file_url.match(/^http:\/\/127\.0\.0\.1:\d+(\/uploads\/[0-9a-f-]{36}\.png)$/);
-    assert.ok(match, res.body.file_url);
+    assert.deepEqual(keys(res.body), ["fileUrl"]);
+    const match = res.body.fileUrl.match(/^http:\/\/127\.0\.0\.1:\d+(\/uploads\/[0-9a-f-]{36}\.png)$/);
+    assert.ok(match, res.body.fileUrl);
     const served = await call("GET", match[1]);
     assert.equal(served.status, 200);
     assert.match(served.headers["content-type"], /image\/png/);
@@ -397,21 +397,25 @@ describe("entities: list", () => {
     );
     res.body.forEach(assertRecord);
   });
-  test("order, filter and limit query params", async () => {
+  test("order and limit query params; resource filters as plain query parameters", async () => {
     assert.deepEqual(
       (await api("list", ["Event", "?order=title"])).body.map((e) => e.title),
       ["Free Event", "Paid Event"],
     );
-    assert.deepEqual(
-      (await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ title: "Paid Event" }))}`])).body.map((e) => e.id),
-      [IDS.event],
-    );
     assert.equal((await api("list", ["Event", "?limit=1"])).body.length, 1);
+    assert.deepEqual(
+      (await api("list", ["FamilyMember", `?familyId=${FAMILY1}`], { token: TOKENS.admin })).body.map((m) => m.familyId),
+      [FAMILY1],
+    );
+    assert.deepEqual(
+      (await api("list", ["Family", `?familyId=${FAMILY2}&status=ACTIVE`], { token: TOKENS.admin })).body.map((f) => f.familyId),
+      [FAMILY2],
+    );
   });
-  test("malformed filter JSON is a 500 with the error format", async () => {
-    const res = await api("list", ["Event", "?filter=%7Bnot-json"]);
-    assert.equal(res.status, 500);
-    assert.equal(typeof res.body.error, "string");
+  test("unknown order fields and out-of-range limits are 400s; unknown query parameters are ignored", async () => {
+    assertError(await api("list", ["Event", "?order=nope"]), 400, /^order must be one of the following values: /);
+    assertError(await api("list", ["Event", "?limit=0"]), 400, "limit must not be less than 1");
+    assert.equal((await api("list", ["Event", "?filter=%7Bnot-json"])).status, 200);
   });
   test("admin-only entity: 401 anonymous, 403 member, 200 admin", async () => {
     assertError(await api("list", ["Family"]), 401, "Authentication required.");
@@ -455,180 +459,279 @@ describe("entities: create", () => {
     assert.match(res.body.id, /^[0-9a-f-]{36}$/);
     assert.equal(res.body.title, "<b>Admins may</b>");
   });
-  // Existing quirk, preserved on purpose: a client-supplied `id` overrides the
-  // generated UUID wherever the field whitelist doesn't strip it.
-  test("a client-supplied id is kept (existing behavior)", async () => {
+  test("ids are always generated by the server", async () => {
     const res = await api("create", ["Announcement"], { token: TOKENS.admin }).send({ id: "client-chosen-id", title: "T", body: "B" });
     assert.equal(res.status, 201);
-    assert.equal(res.body.id, "client-chosen-id");
+    assert.match(res.body.id, /^[0-9a-f-]{36}$/);
   });
   test("application: validation errors", async () => {
     const valid = {
-      family_head_name: "Head",
+      familyHeadName: "Head",
       mobile: "9876500001",
-      family_name: "Fam",
+      familyName: "Fam",
       email: "fam1@test.local",
       address: "Addr",
       city: "Indore",
       district: "Indore",
     };
     assertError(await api("create", ["Application"]).send({ ...valid, mobile: "123" }), 400, "A valid 10-digit mobile number is required.");
-    assertError(await api("create", ["Application"]).send({ ...valid, family_name: " " }), 400, "Family name is required.");
+    assertError(await api("create", ["Application"]).send({ ...valid, familyName: " " }), 400, "Family name is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, email: "bad" }), 400, "A valid email address is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, address: "" }), 400, "Address is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, city: "" }), 400, "City is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, district: "" }), 400, "District is required.");
     assertError(
-      await api("create", ["Application"]).send({ ...valid, family_name: "<script>" }),
+      await api("create", ["Application"]).send({ ...valid, familyName: "<script>" }),
       400,
-      'The "family_name" field cannot contain < or > characters.',
+      'The "familyName" field cannot contain < or > characters.',
     );
     assertError(await api("create", ["Application"]).send({ ...valid, mobile: "9300000001" }), 409, "This mobile number is already registered on the portal.");
     assertError(await api("create", ["Application"]).send({ ...valid, email: "member@test.local" }), 409, "This email is already registered on the portal.");
   });
   test("application: 201 with a server-assigned id and parsed JSON", async () => {
     const res = await api("create", ["Application"]).send({
-      family_head_name: "Head",
+      familyHeadName: "Head",
       mobile: "9876500001",
-      family_name: "Fam",
+      familyName: "Fam",
       email: "fam1@test.local",
       address: "Addr",
       city: "Indore",
       district: "Indore",
-      application_id: "CLIENT",
-      members_data: [{ name: "X" }],
+      applicationId: "CLIENT",
+      membersData: [{ name: "X" }],
       recaptchaToken: "t",
-      submitted_date: "2026-02-01T10:00:00.000Z",
+      submittedDate: "2026-02-01T10:00:00.000Z",
     });
     assert.equal(res.status, 201);
     assertRecord(res.body);
-    assert.equal(res.body.application_id, `NPSI-APP-${YEAR}-${YEAR === 2026 ? "000002" : "000001"}`);
-    assert.deepEqual(res.body.members_data, [{ name: "X" }]);
+    assert.equal(res.body.applicationId, `NPSI-APP-${YEAR}-${YEAR === 2026 ? "000002" : "000001"}`);
+    assert.deepEqual(res.body.membersData, [{ name: "X" }]);
     assert.ok(!("recaptchaToken" in res.body));
   });
   test("student application: validation and 201", async () => {
-    const valid = { student_name: "Stu", mobile: "9876500002", email: "stu1@test.local", gender: "Male", father_name: "Dad", academic_year: "2026" };
-    assertError(await api("create", ["StudentApplication"]).send({ ...valid, student_name: "" }), 400, "Student name is required.");
+    const valid = { studentName: "Stu", mobile: "9876500002", email: "stu1@test.local", gender: "Male", fatherName: "Dad", academicYear: "2026" };
+    assertError(await api("create", ["StudentApplication"]).send({ ...valid, studentName: "" }), 400, "Student name is required.");
     assertError(
-      await api("create", ["StudentApplication"]).send({ ...valid, guardian_mobile: "12" }),
+      await api("create", ["StudentApplication"]).send({ ...valid, guardianMobile: "12" }),
       400,
       "Guardian mobile number must be a valid 10-digit number.",
     );
-    assertError(await api("create", ["StudentApplication"]).send({ ...valid, father_name: "" }), 400, "Father's name is required.");
+    assertError(await api("create", ["StudentApplication"]).send({ ...valid, fatherName: "" }), 400, "Father's name is required.");
     const res = await api("create", ["StudentApplication"]).send(valid);
     assert.equal(res.status, 201);
-    assert.equal(res.body.application_id, `NPSI-STU-APP-${YEAR}-000001`);
+    assert.equal(res.body.applicationId, `NPSI-STU-APP-${YEAR}-000001`);
   });
-  test("transaction and notification: public create", async () => {
-    const tx = await api("create", ["Transaction"]).send({ transaction_id: "TX-1", type: "DONATION", amount: 500, date: "2026-02-01" });
+  test("registration flow: fee and notification for a fresh application, once each; the server decides type and status", async () => {
+    const app = await api("create", ["Application"]).send({
+      familyHeadName: "Flow",
+      mobile: "9876500011",
+      familyName: "Flow",
+      email: "flow@test.local",
+      address: "Addr",
+      city: "Indore",
+      district: "Indore",
+      status: "APPROVED",
+      adminRemarks: "self-approved",
+      recaptchaToken: "t",
+    });
+    assert.equal(app.status, 201);
+    assert.deepEqual([app.body.status, app.body.adminRemarks], ["PENDING_VERIFICATION", null]);
+    const ref = app.body.applicationId;
+    const fee = {
+      transactionId: "TX-1",
+      type: "DONATION",
+      amount: 500,
+      paymentMethod: "UPI",
+      paymentStatus: "SUCCESS",
+      referenceId: ref,
+      familyId: FAMILY1,
+    };
+    const tx = await api("create", ["Transaction"]).send(fee);
     assert.equal(tx.status, 201);
     assertRecord(tx.body);
-    const notif = await api("create", ["Notification"]).send({ title: "Submitted", message: "Thanks", type: "info", recipient_family_id: FAMILY1 });
+    assert.deepEqual([tx.body.type, tx.body.paymentStatus, tx.body.amount, tx.body.familyId], ["Family Registration", "PENDING", 500, null]);
+    assertError(await api("create", ["Transaction"]).send(fee), 409, "A registration fee is already recorded for this application.");
+    const notice = { title: "Submitted", message: "Thanks", type: "info", recipientFamilyId: ref, deepLink: "https://example.com" };
+    const notif = await api("create", ["Notification"]).send(notice);
     assert.equal(notif.status, 201);
-    assert.equal(notif.body.title, "Submitted");
+    assert.deepEqual([notif.body.title, notif.body.type, notif.body.deepLink], ["Submitted", "Registration", null]);
+    assertError(await api("create", ["Notification"]).send(notice), 409, "This application has already been notified.");
+  });
+  test("anonymous transaction and notification: refused unless tied to a fresh application; never a broadcast", async () => {
+    assertError(
+      await api("create", ["Transaction"]).send({ transactionId: "TX-X", type: "DONATION", amount: 500, paymentStatus: "SUCCESS", familyId: FAMILY1 }),
+      403,
+      "Payments can only be recorded for your own registration.",
+    );
+    assertError(
+      await api("create", ["Notification"]).send({ title: "Hi", message: "M", type: "info", recipientFamilyId: FAMILY1 }),
+      403,
+      "You can't send a notification to this family.",
+    );
+    assertError(
+      await api("create", ["Notification"]).send({ title: "All", message: "M", type: "info" }),
+      403,
+      "Only admins can send notifications to everyone.",
+    );
+    assertError(
+      await api("create", ["Notification"], { token: TOKENS.member }).send({ title: "All", message: "M", type: "info" }),
+      403,
+      "Only admins can send notifications to everyone.",
+    );
+  });
+  test("member event fee and notification: own family only; SUCCESS only for a free event", async () => {
+    const paid = await api("create", ["Transaction"], { token: TOKENS.member }).send({
+      transactionId: "TX-EV-1",
+      type: "Event Registration",
+      eventId: IDS.event,
+      amount: 0,
+      paymentStatus: "SUCCESS",
+      familyId: FAMILY2,
+      memberId: "NPSI-MEM-000001",
+    });
+    assert.equal(paid.status, 201);
+    assert.deepEqual([paid.body.type, paid.body.familyId, paid.body.paymentStatus], ["Event Registration", FAMILY1, "PENDING"]);
+    const free = await api("create", ["Transaction"], { token: TOKENS.member }).send({
+      transactionId: "TX-EV-2",
+      type: "Event Registration",
+      eventId: IDS.freeEvent,
+      amount: 0,
+      paymentStatus: "SUCCESS",
+    });
+    assert.equal(free.body.paymentStatus, "SUCCESS");
+    assertError(
+      await api("create", ["Transaction"], { token: TOKENS.member }).send({
+        transactionId: "TX-EV-3",
+        type: "x",
+        amount: 0,
+        eventId: IDS.event,
+        memberId: "NPSI-MEM-000002",
+      }),
+      403,
+      "You can only pay for members of your own family.",
+    );
+    const own = await api("create", ["Notification"], { token: TOKENS.member }).send({
+      title: "Registered",
+      message: "See you there",
+      type: "Event",
+      recipientFamilyId: FAMILY1,
+    });
+    assert.equal(own.status, 201);
+    assertError(
+      await api("create", ["Notification"], { token: TOKENS.member }).send({ title: "Hi", message: "M", type: "info", recipientFamilyId: FAMILY2 }),
+      403,
+      "You can't send a notification to this family.",
+    );
+    const broadcast = await api("create", ["Notification"], { token: TOKENS.admin }).send({
+      title: "All",
+      message: "New event",
+      type: "Announcement",
+      deepLink: "/events",
+    });
+    assert.deepEqual([broadcast.status, broadcast.body.recipientFamilyId, broadcast.body.deepLink], [201, null, "/events"]);
   });
   test("family: 401 anonymous, 403 member, 201 admin with sequential id", async () => {
-    assertError(await api("create", ["Family"]).send({ family_name: "New" }), 401, "Authentication required.");
-    assertError(await api("create", ["Family"], { token: TOKENS.member }).send({ family_name: "New" }), 403, "Admin access required.");
-    const res = await api("create", ["Family"], { token: TOKENS.admin }).send({ family_name: "New", family_id: "CLIENT", status: "PENDING" });
+    assertError(await api("create", ["Family"]).send({ familyName: "New" }), 401, "Authentication required.");
+    assertError(await api("create", ["Family"], { token: TOKENS.member }).send({ familyName: "New" }), 403, "Admin access required.");
+    const res = await api("create", ["Family"], { token: TOKENS.admin }).send({ familyName: "New", familyId: "CLIENT", status: "PENDING" });
     assert.equal(res.status, 201);
-    assert.equal(res.body.family_id, "NPSI-FAM-000003");
+    assert.equal(res.body.familyId, "NPSI-FAM-000003");
   });
   test("family member: ownership and field whitelist", async () => {
     assertError(
-      await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ family_id: FAMILY2, name: "X", relationship: "Son" }),
+      await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ familyId: FAMILY2, name: "X", relationship: "Son" }),
       403,
       "You can only add members to your own family.",
     );
     assertError(
-      await api("create", ["FamilyMember"], { token: TOKENS.noFamily }).send({ family_id: FAMILY1, name: "X", relationship: "Son" }),
+      await api("create", ["FamilyMember"], { token: TOKENS.noFamily }).send({ familyId: FAMILY1, name: "X", relationship: "Son" }),
       403,
       "You can only add members to your own family.",
     );
     const res = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
-      family_id: FAMILY1,
+      familyId: FAMILY1,
       name: "Kid",
       relationship: "Son",
       status: "ACTIVE",
-      photo_url: "http://x/y.png",
-      membership_id: "CLIENT",
+      photoUrl: "http://x/y.png",
+      membershipId: "CLIENT",
     });
     assert.equal(res.status, 201);
-    assert.equal(res.body.membership_id, "NPSI-MEM-000003");
-    assert.equal(res.body.photo_url, null);
+    assert.equal(res.body.membershipId, "NPSI-MEM-000003");
+    assert.equal(res.body.photoUrl, null);
     assert.equal(res.body.status, "ACTIVE");
     IDS.createdMember = res.body.id;
   });
   test("feedback: auth required, markup rejected, 201 with sequential id", async () => {
-    assertError(await api("create", ["Feedback"]).send({ member_name: "M", message: "Hi" }), 401, "Authentication required.");
+    assertError(await api("create", ["Feedback"]).send({ memberName: "M", message: "Hi" }), 401, "Authentication required.");
     assertError(
-      await api("create", ["Feedback"], { token: TOKENS.member }).send({ member_name: "M", message: "<img>" }),
+      await api("create", ["Feedback"], { token: TOKENS.member }).send({ memberName: "M", message: "<img>" }),
       400,
       'The "message" field cannot contain < or > characters.',
     );
     const res = await api("create", ["Feedback"], { token: TOKENS.member }).send({
-      member_name: "M",
+      memberName: "M",
       message: "Hi",
       email: "member@test.local",
-      internal_note: "stripped",
+      internalNote: "stripped",
     });
     assert.equal(res.status, 201);
-    assert.equal(res.body.feedback_id, "FB-000002");
-    assert.equal(res.body.internal_note, null);
+    assert.equal(res.body.feedbackId, "FB-000002");
+    assert.equal(res.body.internalNote, null);
   });
   test("event registration: ownership, event lookup and server-side fees", async () => {
-    const base = { registration_id: "REG-1", event_id: IDS.event, family_id: FAMILY1, member_ids: [IDS.member1], total_fee: 0, payment_status: "SUCCESS" };
+    const base = { registrationId: "REG-1", eventId: IDS.event, familyId: FAMILY1, memberIds: [IDS.member1], totalFee: 0, paymentStatus: "SUCCESS" };
     assertError(
-      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, family_id: FAMILY2 }),
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, familyId: FAMILY2 }),
       403,
       "You can only register your own family for events.",
     );
     assertError(
-      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, member_ids: [IDS.member2] }),
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, memberIds: [IDS.member2] }),
       403,
       "You can only register members of your own family.",
     );
-    assertError(await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, event_id: "missing" }), 404, "Event not found.");
+    assertError(await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ ...base, eventId: "missing" }), 404, "Event not found.");
     const res = await api("create", ["EventRegistration"], { token: TOKENS.member }).send(base);
     assert.equal(res.status, 201);
-    assert.equal(Number(res.body.fee_per_member), 100);
-    assert.equal(Number(res.body.total_fee), 100);
-    assert.equal(res.body.payment_status, "PENDING");
-    assert.equal(res.body.registered_by_id, IDS.memberUser);
-    assert.deepEqual(res.body.member_ids, [IDS.member1]);
+    assert.equal(Number(res.body.feePerMember), 100);
+    assert.equal(Number(res.body.totalFee), 100);
+    assert.equal(res.body.paymentStatus, "PENDING");
+    assert.equal(res.body.registeredById, IDS.memberUser);
+    assert.deepEqual(res.body.memberIds, [IDS.member1]);
   });
   test("transfer request: ownership checks and forced PENDING status", async () => {
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_family_id: FAMILY2 }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "MEMBER", sourceFamilyId: FAMILY2 }),
       403,
       "You can only request a transfer for your own family.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "MEMBER", source_membership_id: "NPSI-MEM-000002" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "MEMBER", sourceMembershipId: "NPSI-MEM-000002" }),
       403,
       "You can only request a transfer for a member of your own family.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ request_type: "STUDENT", source_student_id: "NPSI-STU-999999" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "STUDENT", sourceStudentId: "NPSI-STU-999999" }),
       403,
       "You can only request a transfer for your own student record.",
     );
     const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
-      request_type: "MEMBER",
-      source_family_id: FAMILY1,
-      source_membership_id: "NPSI-MEM-000001",
+      requestType: "MEMBER",
+      sourceFamilyId: FAMILY1,
+      sourceMembershipId: "NPSI-MEM-000001",
       status: "APPROVED",
     });
     assert.equal(res.status, 201);
     assert.equal(res.body.status, "PENDING");
-    assert.equal(res.body.requester_id, IDS.memberUser);
-    assert.equal(res.body.request_id, "TRF-000001");
+    assert.equal(res.body.requesterId, IDS.memberUser);
+    assert.equal(res.body.requestId, "TRF-000001");
   });
 });
 
 describe("column value formats", () => {
-  // How each MySQL column type comes back in responses (the Prisma data layer
-  // must reproduce what the legacy raw-SQL layer returned).
+  // How each column type comes back: DATE as YYYY-MM-DD, decimals as numbers,
+  // date-times as ISO strings, booleans as true/false, JSON as values.
   test("date-only, decimal, datetime, boolean and JSON columns", async () => {
     const event = await api("create", ["Event"], { token: TOKENS.admin }).send({
       title: "Formats",
@@ -636,58 +739,66 @@ describe("column value formats", () => {
       venue: "Hall",
       fee: 99.5,
       capacity: "40",
-      registration_open: "2026-11-01T10:00:00.000Z",
+      registrationOpen: "2026-11-01T10:00:00.000Z",
       status: "PUBLISHED",
     });
     assert.equal(event.status, 201, JSON.stringify(event.body));
     assert.equal(event.body.date, "2026-12-31");
-    assert.equal(event.body.fee, "99.50");
+    assert.equal(event.body.fee, 99.5);
     assert.equal(event.body.capacity, 40);
-    assert.match(event.body.registration_open, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/);
-    const listed = (await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ title: "Formats" }))}`])).body[0];
+    assert.match(event.body.registrationOpen, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.000Z$/);
+    const listed = (await api("list", ["Event"])).body.find((e) => e.title === "Formats");
     assert.deepEqual(listed, event.body);
-    const feedback = await api("create", ["Feedback"], { token: TOKENS.admin }).send({ member_name: "F", archived: 1, rating: "4", questions: { q1: "yes" } });
+    const feedback = await api("create", ["Feedback"], { token: TOKENS.admin }).send({ memberName: "F", archived: 1, rating: "4", questions: { q1: "yes" } });
     assert.equal(feedback.status, 201, JSON.stringify(feedback.body));
-    assert.equal(feedback.body.archived, 1);
+    assert.equal(feedback.body.archived, true);
     assert.equal(feedback.body.rating, 4);
     assert.deepEqual(feedback.body.questions, { q1: "yes" });
-    const patched = await api("update", ["Feedback", feedback.body.id], { token: TOKENS.admin }).send({ archived: false, questions: '["a","b"]' });
-    assert.equal(patched.body.archived, 0);
+    const patched = await api("update", ["Feedback", feedback.body.id], { token: TOKENS.admin }).send({ archived: false, questions: ["a", "b"] });
+    assert.equal(patched.body.archived, false);
     assert.deepEqual(patched.body.questions, ["a", "b"]);
   });
-  test("filters convert like MySQL did (boolean as 0/1, null matches nothing)", async () => {
-    const unread = await api("list", ["Notification", `?filter=${encodeURIComponent(JSON.stringify({ read: 0 }))}`], { token: TOKENS.admin });
-    assert.equal(unread.status, 200);
-    assert.ok(unread.body.length > 0 && unread.body.every((n) => n.read === 0));
-    const nullFilter = await api("list", ["Notification", `?filter=${encodeURIComponent(JSON.stringify({ recipient_family_id: null }))}`], {
-      token: TOKENS.admin,
-    });
-    assert.deepEqual(nullFilter.body, []);
-  });
-  test("unknown filter or order columns are MySQL-style 500s", async () => {
-    assertError(await api("list", ["Event", `?filter=${encodeURIComponent(JSON.stringify({ nope: 1 }))}`]), 500, "Unknown column 'nope' in 'where clause'");
-    assertError(await api("list", ["Event", "?order=nope"]), 500, "Unknown column 'nope' in 'order clause'");
+  test("wrong types are 400s that name the field", async () => {
+    assertError(await api("create", ["Event"], { token: TOKENS.admin }).send({ title: "T", date: "soon", venue: "Hall" }), 400, "Date is required.");
+    assertError(
+      await api("create", ["Event"], { token: TOKENS.admin }).send({ title: "T", date: "2026-12-31", venue: "Hall", capacity: "many" }),
+      400,
+      "capacity must be an integer number",
+    );
+    assertError(
+      await api("create", ["Feedback"], { token: TOKENS.admin }).send({ memberName: "F", archived: "maybe" }),
+      400,
+      "archived must be a boolean value",
+    );
   });
 });
 
-describe("entities: batch create", () => {
-  test("401 anonymous, 403 member", async () => {
-    assertError(await api("bulk", ["Family"]).send({ records: [{}] }), 401, "Authentication required.");
-    assertError(await api("bulk", ["Family"], { token: TOKENS.member }).send({ records: [{}] }), 403, "Admin access required.");
+describe("family members: batch create", () => {
+  test("401 anonymous, 403 member; only family members have a batch endpoint", async () => {
+    assertError(await api("bulk", ["FamilyMember"]).send({ records: [] }), 401, "Authentication required.");
+    assertError(await api("bulk", ["FamilyMember"], { token: TOKENS.member }).send({ records: [] }), 403, "Admin access required.");
+    assert.equal((await api("bulk", ["Family"], { token: TOKENS.admin }).send({ records: [] })).status, 404);
   });
   test("200 with an empty array when there is nothing to create", async () => {
-    const res = await api("bulk", ["Family"], { token: TOKENS.admin }).send({ records: [] });
+    const res = await api("bulk", ["FamilyMember"], { token: TOKENS.admin }).send({ records: [] });
     assert.equal(res.status, 200);
     assert.deepEqual(res.body, []);
   });
-  test("201 creates records with consecutive ids", async () => {
-    const res = await api("bulk", ["Family"], { token: TOKENS.admin }).send({ records: [{ family_name: "B1" }, { family_name: "B2", registration_date: "" }] });
+  test("201 creates records with consecutive membership ids, all or nothing", async () => {
+    const bad = await api("bulk", ["FamilyMember"], { token: TOKENS.admin }).send({
+      records: [{ familyId: FAMILY2, name: "B0", relationship: "Son" }, { familyId: FAMILY2 }],
+    });
+    assertError(bad, 400, "records.1.Name is required.; records.1.Relationship is required.");
+    const res = await api("bulk", ["FamilyMember"], { token: TOKENS.admin }).send({
+      records: [
+        { familyId: FAMILY2, name: "B1", relationship: "Son" },
+        { familyId: FAMILY2, name: "B2", relationship: "Daughter", dob: "" },
+      ],
+    });
     assert.equal(res.status, 201);
-    assert.deepEqual(
-      res.body.map((f) => f.family_id),
-      ["NPSI-FAM-000004", "NPSI-FAM-000005"],
-    );
-    assert.equal(res.body[1].registration_date, null);
+    const [first, second] = res.body.map((m) => Number(m.membershipId.slice("NPSI-MEM-".length)));
+    assert.equal(second, first + 1);
+    assert.equal(res.body[1].dob, null);
   });
 });
 
@@ -695,7 +806,7 @@ describe("entities: update", () => {
   test("admin-only entity: 401, 403, 200 and 404", async () => {
     assertError(await api("update", ["Event", IDS.event]).send({ title: "X" }), 401, "Authentication required.");
     assertError(await api("update", ["Event", IDS.event], { token: TOKENS.member }).send({ title: "X" }), 403, "Admin access required.");
-    const res = await api("update", ["Event", IDS.event], { token: TOKENS.admin }).send({ title: "Paid Event Updated", created_date: "ignored" });
+    const res = await api("update", ["Event", IDS.event], { token: TOKENS.admin }).send({ title: "Paid Event Updated", createdAt: "ignored" });
     assert.equal(res.status, 200);
     assertRecord(res.body);
     assert.equal(res.body.title, "Paid Event Updated");
@@ -713,16 +824,16 @@ describe("entities: update", () => {
       400,
       'The "name" field cannot contain < or > characters.',
     );
-    const res = await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "Member Renamed", membership_id: "HACK" });
+    const res = await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "Member Renamed", membershipId: "HACK" });
     assert.equal(res.status, 200);
     assert.equal(res.body.name, "Member Renamed");
-    assert.equal(res.body.membership_id, "NPSI-MEM-000001");
+    assert.equal(res.body.membershipId, "NPSI-MEM-000001");
   });
   test("family: members may only update their own family", async () => {
-    assertError(await api("update", ["Family", IDS.family2], { token: TOKENS.member }).send({ member_count: 9 }), 403, "You can only update your own family.");
-    const res = await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ member_count: 2, status: "PENDING" });
+    assertError(await api("update", ["Family", IDS.family2], { token: TOKENS.member }).send({ memberCount: 9 }), 403, "You can only update your own family.");
+    const res = await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ memberCount: 2, status: "PENDING" });
     assert.equal(res.status, 200);
-    assert.equal(res.body.member_count, 2);
+    assert.equal(res.body.memberCount, 2);
     assert.equal(res.body.status, "ACTIVE");
   });
   test("notification: members may only mark their own as read", async () => {
@@ -733,7 +844,7 @@ describe("entities: update", () => {
     );
     const res = await api("update", ["Notification", IDS.notifOwn], { token: TOKENS.member }).send({ read: true, title: "ignored" });
     assert.equal(res.status, 200);
-    assert.equal(res.body.read, 1);
+    assert.equal(res.body.read, true);
     assert.equal(res.body.title, "Own");
   });
 });
@@ -783,7 +894,7 @@ describe("duplicate contact rules", () => {
     assert.equal(await mobile("9655555555"), true, "students count for the public check");
   });
   test("a new family application ignores student mobiles but not family contacts", async () => {
-    const base = { family_head_name: "H", family_name: "F", address: "A", city: "C", district: "D" };
+    const base = { familyHeadName: "H", familyName: "F", address: "A", city: "C", district: "D" };
     const student = await api("create", ["Application"]).send({ ...base, mobile: "9655555555", email: "dupcheck1@test.local" });
     assert.equal(student.status, 201, JSON.stringify(student.body));
     assertError(
@@ -795,6 +906,78 @@ describe("duplicate contact rules", () => {
       await api("create", ["Application"]).send({ ...base, mobile: "9876500099", email: "SPACED@test.local" }),
       409,
       "This email is already registered on the portal.",
+    );
+  });
+});
+
+describe("notifications module", () => {
+  test("an admin's blank recipient is a broadcast that members see", async () => {
+    const sent = await api("create", ["Notification"], { token: TOKENS.admin }).send({
+      title: "Everyone",
+      message: "Hello",
+      type: "Announcement",
+      recipientFamilyId: "",
+    });
+    assert.equal(sent.status, 201);
+    assert.equal(sent.body.recipientFamilyId, null);
+    const seen = await api("list", ["Notification"], { token: TOKENS.member });
+    assert.ok(seen.body.some((n) => n.id === sent.body.id));
+  });
+  test("camelCase fields in and out; snake_case fields are ignored", async () => {
+    const res = await api("create", ["Notification"], { token: TOKENS.admin }).send({
+      title: "Shape",
+      message: "M",
+      type: "Event",
+      recipientFamilyId: FAMILY2,
+      deepLink: "/events",
+      deep_link: "/ignored",
+    });
+    assert.equal(res.status, 201);
+    assert.deepEqual(Object.keys(res.body).sort(), [
+      "createdAt",
+      "date",
+      "deepLink",
+      "id",
+      "message",
+      "read",
+      "recipientFamilyId",
+      "title",
+      "type",
+      "updatedAt",
+    ]);
+    assert.deepEqual([res.body.recipientFamilyId, res.body.deepLink, res.body.read], [FAMILY2, "/events", false]);
+  });
+  test("list: order by date or createdAt, limit 1-500; anything else is a 400", async () => {
+    const res = await api("list", ["Notification", "?order=-date&limit=2"], { token: TOKENS.admin });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.length, 2);
+    assertError(
+      await api("list", ["Notification", "?order=title"], { token: TOKENS.admin }),
+      400,
+      "order must be one of the following values: date, -date, createdAt, -createdAt",
+    );
+    assertError(await api("list", ["Notification", "?limit=9999"], { token: TOKENS.admin }), 400, "limit must not be greater than 500");
+  });
+  test("missing title, message or type is a 400", async () => {
+    assertError(await api("create", ["Notification"], { token: TOKENS.admin }).send({ message: "M", type: "Event" }), 400, "Title is required.");
+    assertError(await api("create", ["Notification"], { token: TOKENS.admin }).send({ title: "T", type: "Event" }), 400, "Message is required.");
+    assertError(await api("create", ["Notification"], { token: TOKENS.admin }).send({ title: "T", message: "M" }), 400, "Type is required.");
+  });
+  test("batch: all or nothing", async () => {
+    const before = (await api("list", ["Notification"], { token: TOKENS.admin })).body.length;
+    const bad = await api("bulk", ["Notification"], { token: TOKENS.admin }).send({ records: [{ title: "A", message: "M", type: "Event" }, { title: "B" }] });
+    assertError(bad, 400, "records.1.Message is required.; records.1.Type is required.");
+    assert.equal((await api("list", ["Notification"], { token: TOKENS.admin })).body.length, before);
+    const good = await api("bulk", ["Notification"], { token: TOKENS.admin }).send({
+      records: [
+        { title: "A", message: "M", type: "Event" },
+        { title: "B", message: "M", type: "Event" },
+      ],
+    });
+    assert.equal(good.status, 201);
+    assert.deepEqual(
+      good.body.map((n) => n.title),
+      ["A", "B"],
     );
   });
 });

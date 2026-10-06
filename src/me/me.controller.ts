@@ -1,16 +1,15 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiExtraModels, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse, getSchemaPath } from "@nestjs/swagger";
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiTags, ApiUnauthorizedResponse } from "@nestjs/swagger";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
-import { ENTITY_VOS, type EntityVo } from "../entities/vo/entity.vo.js";
+import { FeedbackVo } from "../feedback/vo/feedback.vo.js";
 import { MeService } from "./me.service.js";
 import { MyFamilyVo } from "./vo/me.vo.js";
 
 @ApiTags("me")
 @ApiBearerAuth()
-@ApiExtraModels(ENTITY_VOS.Family, ENTITY_VOS.FamilyMember, ENTITY_VOS.Student, ENTITY_VOS.Feedback)
 @UseGuards(UserGuard)
 @Controller("me")
 export class MeController {
@@ -26,9 +25,9 @@ export class MeController {
 
   @Get("feedback")
   @ApiOperation({ summary: "Feedback submitted with the logged-in member's email (latest 100)" })
-  @ApiOkResponse({ schema: { type: "array", items: { $ref: getSchemaPath(ENTITY_VOS.Feedback) } } })
+  @ApiOkResponse({ type: FeedbackVo, isArray: true })
   @ApiUnauthorizedResponse({ type: ErrorVo })
-  feedback(@CurrentUser() user: UserRow): Promise<EntityVo[]> {
+  feedback(@CurrentUser() user: UserRow): Promise<FeedbackVo[]> {
     return this.me.feedback(user);
   }
 }

@@ -1,0 +1,117 @@
+import { Injectable } from "@nestjs/common";
+import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
+import { ApiError } from "../common/filters/api-error.js";
+import type { UserRow } from "../common/session/session.service.js";
+import { randomId } from "../common/utils/crypto.js";
+import { parseDate } from "../common/utils/dates.js";
+import { createWithDisplayId, displayIdAt, nextDisplayId } from "../common/utils/display-ids.js";
+import { assertNoMarkup } from "../common/utils/markup.js";
+import { pick } from "../common/utils/objects.js";
+import type { Prisma } from "../generated/prisma/client.js";
+import { MembershipRepository } from "../membership/membership.repository.js";
+import type { CreateFamilyMemberDto, FamilyMemberListQueryDto, UpdateFamilyMemberDto } from "./dto/family-members.dto.js";
+import { FamilyMembersRepository } from "./family-members.repository.js";
+import { type FamilyMemberVo, toFamilyMemberVo } from "./vo/family-members.vo.js";
+
+const PREFIX = "NPSI-MEM-";
+
+// The fields the member's "my family" screen edits; the rest is admin-only.
+const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "address", "status"] as const;
+// Members of a family. Admins manage all of them; a member may add, edit and
+// remove the members of their own family.
+@Injectable()
+export class FamilyMembersService {
+  constructor(
+    private readonly repo: FamilyMembersRepository,
+    private readonly membership: MembershipRepository,
+  ) {}
+
+  async list(query: FamilyMemberListQueryDto): Promise<FamilyMemberVo[]> {
+    const where: Prisma.FamilyMemberWhereInput = { familyId: query.familyId };
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    return rows.map(toFamilyMemberVo);
+  }
+
+  async create(dto: CreateFamilyMemberDto, user: UserRow): Promise<FamilyMemberVo> {
+    let input = dto;
+    if (user.role !== "admin") {
+      const ownFamilyId = await this.membership.ownFamilyId(user);
+      if (!ownFamilyId || dto.familyId !== ownFamilyId) throw new ApiError(403, "You can only add members to your own family.");
+      input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId } as CreateFamilyMemberDto;
+      assertNoMarkup(input);
+    }
+    const row = await createWithDisplayId(
+      PREFIX,
+      (prefix) => this.repo.latestDisplayIds(prefix),
+      (membershipId) => this.repo.create({ id: randomId(), membershipId, ...toCreateData(input) }),
+    );
+    return toFamilyMemberVo(row);
+  }
+
+  // Admins only: consecutive membership ids, all or nothing.
+  async createBatch(records: CreateFamilyMemberDto[] | undefined): Promise<{ status: 200 | 201; records: FamilyMemberVo[] }> {
+    if (!records?.length) return { status: 200, records: [] };
+    const first = Number(nextDisplayId(PREFIX, await this.repo.latestDisplayIds(PREFIX)).slice(PREFIX.length));
+    const rows = await this.repo.createMany(
+      records.map((dto, index) => ({ id: randomId(), membershipId: displayIdAt(PREFIX, first + index), ...toCreateData(dto) })),
+    );
+    return { status: 201, records: rows.map(toFamilyMemberVo) };
+  }
+
+  async update(id: string, dto: UpdateFamilyMemberDto, user: UserRow): Promise<FamilyMemberVo> {
+    let input: UpdateFamilyMemberDto = dto;
+    if (user.role !== "admin") {
+      const ownFamilyId = await this.membership.ownFamilyId(user);
+      if (!ownFamilyId) throw new ApiError(403, "No family found for your account.");
+      const member = await this.repo.findById(id);
+      if (!member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only update members of your own family.");
+      input = pick(dto, MEMBER_FIELDS);
+      assertNoMarkup(input);
+    }
+    const row = await this.repo.update(id, toUpdateData(input));
+    if (!row) throw new ApiError(404, "Record not found");
+    return toFamilyMemberVo(row);
+  }
+
+  async remove(id: string, user: UserRow): Promise<void> {
+    if (user.role !== "admin") {
+      const ownFamilyId = await this.membership.ownFamilyId(user);
+      const member = await this.repo.findById(id);
+      if (!ownFamilyId || !member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only remove members of your own family.");
+    }
+    await this.repo.delete(id);
+  }
+}
+// Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
+const toCreateData = (input: CreateFamilyMemberDto): Omit<Prisma.FamilyMemberUncheckedCreateInput, "id" | "membershipId"> => ({
+  familyId: input.familyId,
+  name: input.name,
+  relationship: input.relationship,
+  gender: input.gender,
+  dob: parseDate(input.dob),
+  mobile: input.mobile,
+  email: input.email,
+  education: input.education,
+  occupation: input.occupation,
+  address: input.address,
+  photoUrl: input.photoUrl,
+  status: input.status,
+  linkedStudentId: input.linkedStudentId,
+});
+
+const toUpdateData = (input: UpdateFamilyMemberDto): Prisma.FamilyMemberUncheckedUpdateInput => ({
+  familyId: input.familyId,
+  name: input.name,
+  relationship: input.relationship,
+  gender: input.gender,
+  dob: parseDate(input.dob),
+  mobile: input.mobile,
+  email: input.email,
+  education: input.education,
+  occupation: input.occupation,
+  address: input.address,
+  photoUrl: input.photoUrl,
+  status: input.status,
+  linkedStudentId: input.linkedStudentId,
+  updatedAt: new Date(),
+});
