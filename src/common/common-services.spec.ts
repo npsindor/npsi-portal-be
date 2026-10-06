@@ -135,22 +135,29 @@ describe("AppConfigService", () => {
     }
   });
   test("parses configured values", () => {
-    const config = configFrom({
-      API_PORT: "5000",
-      FRONTEND_URL: "https://x.org///",
-      ADMIN_NOTIFICATION_EMAILS: " a@x.com, ,b@x.com ",
-      TRUST_PROXY: "loopback",
-      SMTP_PORT: "465",
-      SMTP_USER: "u",
-      UPLOADS_DIR: "/tmp/up",
-    });
-    assert.equal(config.port, 5000);
-    assert.equal(config.frontendUrl, "https://x.org");
-    assert.deepEqual(config.adminEmails, ["a@x.com", "b@x.com"]);
-    assert.equal(config.trustProxy, "loopback");
-    assert.deepEqual([config.smtp.port, config.smtp.secure, config.smtp.from], [465, true, "u"]);
-    assert.equal(config.uploadsDir, "/tmp/up");
-    assert.equal(configFrom({ TRUST_PROXY: "2" }).trustProxy, 2);
+    // The sender falls back to SMTP_USER only when SMTP_FROM isn't set in the real environment.
+    const smtpFrom = process.env.SMTP_FROM;
+    delete process.env.SMTP_FROM;
+    try {
+      const config = configFrom({
+        API_PORT: "5000",
+        FRONTEND_URL: "https://x.org///",
+        ADMIN_NOTIFICATION_EMAILS: " a@x.com, ,b@x.com ",
+        TRUST_PROXY: "loopback",
+        SMTP_PORT: "465",
+        SMTP_USER: "u",
+        UPLOADS_DIR: "/tmp/up",
+      });
+      assert.equal(config.port, 5000);
+      assert.equal(config.frontendUrl, "https://x.org");
+      assert.deepEqual(config.adminEmails, ["a@x.com", "b@x.com"]);
+      assert.equal(config.trustProxy, "loopback");
+      assert.deepEqual([config.smtp.port, config.smtp.secure, config.smtp.from], [465, true, "u"]);
+      assert.equal(config.uploadsDir, "/tmp/up");
+      assert.equal(configFrom({ TRUST_PROXY: "2" }).trustProxy, 2);
+    } finally {
+      if (smtpFrom !== undefined) process.env.SMTP_FROM = smtpFrom;
+    }
   });
   test("env validation rejects non-numeric ports", () => {
     assert.ok(validateEnv({ API_PORT: "4000", MYSQL_PORT: "" }));
