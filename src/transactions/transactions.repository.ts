@@ -6,8 +6,8 @@ import type { Prisma, Transaction } from "../generated/prisma/client.js";
 export class TransactionsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.TransactionWhereInput, orderBy: Prisma.TransactionOrderByWithRelationInput, take: number): Promise<Transaction[]> {
-    return this.prisma.transaction.findMany({ where, orderBy, take });
+  list(where: Prisma.TransactionWhereInput, orderBy: Prisma.TransactionOrderByWithRelationInput[], take: number, skip = 0): Promise<Transaction[]> {
+    return this.prisma.transaction.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Transaction | null> {

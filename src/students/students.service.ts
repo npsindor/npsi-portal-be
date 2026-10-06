@@ -15,7 +15,7 @@ export class StudentsService {
 
   async list(query: StudentListQueryDto): Promise<StudentVo[]> {
     const where: Prisma.StudentWhereInput = {};
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toStudentVo);
   }
 

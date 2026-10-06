@@ -13,7 +13,7 @@ export class PrinciplesService {
 
   async list(query: PrincipleListQueryDto): Promise<PrincipleVo[]> {
     const where: Prisma.PrincipleWhereInput = {};
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toPrincipleVo);
   }
 

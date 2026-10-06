@@ -350,5 +350,6 @@ export const userRow = (overrides: Partial<Models.User> = {}): Models.User => ({
   phone: null,
   otpHash: null,
   otpExpiresAt: null,
+  photoUrl: null,
   ...overrides,
 });

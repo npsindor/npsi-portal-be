@@ -5,8 +5,9 @@ import { from, Observable, switchMap } from "rxjs";
 import { ApiError } from "../common/filters/api-error.js";
 import { randomId } from "../common/utils/crypto.js";
 import { AppConfigService } from "../config/app-config.service.js";
+import { NOT_AN_IMAGE } from "./uploads.service.js";
 
-// Only real image bytes, max 5 MB, stored under a server-generated name. The
+// Only image types (the bytes are checked after storing, in UploadsService), max 5 MB, stored under a server-generated name. The
 // client's filename/extension is never used (no path traversal, no ".php
 // disguised as .jpg").
 export const UPLOAD_MIME_EXTENSIONS: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" };
@@ -27,7 +28,7 @@ export class UploadFileInterceptor implements NestInterceptor {
       }),
       limits: { fileSize: MAX_UPLOAD_BYTES },
       fileFilter: (_request, file, callback) => {
-        if (!UPLOAD_MIME_EXTENSIONS[file.mimetype]) return callback(new Error("Only JPEG, PNG, WEBP or GIF images are allowed."));
+        if (!UPLOAD_MIME_EXTENSIONS[file.mimetype]) return callback(new Error(NOT_AN_IMAGE));
         callback(null, true);
       },
     });

@@ -200,6 +200,24 @@ Fixed along the way: transfer approvals now set `approvedDate` (the frontend sen
 which isn't a column and was dropped); the student-to-family duplicate check now actually checks the
 target family (the old client-side one matched the student itself first and never blocked).
 
+### Follow-up improvements (2026-10-07, test only)
+
+- **Profile photo fixed:** the settings page called a missing `updateMe`; now `PATCH /auth/me`
+  (name, mobile, photo) with a `users.photo_url` column (migration `20261007000000_add_user_photo`).
+  Photos must be our own `/uploads/` URLs; mobiles follow the registration rule and stay unique.
+- **Lists page through everything:** `?offset=` with a stable order on every list; admin tables use
+  `listAll` (500 per request). Before, admins saw only the latest 100 notifications (154 exist) and
+  families/dashboard counts would silently stop at 100.
+- **Login cookie:** the session is an httpOnly, SameSite=Strict, Secure cookie set by the API; the
+  frontend no longer keeps the token in localStorage (scripts can't read it). The Bearer header
+  still works for API clients.
+- **Upload content check:** the stored bytes must match the declared image type (JPEG/PNG/GIF/WebP);
+  anything else (e.g. HTML labelled image/png) is deleted and refused. Resizing is not done (it needs
+  a native image library on Hostinger).
+
+Checked locally on a copy of the production data with a cookie jar: login cookie flags, CORS with
+credentials, photo upload + profile save, fake image refused, paging (100 + 54 = 154), logout.
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 
@@ -209,9 +227,9 @@ a breaking redesign, to be planned separately).
 |---|---|---|
 | Backend | `npm run check` (Biome lint + format, 70 files) | pass, 0 diagnostics |
 | Backend | `npm run build` (tsc, strict) | pass |
-| Backend | `npm test` (unit, 129 tests) | 129/129 pass |
+| Backend | `npm test` (unit, 133 tests) | 133/133 pass |
 | Backend | `npm run test:e2e` (31 tests, every v1 endpoint, real MySQL) | 31/31 pass |
-| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 97/97 pass |
+| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 101/101 pass |
 | Backend | Final comparison before removing the legacy app: same 88 contract tests on Express + Sequelize, old paths | 88/88 pass |
 | Backend | `npm audit` | 0 vulnerabilities |
 | Backend | Clean production-only install → build → start on a fresh DB | pass (Prisma client generated, `0_init` applied, 10 principles seeded) |

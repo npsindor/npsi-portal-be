@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsOptional } from "class-validator";
+import { OptionalText } from "../../common/validation/fields.js";
 
 // Request DTOs for the auth endpoints. Every field is optional at the DTO
 // level on purpose: the services validate them with the exact legacy error
@@ -40,6 +41,18 @@ export class InviteDto {
   @ApiPropertyOptional({ enum: ["user", "admin"], default: "user" }) @IsOptional() role?: string;
   @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() fullName?: string;
   @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() phone?: string;
+}
+
+// The logged-in user's own profile; omitted fields stay as they are.
+export class UpdateMeDto {
+  @OptionalText(255, { description: "Full name" })
+  fullName?: string | null;
+
+  @OptionalText(20, { description: "10-digit Indian mobile starting 6-9" })
+  phone?: string | null;
+
+  @OptionalText(undefined, { description: "Profile photo: a URL returned by POST /uploads" })
+  photoUrl?: string | null;
 }
 
 export class ChangePasswordDto {

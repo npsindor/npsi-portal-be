@@ -6,14 +6,18 @@ import { MailService } from "../common/mail/mail.service.js";
 import { RECAPTCHA_FAILED, RecaptchaService } from "../common/recaptcha/recaptcha.service.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { createToken, generateOtp, hashOtp, hashPassword, randomId, randomInvitePassword, safeEqual, sha256, verifyPassword } from "../common/utils/crypto.js";
+import { assertNoMarkup } from "../common/utils/markup.js";
 import { normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
-import type { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto } from "./dto/auth.dto.js";
+import type { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateMeDto, VerifyOtpDto } from "./dto/auth.dto.js";
 import { UsersRepository } from "./users.repository.js";
 import { type InvitationVo, PublicUserVo, type RegistrationVo, type SessionVo } from "./vo/auth.vo.js";
 
 const OK: OkVo = { ok: true };
 const logMailError = (label: string) => (error: unknown) => console.error(`[mailer] ${label} failed:`, error instanceof Error ? error.message : error);
+
+// A file served from this API's /uploads (see UploadsService): uuid name, image extension.
+const OWN_UPLOAD = /^https?:\/\/[^/\s]+\/uploads\/[0-9a-f-]{36}\.(?:jpe?g|png|webp|gif)$/i;
 
 // Business rules for registration, OTP, sessions and passwords, ported
 // unchanged from the legacy Express handlers (same checks, order and messages).
@@ -155,6 +159,26 @@ export class AuthService {
 
   me(user: UserRow): PublicUserVo {
     return PublicUserVo.from(user);
+  }
+
+  // Name, mobile (unique, same rule as registration) and profile photo, which
+  // must be one of our own uploads so no outside image can be linked.
+  async updateMe(user: UserRow, body: UpdateMeDto): Promise<PublicUserVo> {
+    assertNoMarkup(body);
+    const fullName = body.fullName === undefined ? undefined : body.fullName?.trim() || null;
+    let phone: string | null | undefined;
+    if (body.phone !== undefined) {
+      phone = body.phone?.trim() || null;
+      if (phone && !/^[6-9]\d{9}$/.test(phone)) throw new ApiError(400, "A valid 10-digit mobile number is required.");
+      const owner = phone ? await this.users.findIdByPhone(phone) : null;
+      if (owner && owner.id !== user.id) throw new ApiError(409, "This mobile number is already registered.");
+    }
+    let photoUrl: string | null | undefined;
+    if (body.photoUrl !== undefined) {
+      photoUrl = body.photoUrl?.trim() || null;
+      if (photoUrl && !OWN_UPLOAD.test(photoUrl)) throw new ApiError(400, "The photo must be an image uploaded to the portal.");
+    }
+    return PublicUserVo.from(await this.users.updateProfile(user.id, { fullName, phone, photoUrl }));
   }
 
   // Without a token there is no session to end; still a 204 for the caller.

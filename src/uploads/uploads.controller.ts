@@ -21,7 +21,7 @@ export class UploadsController {
   @ApiCreatedResponse({ type: UploadedFileVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "No file, not an image, or larger than 5 MB" })
   @ApiTooManyRequestsResponse({ description: "Rate limit exceeded" })
-  upload(@Req() request: Request, @UploadedFile() file: Express.Multer.File | undefined): UploadedFileVo {
+  upload(@Req() request: Request, @UploadedFile() file: Express.Multer.File | undefined): Promise<UploadedFileVo> {
     return this.uploads.toUploadedFile(request, file);
   }
 }

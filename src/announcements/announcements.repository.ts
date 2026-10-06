@@ -6,8 +6,8 @@ import type { Announcement, Prisma } from "../generated/prisma/client.js";
 export class AnnouncementsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.AnnouncementWhereInput, orderBy: Prisma.AnnouncementOrderByWithRelationInput, take: number): Promise<Announcement[]> {
-    return this.prisma.announcement.findMany({ where, orderBy, take });
+  list(where: Prisma.AnnouncementWhereInput, orderBy: Prisma.AnnouncementOrderByWithRelationInput[], take: number, skip = 0): Promise<Announcement[]> {
+    return this.prisma.announcement.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Announcement | null> {

@@ -6,8 +6,8 @@ import type { Application, Prisma } from "../generated/prisma/client.js";
 export class ApplicationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.ApplicationWhereInput, orderBy: Prisma.ApplicationOrderByWithRelationInput, take: number): Promise<Application[]> {
-    return this.prisma.application.findMany({ where, orderBy, take });
+  list(where: Prisma.ApplicationWhereInput, orderBy: Prisma.ApplicationOrderByWithRelationInput[], take: number, skip = 0): Promise<Application[]> {
+    return this.prisma.application.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Application | null> {

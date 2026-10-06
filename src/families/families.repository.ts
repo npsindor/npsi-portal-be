@@ -6,8 +6,8 @@ import type { Family, Prisma } from "../generated/prisma/client.js";
 export class FamiliesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.FamilyWhereInput, orderBy: Prisma.FamilyOrderByWithRelationInput, take: number): Promise<Family[]> {
-    return this.prisma.family.findMany({ where, orderBy, take });
+  list(where: Prisma.FamilyWhereInput, orderBy: Prisma.FamilyOrderByWithRelationInput[], take: number, skip = 0): Promise<Family[]> {
+    return this.prisma.family.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Family | null> {

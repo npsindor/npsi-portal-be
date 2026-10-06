@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Post, Put, Req, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Patch, Post, Put, Req, Res, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -14,21 +14,31 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import type { Request } from "express";
+import type { Request, Response } from "express";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo, OkVo } from "../common/filters/error.vo.js";
 import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import { bearerToken, type UserRow } from "../common/session/session.service.js";
+import { clearSessionCookie, setSessionCookie } from "../common/session/session-cookie.js";
+import { AppConfigService } from "../config/app-config.service.js";
 import { AUTH_ROUTES as R } from "./auth.routes.js";
 import { AuthService } from "./auth.service.js";
-import { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, VerifyOtpDto } from "./dto/auth.dto.js";
+import { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateMeDto, VerifyOtpDto } from "./dto/auth.dto.js";
 import { InvitationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
 
 @ApiTags("auth")
 @ApiTooManyRequestsResponse({ description: "Rate limit exceeded (auth and OTP routes)" })
 @Controller(R.base)
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly config: AppConfigService,
+  ) {}
+
+  // Session cookies are Secure everywhere but local development (plain http://localhost).
+  private get secureCookies(): boolean {
+    return this.config.appEnv !== "development";
+  }
 
   @Post(R.register)
   @ApiOperation({ summary: "Register an account; an OTP is emailed to verify it" })
@@ -45,8 +55,10 @@ export class AuthController {
   @ApiOkResponse({ type: SessionVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Malformed, wrong or expired code" })
   @ApiNotFoundResponse({ type: ErrorVo, description: "Account not found" })
-  verifyOtp(@Body() body: VerifyOtpDto): Promise<SessionVo> {
-    return this.auth.verifyOtp(body);
+  async verifyOtp(@Body() body: VerifyOtpDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
+    const session = await this.auth.verifyOtp(body);
+    setSessionCookie(response, session.accessToken, this.secureCookies);
+    return session;
   }
 
   @Post(R.resendOtp)
@@ -64,8 +76,10 @@ export class AuthController {
   @ApiOkResponse({ type: SessionVo })
   @ApiUnauthorizedResponse({ type: ErrorVo, description: "Invalid credentials" })
   @ApiForbiddenResponse({ type: ErrorVo, description: "Account not verified yet" })
-  login(@Body() body: LoginDto): Promise<SessionVo> {
-    return this.auth.login(body);
+  async login(@Body() body: LoginDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
+    const session = await this.auth.login(body);
+    setSessionCookie(response, session.accessToken, this.secureCookies);
+    return session;
   }
 
   @Post(R.resetRequest)
@@ -120,13 +134,26 @@ export class AuthController {
     return this.auth.me(user);
   }
 
+  @Patch(R.me)
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Update the logged-in user's name, mobile or profile photo" })
+  @ApiOkResponse({ type: PublicUserVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid mobile, photo not one of our uploads, or markup in a field" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiConflictResponse({ type: ErrorVo, description: "Mobile already registered to another account" })
+  updateMe(@CurrentUser() user: UserRow, @Body() body: UpdateMeDto): Promise<PublicUserVo> {
+    return this.auth.updateMe(user, body);
+  }
+
   @Delete(R.logout)
   @HttpCode(204)
   @ApiBearerAuth()
   @ApiOperation({ summary: "End the current session" })
   @ApiNoContentResponse({ description: "Session ended" })
   @ApiInternalServerErrorResponse({ type: ErrorVo, description: "Unexpected server or database error" })
-  async logout(@Req() request: Request): Promise<void> {
+  async logout(@Req() request: Request, @Res({ passthrough: true }) response: Response): Promise<void> {
     await this.auth.logout(bearerToken(request));
+    clearSessionCookie(response, this.secureCookies);
   }
 }

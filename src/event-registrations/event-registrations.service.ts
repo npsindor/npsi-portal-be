@@ -41,7 +41,7 @@ export class EventRegistrationsService {
   ) {}
 
   async list(query: EventRegistrationListQueryDto): Promise<EventRegistrationVo[]> {
-    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toEventRegistrationVo);
   }
 

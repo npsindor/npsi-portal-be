@@ -30,6 +30,7 @@ const v1 = {
   invite: () => ["POST", "/api/v1/auth/invitations"],
   changePassword: () => ["PUT", "/api/v1/auth/password"],
   me: () => ["GET", "/api/v1/auth/me"],
+  updateMe: () => ["PATCH", "/api/v1/auth/me"],
   logout: () => ["DELETE", "/api/v1/auth/sessions/current"],
   myFamily: () => ["GET", "/api/v1/me/family"],
   myFeedback: () => ["GET", "/api/v1/me/feedback"],

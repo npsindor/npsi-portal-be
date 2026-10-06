@@ -30,7 +30,7 @@ export class NotificationsService {
   async list(user: UserRow, query: NotificationListQueryDto): Promise<NotificationVo[]> {
     const order = query.order ?? "-createdAt";
     const recipient = user.role === "admin" ? null : (await this.membership.ownFamilyId(user)) || "__none__";
-    const rows = await this.repo.list(recipient, toOrderBy(order), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(recipient, toOrderBy(order), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toNotificationVo);
   }
 

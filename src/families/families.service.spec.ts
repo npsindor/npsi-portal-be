@@ -21,7 +21,7 @@ describe("FamiliesService", () => {
   test("list filters by display id and status", async () => {
     const { service, repo } = build();
     await service.list({ familyId: FAM, status: "ACTIVE", order: "familyName" });
-    assert.deepEqual(repo.list.mock.calls[0].arguments, [{ familyId: FAM, status: "ACTIVE" }, { familyName: "asc" }, 100]);
+    assert.deepEqual(repo.list.mock.calls[0].arguments, [{ familyId: FAM, status: "ACTIVE" }, [{ familyName: "asc" }, { id: "asc" }], 100, undefined]);
   });
   test("admins create with the next display id", async () => {
     const created = await build().service.create({ familyName: "New", registrationDate: "2026-02-01T10:00:00.000Z" });

@@ -11,7 +11,7 @@ const api = (key, args = [], opts = {}) => {
   return call(method, url, opts);
 };
 const YEAR = new Date().getFullYear();
-const PUBLIC_USER_KEYS = ["email", "fullName", "id", "phone", "role"];
+const PUBLIC_USER_KEYS = ["email", "fullName", "id", "phone", "photoUrl", "role"];
 const keys = (obj) => Object.keys(obj).sort();
 const assertError = (res, status, message) => {
   assert.equal(res.status, status, `expected ${status}, got ${res.status}: ${JSON.stringify(res.body)}`);
@@ -112,7 +112,7 @@ describe("auth: register", () => {
     assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
     assert.deepEqual(
       { ...res.body.user, id: undefined },
-      { id: undefined, email: "new.user@test.local", fullName: "New User", phone: "9811111111", role: "user" },
+      { id: undefined, email: "new.user@test.local", fullName: "New User", phone: "9811111111", role: "user", photoUrl: null },
     );
     const [row] = await query("SELECT is_verified, otp_hash FROM users WHERE id = ?", [res.body.user.id]);
     assert.equal(row.is_verified, 0);
@@ -175,6 +175,29 @@ describe("auth: login", () => {
   });
 });
 
+describe("auth: session cookie", () => {
+  test("login sets an httpOnly SameSite=Strict cookie that authenticates on its own; logout clears it", async () => {
+    const login = await api("login").send({ email: "login@test.local", password: PASSWORDS.login });
+    assert.equal(login.status, 200);
+    const setCookie = [login.headers["set-cookie"]].flat().find((c) => c?.startsWith("npsi_session="));
+    assert.ok(setCookie, "session cookie set");
+    assert.match(setCookie, /HttpOnly/i);
+    assert.match(setCookie, /SameSite=Strict/i);
+    assert.match(setCookie, /Max-Age=2592000/);
+    const cookie = setCookie.split(";")[0];
+    const me = await api("me").set("Cookie", cookie);
+    assert.deepEqual([me.status, me.body.email], [200, "login@test.local"]);
+    const logout = await api("logout").set("Cookie", cookie);
+    assert.equal(logout.status, 204);
+    assert.match([logout.headers["set-cookie"]].flat().join(";"), /npsi_session=;/);
+    assertError(await api("me").set("Cookie", cookie), 401, "Authentication required.");
+  });
+  test("the Authorization header still works and wins over a cookie", async () => {
+    const res = await api("me", [], { token: TOKENS.member }).set("Cookie", "npsi_session=not-a-session");
+    assert.deepEqual([res.status, res.body.email], [200, "member@test.local"]);
+  });
+});
+
 describe("auth: me and logout", () => {
   test("401 without a token", async () => {
     assertError(await api("me"), 401, "Authentication required.");
@@ -185,7 +208,7 @@ describe("auth: me and logout", () => {
   test("200 returns only public user fields", async () => {
     const res = await api("me", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { id: IDS.memberUser, email: "member@test.local", fullName: "member", phone: "9100000002", role: "user" });
+    assert.deepEqual(res.body, { id: IDS.memberUser, email: "member@test.local", fullName: "member", phone: "9100000002", role: "user", photoUrl: null });
   });
   test("logout returns 204 and ends the session", async () => {
     const login = await api("login").send({ email: "login@test.local", password: PASSWORDS.login });
@@ -287,6 +310,30 @@ describe("auth: invite", () => {
   });
 });
 
+describe("auth: profile", () => {
+  test("PATCH /auth/me: name, mobile and an uploaded photo; outside images and taken mobiles refused", async () => {
+    assertError(await api("updateMe").send({ fullName: "X" }), 401, "Authentication required.");
+    const png = Buffer.from(
+      "89504e470d0a1a0a0000000d4948445200000001000000010806000000" + "1f15c4890000000d49444154789c63f8cfc0f01f0005000201" + "5f8f9d2a0000000049454e44ae426082",
+      "hex",
+    );
+    const upload = await api("upload").attach("file", png, { filename: "me.png", contentType: "image/png" });
+    assert.equal(upload.status, 201);
+    const res = await api("updateMe", [], { token: TOKENS.noFamily }).send({ fullName: " Profile Name ", photoUrl: upload.body.fileUrl });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    assert.deepEqual([res.body.fullName, res.body.photoUrl], ["Profile Name", upload.body.fileUrl]);
+    assert.deepEqual(keys(res.body), PUBLIC_USER_KEYS);
+    assert.equal((await api("me", [], { token: TOKENS.noFamily })).body.photoUrl, upload.body.fileUrl);
+    assertError(
+      await api("updateMe", [], { token: TOKENS.noFamily }).send({ photoUrl: "https://evil.example/x.png" }),
+      400,
+      "The photo must be an image uploaded to the portal.",
+    );
+    assertError(await api("updateMe", [], { token: TOKENS.noFamily }).send({ phone: "123" }), 400, "A valid 10-digit mobile number is required.");
+    assertError(await api("updateMe", [], { token: TOKENS.noFamily }).send({ phone: "9100000002" }), 409, "This mobile number is already registered.");
+  });
+});
+
 describe("me", () => {
   test("family: 401 without a token", async () => {
     assertError(await api("myFamily"), 401, "Authentication required.");
@@ -372,6 +419,11 @@ describe("uploads", () => {
     );
   });
   test("400 for a file over 5 MB", async () => {
+    assertError(
+      await api("upload").attach("file", Buffer.from("<html><script>alert(1)</script></html>"), { filename: "x.png", contentType: "image/png" }),
+      400,
+      "Only JPEG, PNG, WEBP or GIF images are allowed.",
+    );
     const res = await api("upload").attach("file", Buffer.alloc(5 * 1024 * 1024 + 10), { filename: "big.png", contentType: "image/png" });
     assertError(res, 400, "File too large");
   });
@@ -411,6 +463,15 @@ describe("entities: list", () => {
       (await api("list", ["Family", `?familyId=${FAMILY2}&status=ACTIVE`], { token: TOKENS.admin })).body.map((f) => f.familyId),
       [FAMILY2],
     );
+  });
+  test("paging: limit + offset walk the list without gaps or repeats", async () => {
+    const all = (await api("list", ["Event", "?order=title"])).body.map((e) => e.id);
+    const paged = [];
+    for (let offset = 0; offset < all.length; offset += 1)
+      paged.push(...(await api("list", ["Event", `?order=title&limit=1&offset=${offset}`])).body.map((e) => e.id));
+    assert.deepEqual(paged, all);
+    assert.deepEqual((await api("list", ["Event", `?limit=1&offset=${all.length}`])).body, []);
+    assertError(await api("list", ["Event", "?offset=-1"]), 400, "offset must not be less than 0");
   });
   test("unknown order fields and out-of-range limits are 400s; unknown query parameters are ignored", async () => {
     assertError(await api("list", ["Event", "?order=nope"]), 400, /^order must be one of the following values: /);

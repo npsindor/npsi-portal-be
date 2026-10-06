@@ -6,8 +6,8 @@ import type { Prisma, TransferRequest } from "../generated/prisma/client.js";
 export class TransferRequestsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.TransferRequestWhereInput, orderBy: Prisma.TransferRequestOrderByWithRelationInput, take: number): Promise<TransferRequest[]> {
-    return this.prisma.transferRequest.findMany({ where, orderBy, take });
+  list(where: Prisma.TransferRequestWhereInput, orderBy: Prisma.TransferRequestOrderByWithRelationInput[], take: number, skip = 0): Promise<TransferRequest[]> {
+    return this.prisma.transferRequest.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<TransferRequest | null> {

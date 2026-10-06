@@ -6,8 +6,8 @@ import type { Prisma, Rule } from "../generated/prisma/client.js";
 export class RulesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.RuleWhereInput, orderBy: Prisma.RuleOrderByWithRelationInput, take: number): Promise<Rule[]> {
-    return this.prisma.rule.findMany({ where, orderBy, take });
+  list(where: Prisma.RuleWhereInput, orderBy: Prisma.RuleOrderByWithRelationInput[], take: number, skip = 0): Promise<Rule[]> {
+    return this.prisma.rule.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Rule | null> {

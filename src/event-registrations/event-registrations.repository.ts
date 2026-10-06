@@ -6,8 +6,13 @@ import type { EventRegistration, Prisma } from "../generated/prisma/client.js";
 export class EventRegistrationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.EventRegistrationWhereInput, orderBy: Prisma.EventRegistrationOrderByWithRelationInput, take: number): Promise<EventRegistration[]> {
-    return this.prisma.eventRegistration.findMany({ where, orderBy, take });
+  list(
+    where: Prisma.EventRegistrationWhereInput,
+    orderBy: Prisma.EventRegistrationOrderByWithRelationInput[],
+    take: number,
+    skip = 0,
+  ): Promise<EventRegistration[]> {
+    return this.prisma.eventRegistration.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<EventRegistration | null> {

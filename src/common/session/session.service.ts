@@ -4,15 +4,16 @@ import { PrismaService } from "../../database/prisma.service.js";
 import type { User } from "../../generated/prisma/client.js";
 import { ApiError } from "../filters/api-error.js";
 import { sha256 } from "../utils/crypto.js";
+import { cookieToken } from "./session-cookie.js";
 
 export type UserRow = User;
 
 export const AUTH_REQUIRED = "Authentication required.";
 export const ADMIN_REQUIRED = "Admin access required.";
 
-// Same token handling as the legacy app: whatever follows an optional
-// "Bearer " prefix in the Authorization header.
-export const bearerToken = (request: Request): string | undefined => request.headers.authorization?.replace(/^Bearer\s+/i, "");
+// The session token: whatever follows an optional "Bearer " prefix in the
+// Authorization header (API clients, older frontends), else the httpOnly session cookie.
+export const bearerToken = (request: Request): string | undefined => request.headers.authorization?.replace(/^Bearer\s+/i, "") || cookieToken(request);
 
 @Injectable()
 export class SessionService {

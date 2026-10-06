@@ -15,7 +15,7 @@ export class TransactionsService {
   constructor(private readonly repo: TransactionsRepository) {}
 
   async list(query: TransactionListQueryDto): Promise<TransactionVo[]> {
-    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toTransactionVo);
   }
 

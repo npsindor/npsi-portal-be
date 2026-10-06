@@ -6,8 +6,8 @@ import type { Prisma, Samiti } from "../generated/prisma/client.js";
 export class SamitisRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.SamitiWhereInput, orderBy: Prisma.SamitiOrderByWithRelationInput, take: number): Promise<Samiti[]> {
-    return this.prisma.samiti.findMany({ where, orderBy, take });
+  list(where: Prisma.SamitiWhereInput, orderBy: Prisma.SamitiOrderByWithRelationInput[], take: number, skip = 0): Promise<Samiti[]> {
+    return this.prisma.samiti.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Samiti | null> {

@@ -14,7 +14,7 @@ export class SamitisService {
 
   async list(query: SamitiListQueryDto): Promise<SamitiVo[]> {
     const where: Prisma.SamitiWhereInput = {};
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toSamitiVo);
   }
 

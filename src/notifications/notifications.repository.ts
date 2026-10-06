@@ -11,11 +11,12 @@ export class NotificationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   // `recipientFamilyId` (members) narrows the list to that family plus broadcasts.
-  list(recipientFamilyId: string | null, orderBy: Prisma.NotificationOrderByWithRelationInput, take: number): Promise<Notification[]> {
+  list(recipientFamilyId: string | null, orderBy: Prisma.NotificationOrderByWithRelationInput[], take: number, skip = 0): Promise<Notification[]> {
     return this.prisma.notification.findMany({
       where: recipientFamilyId === null ? {} : { OR: [{ recipientFamilyId }, ...BROADCAST] },
       orderBy,
       take,
+      skip,
     });
   }
 

@@ -22,7 +22,7 @@ describe("TransactionsService (admins)", () => {
     const { service, repo } = build();
     await service.create({ transactionId: "TX-1", type: "x", amount: 1 });
     assert.equal((await service.list({ order: "-date", limit: 5 })).length, 1);
-    assert.deepEqual(repo.list.mock.calls[0].arguments, [{}, { date: "desc" }, 5]);
+    assert.deepEqual(repo.list.mock.calls[0].arguments, [{}, [{ date: "desc" }, { id: "asc" }], 5, undefined]);
     const id = repo.stored[0].id;
     assert.equal((await service.update(id, { remarks: "ok" })).remarks, "ok");
     await rejectsWith(service.update("missing", { remarks: "x" }), 404, "Record not found");

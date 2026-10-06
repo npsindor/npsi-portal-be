@@ -74,9 +74,9 @@ describe("NotificationsService.list", () => {
     assert.deepEqual(
       repo.list.mock.calls.map((call) => call.arguments),
       [
-        [null, { date: "desc" }, 5],
-        [null, { createdAt: "asc" }, 100],
-        [null, { createdAt: "desc" }, 100],
+        [null, [{ date: "desc" }, { id: "asc" }], 5, undefined],
+        [null, [{ createdAt: "asc" }, { id: "asc" }], 100, undefined],
+        [null, [{ createdAt: "desc" }, { id: "asc" }], 100, undefined],
       ],
     );
   });

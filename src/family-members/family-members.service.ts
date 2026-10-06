@@ -28,7 +28,7 @@ export class FamilyMembersService {
 
   async list(query: FamilyMemberListQueryDto): Promise<FamilyMemberVo[]> {
     const where: Prisma.FamilyMemberWhereInput = { familyId: query.familyId };
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toFamilyMemberVo);
   }
 

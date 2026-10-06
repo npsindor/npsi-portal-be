@@ -25,6 +25,9 @@ describe("SessionService", () => {
     assert.equal(bearerToken(request({ authorization: "bearer   abc" })), "abc");
     assert.equal(bearerToken(request({ authorization: "abc" })), "abc");
     assert.equal(bearerToken(request()), undefined);
+    assert.equal(bearerToken(request({ cookie: "theme=dark; npsi_session=abc%3D; x=1" })), "abc=", "from the session cookie");
+    assert.equal(bearerToken(request({ authorization: "Bearer hdr", cookie: "npsi_session=ck" })), "hdr", "the header wins");
+    assert.equal(bearerToken(request({ cookie: "other=1" })), undefined);
   });
   test("no token means no user, without a query", async () => {
     const { first, service } = sessions(user());

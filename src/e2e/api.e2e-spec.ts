@@ -122,6 +122,7 @@ describe("auth", () => {
       fullName: "Member",
       phone: "9100000002",
       role: "user",
+      photoUrl: null,
     });
   });
 });

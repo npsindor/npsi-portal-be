@@ -47,7 +47,7 @@ export class TransferRequestsService {
   ) {}
 
   async list(query: TransferRequestListQueryDto): Promise<TransferRequestVo[]> {
-    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toTransferRequestVo);
   }
 

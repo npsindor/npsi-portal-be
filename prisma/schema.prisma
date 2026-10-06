@@ -385,6 +385,7 @@ model User {
   phone               String?   @db.VarChar(20)
   otpHash             String?   @map("otp_hash") @db.VarChar(255)
   otpExpiresAt        DateTime? @map("otp_expires_at") @db.DateTime(0)
+  photoUrl            String?   @map("photo_url") @db.Text
 
   @@index([resetTokenHash(length: 255)], map: "users_reset_token_idx")
   @@index([sessionToken(length: 255)])

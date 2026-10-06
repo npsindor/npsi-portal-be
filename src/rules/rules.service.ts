@@ -13,7 +13,7 @@ export class RulesService {
 
   async list(query: RuleListQueryDto): Promise<RuleVo[]> {
     const where: Prisma.RuleWhereInput = {};
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toRuleVo);
   }
 

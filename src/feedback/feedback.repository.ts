@@ -6,8 +6,8 @@ import type { Feedback, Prisma } from "../generated/prisma/client.js";
 export class FeedbackRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.FeedbackWhereInput, orderBy: Prisma.FeedbackOrderByWithRelationInput, take: number): Promise<Feedback[]> {
-    return this.prisma.feedback.findMany({ where, orderBy, take });
+  list(where: Prisma.FeedbackWhereInput, orderBy: Prisma.FeedbackOrderByWithRelationInput[], take: number, skip = 0): Promise<Feedback[]> {
+    return this.prisma.feedback.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Feedback | null> {

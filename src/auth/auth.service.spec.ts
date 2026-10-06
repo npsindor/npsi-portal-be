@@ -23,6 +23,9 @@ const fakeUsers = () => ({
   updateInvited: mock.fn(async (..._args: unknown[]) => undefined),
   setInviteResetToken: mock.fn(async (..._args: unknown[]) => undefined),
   updatePassword: mock.fn(async (..._args: unknown[]) => undefined),
+  updateProfile: mock.fn(async (id: string, data: Record<string, unknown>) =>
+    user({ id, ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)) }),
+  ),
   clearSession: mock.fn(async (_token: string | undefined) => undefined),
 });
 
@@ -79,7 +82,7 @@ describe("AuthService.register", () => {
     assert.equal(fullName, "New");
     assert.equal(phone, "9876543210");
     assert.match(hash, /^[0-9a-f]{32}:[0-9a-f]{128}$/);
-    assert.deepEqual(result, { user: { id, email: "new@example.com", fullName: "New", phone: "9876543210", role: "user" }, requiresOtp: true });
+    assert.deepEqual(result, { user: { id, email: "new@example.com", fullName: "New", phone: "9876543210", role: "user", photoUrl: null }, requiresOtp: true });
     await flush();
     assert.equal(users.setOtp.mock.callCount(), 1);
     assert.equal((mail.send.mock.calls[0].arguments[0] as { subject: string }).subject, "Your verification code");
@@ -175,7 +178,7 @@ describe("AuthService.login", () => {
     users.findForLogin.mock.mockImplementation(async () => account());
     const result = await service.login({ phone: " +91 98765 43210 ", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[0].arguments, ["+91 98765 43210", "9876543210"]);
-    assert.deepEqual(result.user, { id: "u-1", email: "member@example.com", fullName: "Member", phone: "9876543210", role: "user" });
+    assert.deepEqual(result.user, { id: "u-1", email: "member@example.com", fullName: "Member", phone: "9876543210", role: "user", photoUrl: null });
     assert.equal(users.startSession.mock.calls[0].arguments[1], sha256(result.accessToken), "only the hash is stored");
     await service.login({ username: "member@example.com", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[1].arguments, ["member@example.com", "member@example.com"]);
@@ -274,6 +277,7 @@ describe("AuthService password change, me and logout", () => {
       fullName: "Member",
       phone: "9876543210",
       role: "user",
+      photoUrl: null,
     });
   });
   test("logout clears the session for the given token", async () => {
@@ -284,5 +288,32 @@ describe("AuthService password change, me and logout", () => {
     await service.logout(undefined);
     await service.logout("");
     assert.equal(users.clearSession.mock.callCount(), 0);
+  });
+});
+
+describe("AuthService.updateMe", () => {
+  const photo = "https://api.npsindore.org/uploads/0b6e2f1a-1111-4c2b-9c3d-123456789abc.png";
+  test("updates name, mobile and photo; returns the public user with the photo", async () => {
+    const me = await service.updateMe(user({ id: "u-1" }), { fullName: " Ram Patidar ", phone: "9876500001", photoUrl: photo });
+    assert.deepEqual([me.fullName, me.phone, me.photoUrl], ["Ram Patidar", "9876500001", photo]);
+    assert.deepEqual(users.updateProfile.mock.calls[0].arguments, ["u-1", { fullName: "Ram Patidar", phone: "9876500001", photoUrl: photo }]);
+  });
+  test("omitted fields are left alone; empty values clear them", async () => {
+    await service.updateMe(user({ id: "u-1" }), { photoUrl: "" });
+    assert.deepEqual(users.updateProfile.mock.calls[0].arguments[1], { fullName: undefined, phone: undefined, photoUrl: null });
+  });
+  test("rejects a bad mobile, someone else's mobile, outside images and markup", async () => {
+    await rejectsWith(service.updateMe(user(), { phone: "12345" }), 400, "A valid 10-digit mobile number is required.");
+    users.findIdByPhone.mock.mockImplementation(async () => ({ id: "someone-else" }));
+    await rejectsWith(service.updateMe(user({ id: "u-1" }), { phone: "9876500001" }), 409, "This mobile number is already registered.");
+    users.findIdByPhone.mock.mockImplementation(async () => ({ id: "u-1" }));
+    await service.updateMe(user({ id: "u-1" }), { phone: "9876500001" });
+    await rejectsWith(service.updateMe(user(), { photoUrl: "https://evil.example/track.png" }), 400, "The photo must be an image uploaded to the portal.");
+    await rejectsWith(
+      service.updateMe(user(), { photoUrl: "https://api.npsindore.org/uploads/../etc/passwd" }),
+      400,
+      "The photo must be an image uploaded to the portal.",
+    );
+    await rejectsWith(service.updateMe(user(), { fullName: "<script>" }), 400, 'The "fullName" field cannot contain < or > characters.');
   });
 });

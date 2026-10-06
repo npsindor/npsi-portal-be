@@ -45,6 +45,7 @@ export const user = (overrides: Partial<UserRow> = {}): UserRow => ({
   resetTokenExpiresAt: null,
   otpHash: null,
   otpExpiresAt: null,
+  photoUrl: null,
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),
   ...overrides,

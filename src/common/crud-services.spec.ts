@@ -137,8 +137,8 @@ describe("shared helpers", () => {
     assert.equal(toDateOnly(null), null);
   });
   test("list order, JSON input, markup, pick", () => {
-    assert.deepEqual(toOrderBy("-date"), { date: "desc" });
-    assert.deepEqual(toOrderBy("title"), { title: "asc" });
+    assert.deepEqual(toOrderBy("-date"), [{ date: "desc" }, { id: "asc" }]);
+    assert.deepEqual(toOrderBy("title"), [{ title: "asc" }, { id: "asc" }]);
     assert.deepEqual(orderValues(["a"] as const), ["a", "-a"]);
     assert.equal(toJsonInput(undefined), undefined);
     assert.equal(toJsonInput(null), Prisma.DbNull);

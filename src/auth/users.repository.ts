@@ -101,6 +101,10 @@ export class UsersRepository {
     });
   }
 
+  updateProfile(userId: string, data: { fullName?: string | null; phone?: string | null; photoUrl?: string | null }): Promise<UserRow> {
+    return this.prisma.user.update({ where: { id: userId }, data: { ...data, updatedAt: new Date() } });
+  }
+
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
     await this.prisma.user.update({ where: { id: userId }, data: { passwordHash, updatedAt: new Date() } });
   }

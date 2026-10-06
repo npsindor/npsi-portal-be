@@ -6,8 +6,8 @@ import type { Prisma, Student } from "../generated/prisma/client.js";
 export class StudentsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.StudentWhereInput, orderBy: Prisma.StudentOrderByWithRelationInput, take: number): Promise<Student[]> {
-    return this.prisma.student.findMany({ where, orderBy, take });
+  list(where: Prisma.StudentWhereInput, orderBy: Prisma.StudentOrderByWithRelationInput[], take: number, skip = 0): Promise<Student[]> {
+    return this.prisma.student.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Student | null> {

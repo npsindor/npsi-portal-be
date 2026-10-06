@@ -6,8 +6,13 @@ import type { Prisma, StudentApplication } from "../generated/prisma/client.js";
 export class StudentApplicationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.StudentApplicationWhereInput, orderBy: Prisma.StudentApplicationOrderByWithRelationInput, take: number): Promise<StudentApplication[]> {
-    return this.prisma.studentApplication.findMany({ where, orderBy, take });
+  list(
+    where: Prisma.StudentApplicationWhereInput,
+    orderBy: Prisma.StudentApplicationOrderByWithRelationInput[],
+    take: number,
+    skip = 0,
+  ): Promise<StudentApplication[]> {
+    return this.prisma.studentApplication.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<StudentApplication | null> {

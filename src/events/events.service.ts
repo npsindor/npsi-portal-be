@@ -14,7 +14,7 @@ export class EventsService {
 
   async list(query: EventListQueryDto): Promise<EventVo[]> {
     const where: Prisma.EventWhereInput = {};
-    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT);
+    const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toEventVo);
   }
 

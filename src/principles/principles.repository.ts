@@ -6,8 +6,8 @@ import type { Principle, Prisma } from "../generated/prisma/client.js";
 export class PrinciplesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  list(where: Prisma.PrincipleWhereInput, orderBy: Prisma.PrincipleOrderByWithRelationInput, take: number): Promise<Principle[]> {
-    return this.prisma.principle.findMany({ where, orderBy, take });
+  list(where: Prisma.PrincipleWhereInput, orderBy: Prisma.PrincipleOrderByWithRelationInput[], take: number, skip = 0): Promise<Principle[]> {
+    return this.prisma.principle.findMany({ where, orderBy, take, skip });
   }
 
   findById(id: string, db: Db = this.prisma): Promise<Principle | null> {
