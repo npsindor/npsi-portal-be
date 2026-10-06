@@ -35,7 +35,7 @@ export class UploadsService {
   async toUploadedFile(request: Request, file: Express.Multer.File | undefined): Promise<UploadedFileVo> {
     if (!file) throw new ApiError(400, "No file uploaded.");
     const matches = SIGNATURES[file.mimetype];
-    if (!matches || !matches(await readHead(file.path))) {
+    if (!matches?.(await readHead(file.path))) {
       await unlink(file.path).catch(() => undefined);
       throw new ApiError(400, NOT_AN_IMAGE);
     }
