@@ -36,6 +36,7 @@ export const fakeModelRepo = <Row extends { id: string }>(build: (data: Partial<
     latestDisplayIds: mock.fn(async (_prefix: string): Promise<(string | null)[]> => []),
     hasRegistrations: mock.fn(async (_eventId: string) => false),
     activeExists: mock.fn(async (_familyId: string, _eventId: string) => false),
+    recountFamilies: mock.fn(async (_familyIds: (string | null | undefined)[], _db?: unknown) => undefined),
   };
 };
 

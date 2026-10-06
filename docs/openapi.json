@@ -1969,7 +1969,7 @@
     },
     "/api/v1/families/{id}": {
       "patch": {
-        "description": "Any logged-in user.",
+        "description": "Admin only (the member count follows the family's members).",
         "operationId": "FamiliesController_update",
         "parameters": [
           {
@@ -2014,6 +2014,16 @@
             }
           },
           "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
             "description": "",
             "content": {
               "application/json": {
@@ -8301,10 +8311,6 @@
             "format": "date-time",
             "nullable": true
           },
-          "memberCount": {
-            "type": "integer",
-            "nullable": true
-          },
           "applicationId": {
             "type": "string",
             "nullable": true
@@ -8375,10 +8381,6 @@
           "registrationDate": {
             "type": "string",
             "format": "date-time",
-            "nullable": true
-          },
-          "memberCount": {
-            "type": "integer",
             "nullable": true
           },
           "applicationId": {

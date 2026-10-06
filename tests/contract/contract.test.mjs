@@ -866,12 +866,17 @@ describe("entities: update", () => {
     assert.equal(res.body.name, "Member Renamed");
     assert.equal(res.body.membershipId, "NPSI-MEM-000001");
   });
-  test("family: members may only update their own family", async () => {
-    assertError(await api("update", ["Family", IDS.family2], { token: TOKENS.member }).send({ memberCount: 9 }), 403, "You can only update your own family.");
-    const res = await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ memberCount: 2, status: "PENDING" });
-    assert.equal(res.status, 200);
-    assert.equal(res.body.memberCount, 2);
-    assert.equal(res.body.status, "ACTIVE");
+  test("family: members can't change it; its member count follows its members", async () => {
+    assertError(await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ memberCount: 9 }), 403, "Admin access required.");
+    const count = async () => (await api("myFamily", [], { token: TOKENS.member })).body.family.memberCount;
+    const rows = async () => (await api("myFamily", [], { token: TOKENS.member })).body.members.length;
+    const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ familyId: FAMILY1, name: "Counted", relationship: "Son" });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.equal(await count(), await rows());
+    const withNew = await count();
+    assert.equal((await api("remove", ["FamilyMember", added.body.id], { token: TOKENS.member })).status, 204);
+    assert.equal(await count(), withNew - 1);
+    assert.equal(await count(), await rows());
   });
   test("notification: members may only mark their own as read", async () => {
     assertError(

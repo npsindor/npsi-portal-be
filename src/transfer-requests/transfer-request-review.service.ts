@@ -81,7 +81,7 @@ export class TransferRequestReviewService {
         ),
     );
     await this.students.update(student.id, { status: "TRANSFERRED", linkedFamilyId: familyId, linkedMembershipId: member.membershipId }, tx);
-    await this.families.changeMemberCount(target.id, 1, tx);
+    await this.familyMembers.recountFamilies([familyId], tx);
     const vars = { familyName: target.familyName, membershipId: member.membershipId };
     await this.notifications.create(workflowNotification("transferApproved", familyId, vars, lang), tx);
     return { resultingMembershipId: member.membershipId };
@@ -92,9 +92,7 @@ export class TransferRequestReviewService {
     if (!member) throw new ApiError(404, "Source member not found.");
     const fromFamilyId = member.familyId;
     await this.familyMembers.update(member.id, { familyId: target.familyId as string, status: "ACTIVE" }, tx);
-    const from = await this.families.findByFamilyId(fromFamilyId, tx);
-    if (from) await this.families.changeMemberCount(from.id, -1, tx);
-    await this.families.changeMemberCount(target.id, 1, tx);
+    await this.familyMembers.recountFamilies([fromFamilyId, target.familyId], tx);
     const vars = { fromFamilyId, toFamilyName: target.familyName };
     await this.notifications.create(workflowNotification("transferMoved", target.familyId as string, vars, lang), tx);
     return { oldFamilyId: fromFamilyId };

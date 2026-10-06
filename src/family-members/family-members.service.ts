@@ -7,6 +7,7 @@ import { parseDate } from "../common/utils/dates.js";
 import { createWithDisplayId, displayIdAt, nextDisplayId } from "../common/utils/display-ids.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
 import { pick } from "../common/utils/objects.js";
+import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
 import type { CreateFamilyMemberDto, FamilyMemberListQueryDto, UpdateFamilyMemberDto } from "./dto/family-members.dto.js";
@@ -18,10 +19,12 @@ const PREFIX = "NPSI-MEM-";
 // The fields the member's "my family" screen edits; the rest is admin-only.
 const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "address", "status"] as const;
 // Members of a family. Admins manage all of them; a member may add, edit and
-// remove the members of their own family.
+// remove the members of their own family. Every change recounts the families'
+// member counts in the same transaction.
 @Injectable()
 export class FamilyMembersService {
   constructor(
+    private readonly prisma: PrismaService,
     private readonly repo: FamilyMembersRepository,
     private readonly membership: MembershipRepository,
   ) {}
@@ -40,11 +43,15 @@ export class FamilyMembersService {
       input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId } as CreateFamilyMemberDto;
       assertNoMarkup(input);
     }
-    const row = await createWithDisplayId(
-      PREFIX,
-      (prefix) => this.repo.latestDisplayIds(prefix),
-      (membershipId) => this.repo.create({ id: randomId(), membershipId, ...toCreateData(input) }),
-    );
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await createWithDisplayId(
+        PREFIX,
+        (prefix) => this.repo.latestDisplayIds(prefix, tx),
+        (membershipId) => this.repo.create({ id: randomId(), membershipId, ...toCreateData(input) }, tx),
+      );
+      await this.repo.recountFamilies([created.familyId], tx);
+      return created;
+    });
     return toFamilyMemberVo(row);
   }
 
@@ -52,9 +59,17 @@ export class FamilyMembersService {
   async createBatch(records: CreateFamilyMemberDto[] | undefined): Promise<{ status: 200 | 201; records: FamilyMemberVo[] }> {
     if (!records?.length) return { status: 200, records: [] };
     const first = Number(nextDisplayId(PREFIX, await this.repo.latestDisplayIds(PREFIX)).slice(PREFIX.length));
-    const rows = await this.repo.createMany(
-      records.map((dto, index) => ({ id: randomId(), membershipId: displayIdAt(PREFIX, first + index), ...toCreateData(dto) })),
-    );
+    const rows = await this.prisma.$transaction(async (tx) => {
+      const created = await this.repo.createMany(
+        records.map((dto, index) => ({ id: randomId(), membershipId: displayIdAt(PREFIX, first + index), ...toCreateData(dto) })),
+        tx,
+      );
+      await this.repo.recountFamilies(
+        created.map((row) => row.familyId),
+        tx,
+      );
+      return created;
+    });
     return { status: 201, records: rows.map(toFamilyMemberVo) };
   }
 
@@ -68,7 +83,13 @@ export class FamilyMembersService {
       input = pick(dto, MEMBER_FIELDS);
       assertNoMarkup(input);
     }
-    const row = await this.repo.update(id, toUpdateData(input));
+    const row = await this.prisma.$transaction(async (tx) => {
+      const fromFamilyId = (await this.repo.findById(id, tx))?.familyId;
+      const updated = await this.repo.update(id, toUpdateData(input), tx);
+      // An admin may move a member to another family: both counts change.
+      if (updated && fromFamilyId !== updated.familyId) await this.repo.recountFamilies([fromFamilyId, updated.familyId], tx);
+      return updated;
+    });
     if (!row) throw new ApiError(404, "Record not found");
     return toFamilyMemberVo(row);
   }
@@ -79,7 +100,11 @@ export class FamilyMembersService {
       const member = await this.repo.findById(id);
       if (!ownFamilyId || !member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only remove members of your own family.");
     }
-    await this.repo.delete(id);
+    await this.prisma.$transaction(async (tx) => {
+      const member = await this.repo.findById(id, tx);
+      await this.repo.delete(id, tx);
+      await this.repo.recountFamilies([member?.familyId], tx);
+    });
   }
 }
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.

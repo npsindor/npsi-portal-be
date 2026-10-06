@@ -41,10 +41,6 @@ const build = (requests = [familyMove, studentMove]) => {
         familyRow({ id: "f-1", familyId: "NPSI-FAM-000001", familyName: "Old", status: "ACTIVE" }),
         familyRow({ id: "f-2", familyId: "NPSI-FAM-000002", familyName: "New", status: "ACTIVE" }),
       ].find((f) => f.familyId === familyId && (!status || f.status === status)) ?? null,
-    counts: new Map<string, number>(),
-    changeMemberCount: async function (id: string, delta: number) {
-      this.counts.set(id, (this.counts.get(id) ?? 0) + delta);
-    },
   };
   const familyMembers = {
     ...fakeModelRepo(familyMemberRow, [familyMemberRow({ id: "m-5", membershipId: "NPSI-MEM-000005", familyId: "NPSI-FAM-000001", status: "PENDING" })]),
@@ -72,7 +68,7 @@ const build = (requests = [familyMove, studentMove]) => {
 
 describe("TransferRequestReviewService", () => {
   test("family_to_family: member moves, both counts follow, target notified", async () => {
-    const { service, families, familyMembers, notifications } = build();
+    const { service, familyMembers, notifications } = build();
     const result = await service.review("tr-1", { decision: "APPROVED", remarks: "ok" }, admin());
     assert.deepEqual(
       [result.status, result.oldFamilyId, result.newFamilyId, result.approvedById, result.adminRemarks],
@@ -80,12 +76,12 @@ describe("TransferRequestReviewService", () => {
     );
     assert.ok(result.approvedDate instanceof Date);
     assert.deepEqual([familyMembers.stored[0].familyId, familyMembers.stored[0].status], ["NPSI-FAM-000002", "ACTIVE"]);
-    assert.deepEqual(Object.fromEntries(families.counts), { "f-1": -1, "f-2": 1 });
+    assert.deepEqual(familyMembers.recountFamilies.mock.calls[0].arguments[0], ["NPSI-FAM-000001", "NPSI-FAM-000002"]);
     assert.equal(notifications.stored[0].recipientFamilyId, "NPSI-FAM-000002");
     assert.match(notifications.stored[0].message, /NPSI-FAM-000001.*New/);
   });
   test("student_to_family: student becomes a member of the target family and is marked TRANSFERRED", async () => {
-    const { service, families, familyMembers, students, notifications } = build();
+    const { service, familyMembers, students, notifications } = build();
     const result = await service.review("tr-2", { decision: "APPROVED" }, admin());
     const member = familyMembers.stored.at(-1);
     assert.deepEqual(
@@ -97,7 +93,7 @@ describe("TransferRequestReviewService", () => {
       ["TRANSFERRED", "NPSI-FAM-000002", "NPSI-MEM-000052"],
     );
     assert.deepEqual([result.resultingMembershipId, result.newFamilyId], ["NPSI-MEM-000052", "NPSI-FAM-000002"]);
-    assert.deepEqual(Object.fromEntries(families.counts), { "f-2": 1 });
+    assert.deepEqual(familyMembers.recountFamilies.mock.calls[0].arguments[0], ["NPSI-FAM-000002"]);
     assert.match(notifications.stored[0].message, /NPSI-MEM-000052/);
   });
   test("reject / correction need remarks and change nothing else", async () => {

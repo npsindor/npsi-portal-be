@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import type { PrismaService } from "../database/prisma.service.js";
 import type { MembershipRepository } from "../membership/membership.repository.js";
-import { FAM, fakeMembership, fakeModelRepo } from "../testing/fake-repo.js";
+import { FAM, fakeMembership, fakeModelRepo, fakePrisma, TX } from "../testing/fake-repo.js";
 import { admin, as, rejectsWith, user } from "../testing/fakes.js";
 import { familyMemberRow } from "../testing/rows.js";
 import type { FamilyMembersRepository } from "./family-members.repository.js";
@@ -11,7 +12,10 @@ const member = () => user({ id: "u-m" });
 const build = () => {
   const repo = fakeModelRepo(familyMemberRow, [familyMemberRow({ id: "m-own", familyId: FAM }), familyMemberRow({ id: "m-other", familyId: "OTHER" })]);
   repo.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
-  return { service: new FamilyMembersService(as<FamilyMembersRepository>(repo), as<MembershipRepository>(fakeMembership())), repo };
+  return {
+    service: new FamilyMembersService(as<PrismaService>(fakePrisma()), as<FamilyMembersRepository>(repo), as<MembershipRepository>(fakeMembership())),
+    repo,
+  };
 };
 
 describe("FamilyMembersService", () => {
@@ -44,5 +48,20 @@ describe("FamilyMembersService", () => {
     await rejectsWith(service.update("missing", {}, admin()), 404, "Record not found");
     await service.remove("m-other", admin());
     assert.equal((await service.list({ familyId: FAM })).length, 2);
+  });
+  test("every change recounts the families involved, in the same transaction", async () => {
+    const { service, repo } = build();
+    const recounts = () => repo.recountFamilies.mock.calls.map((call) => call.arguments);
+    await service.create({ familyId: FAM, name: "Kid", relationship: "Son" }, member());
+    await service.update("m-own", { name: "Renamed" }, member());
+    await service.update("m-other", { familyId: FAM }, admin());
+    await service.remove("m-own", member());
+    await service.createBatch([{ familyId: "F", name: "A", relationship: "Self" }]);
+    assert.deepEqual(recounts(), [
+      [[FAM], TX],
+      [["OTHER", FAM], TX],
+      [[FAM], TX],
+      [["F"], TX],
+    ]);
   });
 });

@@ -236,6 +236,12 @@ credentials, photo upload + profile save, fake image refused, paging (100 + 54 =
 - **Drafts stay private:** `GET /events` returns only PUBLISHED events and `GET /announcements` only
   Active ones, except to admins (before, drafts were public and only hidden by the pages). Members get
   404 "Event not found." when registering for an event that isn't published.
+- **Member counts follow the members:** `families.member_count` is recounted from the family's
+  member rows (any status) in the same transaction as every member add, edit (moved family), remove,
+  batch and transfer. Before, the member's browser sent the new count (any number was accepted) and
+  transfers added ±1; a check of the production copy found 2 of 48 families off (PSI-FAM-000001:
+  5 stored / 6 rows, PSI-FAM-000012: 1 / 0), corrected the next time their members change.
+  `memberCount` is no longer accepted in family requests and `PATCH /families/:id` is admin-only.
 - **`GET /me/event-registrations`:** the member's family's registrations (cancelled ones included);
   the member events page shows "Registered" instead of the register button.
 - Frontend: removed the unused Base44 leftovers (feedback popup with an AI call that didn't exist,

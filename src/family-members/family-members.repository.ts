@@ -39,8 +39,8 @@ export class FamilyMembersRepository {
   }
 
   // Deleting an id that doesn't exist is not an error.
-  async delete(id: string): Promise<void> {
-    await this.prisma.familyMember.deleteMany({ where: { id } });
+  async delete(id: string, db: Db = this.prisma): Promise<void> {
+    await db.familyMember.deleteMany({ where: { id } });
   }
 
   // The latest display ids with this prefix, for allocating the next one.
@@ -63,5 +63,14 @@ export class FamilyMembersRepository {
     const contact: Prisma.FamilyMemberWhereInput[] = [...(mobile ? [{ mobile }] : []), ...(email ? [{ email }] : [])];
     if (!contact.length) return false;
     return (await db.familyMember.count({ where: { familyId, OR: contact } })) > 0;
+  }
+
+  // A family's member count is the number of its member rows (any status); call after every
+  // change, in the same transaction.
+  async recountFamilies(familyIds: (string | null | undefined)[], db: Db = this.prisma): Promise<void> {
+    for (const familyId of new Set(familyIds.filter((id): id is string => Boolean(id)))) {
+      const memberCount = await db.familyMember.count({ where: { familyId } });
+      await db.family.updateMany({ where: { familyId }, data: { memberCount } });
+    }
   }
 }

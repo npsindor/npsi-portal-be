@@ -12,10 +12,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
-import type { UserRow } from "../common/session/session.service.js";
+import { AdminGuard } from "../common/guards/auth.guards.js";
 import { CreateFamilyDto, FamilyListQueryDto, UpdateFamilyDto } from "./dto/families.dto.js";
 import { FamiliesService } from "./families.service.js";
 import { FamilyVo } from "./vo/families.vo.js";
@@ -49,15 +47,16 @@ export class FamiliesController {
   }
 
   @Patch(":id")
-  @UseGuards(UserGuard)
-  @ApiOperation({ summary: "Update a family", description: "Any logged-in user." })
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: "Update a family", description: "Admin only (the member count follows the family's members)." })
   @ApiParam({ name: "id", description: "Record id" })
   @ApiOkResponse({ type: FamilyVo })
   @ApiBadRequestResponse({ type: ErrorVo })
   @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
   @ApiNotFoundResponse({ type: ErrorVo, description: "Record not found" })
-  update(@Param("id") id: string, @Body() body: UpdateFamilyDto, @CurrentUser() user: UserRow): Promise<FamilyVo> {
-    return this.families.update(id, body, user);
+  update(@Param("id") id: string, @Body() body: UpdateFamilyDto): Promise<FamilyVo> {
+    return this.families.update(id, body);
   }
 
   @Delete(":id")
