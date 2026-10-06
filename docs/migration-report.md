@@ -242,6 +242,18 @@ credentials, photo upload + profile save, fake image refused, paging (100 + 54 =
   transfers added ±1; a check of the production copy found 2 of 48 families off (PSI-FAM-000001:
   5 stored / 6 rows, PSI-FAM-000012: 1 / 0), corrected the next time their members change.
   `memberCount` is no longer accepted in family requests and `PATCH /families/:id` is admin-only.
+- **Migration `20261013000000_remove_qa_users_and_recount_members`:** removes 6 QA login accounts
+  (@example.com, matched by id and email; nothing else refers to them) and recounts every family's
+  members once (production: PSI-FAM-000001 5 → 6, PSI-FAM-000012 1 → 0).
+- **Production rehearsal (2026-10-06):** the production export of 15:08 UTC, imported locally and
+  booted in production mode: legacy database adopted, all migrations applied; removed exactly the
+  listed rows (applications 63 → 55, families 56 → 50, members 92 → 90, transactions 76 → 72,
+  event registrations 6 → 3, notifications 157 → 149, users 63 → 56); 6 foreign keys, no orphans,
+  digits on every phone, every status a known value, 23 sessions carried over, member counts all
+  match. Code backups: tag `production-before-nestjs-2026-10-06` (and branch `backup/main-2026-10-06`)
+  in both repos, plus git bundles outside GitHub.
+- Frontend `.htaccess`: `index.html` is `no-cache` (a deploy reaches everyone at once; an old page
+  would call the old API), hashed scripts and styles are cached for a year.
 - **`GET /me/event-registrations`:** the member's family's registrations (cancelled ones included);
   the member events page shows "Registered" instead of the register button.
 - Frontend: removed the unused Base44 leftovers (feedback popup with an AI call that didn't exist,
