@@ -1,6 +1,10 @@
 import { Injectable } from "@nestjs/common";
+import { withContactFields } from "../common/utils/text.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Family, Prisma } from "../generated/prisma/client.js";
+
+// Every save keeps the digits of the contactNumber (duplicate checks) and a trimmed email.
+const contact = <T extends object>(data: T): T => withContactFields(data, "contactNumber", "contactDigits");
 
 @Injectable()
 export class FamiliesRepository {
@@ -15,12 +19,12 @@ export class FamiliesRepository {
   }
 
   create(data: Prisma.FamilyUncheckedCreateInput, db: Db = this.prisma): Promise<Family> {
-    return db.family.create({ data });
+    return db.family.create({ data: contact(data) });
   }
 
   // null when the id doesn't exist.
   async update(id: string, data: Prisma.FamilyUncheckedUpdateInput, db: Db = this.prisma): Promise<Family | null> {
-    const { count } = await db.family.updateMany({ where: { id }, data });
+    const { count } = await db.family.updateMany({ where: { id }, data: contact(data) });
     return count ? this.findById(id, db) : null;
   }
 

@@ -2,7 +2,7 @@ import type * as Models from "../generated/prisma/client.js";
 import { Prisma } from "../generated/prisma/client.js";
 
 // Complete database rows for unit tests: every column at a neutral value, then
-// the overrides. One builder per model.
+// the overrides. One builder per model (generated from prisma/schema.prisma).
 const AT = new Date("2026-01-01T00:00:00Z");
 
 export const announcementRow = (overrides: Partial<Models.Announcement> = {}): Models.Announcement => ({
@@ -25,6 +25,7 @@ export const applicationRow = (overrides: Partial<Models.Application> = {}): Mod
   status: null,
   familyHeadName: "familyHeadName",
   mobile: null,
+  mobileDigits: null,
   email: null,
   familyName: "familyName",
   address: null,
@@ -110,6 +111,7 @@ export const familyRow = (overrides: Partial<Models.Family> = {}): Models.Family
   village: null,
   gotra: null,
   contactNumber: null,
+  contactDigits: null,
   email: null,
   registrationDate: null,
   memberCount: null,
@@ -128,6 +130,7 @@ export const familyMemberRow = (overrides: Partial<Models.FamilyMember> = {}): M
   gender: null,
   dob: null,
   mobile: null,
+  mobileDigits: null,
   email: null,
   education: null,
   occupation: null,
@@ -234,6 +237,7 @@ export const studentApplicationRow = (overrides: Partial<Models.StudentApplicati
   status: null,
   studentName: "studentName",
   mobile: "mobile",
+  mobileDigits: null,
   email: null,
   dob: null,
   gender: null,
@@ -264,6 +268,7 @@ export const studentRow = (overrides: Partial<Models.Student> = {}): Models.Stud
   studentName: "studentName",
   status: null,
   mobile: null,
+  mobileDigits: null,
   email: null,
   dob: null,
   gender: null,

@@ -84,6 +84,18 @@ const waitFor = async (check, label, timeoutMs = 60000) => {
 
 export const query = (sql, params = []) => db.query(sql, params).then(([result]) => result);
 
+// Rows inserted with raw SQL (seeds, legacy-data tests) skip the repositories that
+// keep the contact digits; give them what the migration gives existing rows.
+const BACKFILL = fs
+  .readFileSync(path.join(root, "prisma/migrations/20261010000000_contact_digits/migration.sql"), "utf8")
+  .replace(/^\s*--.*$/gm, "")
+  .split(";")
+  .map((statement) => statement.trim())
+  .filter((statement) => statement.startsWith("UPDATE"));
+export const backfillContactDigits = async () => {
+  for (const statement of BACKFILL) await query(statement);
+};
+
 const seed = async () => {
   const user = (id, email, password, extra = {}) => ({
     id,
@@ -207,6 +219,7 @@ export const setup = async () => {
     throw new Error(`${error.message}\n--- server output ---\n${output}`);
   }
   await seed();
+  await backfillContactDigits();
 };
 
 export const teardown = async () => {

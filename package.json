@@ -20,7 +20,8 @@
     "postinstall": "prisma generate",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "start:prod": "node dist/main.js"
+    "start:prod": "node dist/main.js",
+    "openapi": "nest build && node dist/openapi.js"
   },
   "dependencies": {
     "@nestjs/cli": "^12.0.8",

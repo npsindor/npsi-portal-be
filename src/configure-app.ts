@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { ValidationPipe } from "@nestjs/common";
 import type { NestExpressApplication } from "@nestjs/platform-express";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from "@nestjs/swagger";
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
@@ -64,14 +64,17 @@ export const configureApp = (app: NestExpressApplication): void => {
 
   // API docs everywhere except production (they map every endpoint and field for an attacker).
   if (config.appEnv === "production") return;
-  const document = SwaggerModule.createDocument(
+  SwaggerModule.setup(DOCS_PATH, app, buildOpenApiDocument(app));
+};
+
+// The OpenAPI description of the configured app (Swagger UI, and `npm run openapi`).
+export const buildOpenApiDocument = (app: NestExpressApplication): OpenAPIObject =>
+  SwaggerModule.createDocument(
     app,
     new DocumentBuilder()
       .setTitle("NPS Indore portal API")
       .setDescription('Backend API for the NPS Indore member portal. Errors are always `{ "error": "message" }`.')
       .setVersion("1")
-      .addBearerAuth({ type: "http", scheme: "bearer", description: "Session token from login or OTP verification" })
+      .addBearerAuth({ type: "http", scheme: "bearer", description: "Session token (also sent as the httpOnly npsi_session cookie)" })
       .build(),
   );
-  SwaggerModule.setup(DOCS_PATH, app, document);
-};

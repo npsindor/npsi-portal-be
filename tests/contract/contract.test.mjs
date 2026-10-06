@@ -3,7 +3,7 @@
 // share one seeded database, so later tests may depend on records created earlier.
 import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
-import { call, FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, query, setup, TOKENS, teardown } from "./harness.mjs";
+import { backfillContactDigits, call, FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, query, setup, TOKENS, teardown } from "./harness.mjs";
 import { API, ENTITIES } from "./paths.mjs";
 
 const api = (key, args = [], opts = {}) => {
@@ -923,6 +923,7 @@ describe("duplicate contact rules", () => {
       "INSERT INTO student_applications (id, application_id, status, student_name, mobile, email) VALUES ('dup-stu-rej', 'DUP-STU-REJ', 'REJECTED', 'S', '9644444444', 'sturej@test.local')",
     );
     await query("INSERT INTO students (id, student_id, student_name, mobile, email) VALUES ('dup-stu', 'DUP-STU', 'S', '9655555555', 'student2@test.local')");
+    await backfillContactDigits();
   });
   const mobile = async (value) => (await api("checkMobile", [`?mobile=${encodeURIComponent(value)}`])).body.taken;
   const email = async (value) => (await api("checkEmail", [`?email=${encodeURIComponent(value)}`])).body.taken;

@@ -34,6 +34,7 @@ model Application {
   status            String?   @default("SUBMITTED") @db.VarChar(64)
   familyHeadName    String    @map("family_head_name") @db.Text
   mobile            String?   @db.VarChar(255)
+  mobileDigits      String?   @map("mobile_digits") @db.VarChar(10)
   email             String?   @db.VarChar(255)
   familyName        String    @map("family_name") @db.Text
   address           String?   @db.Text
@@ -53,6 +54,7 @@ model Application {
   updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([applicationId, mobile], map: "applications_lookup_idx")
+  @@index([mobileDigits], map: "applications_mobile_digits_idx")
   @@map("applications")
 }
 
@@ -124,6 +126,7 @@ model Family {
   village          String?        @db.VarChar(255)
   gotra            String?        @db.VarChar(255)
   contactNumber    String?        @map("contact_number") @db.VarChar(255)
+  contactDigits    String?        @map("contact_digits") @db.VarChar(10)
   email            String?        @db.VarChar(255)
   registrationDate DateTime?      @map("registration_date") @db.DateTime(0)
   memberCount      Int?           @default(0) @map("member_count")
@@ -133,6 +136,7 @@ model Family {
   members          FamilyMember[]
 
   @@index([email], map: "families_email_idx")
+  @@index([contactDigits], map: "families_contact_digits_idx")
   @@map("families")
 }
 
@@ -145,6 +149,7 @@ model FamilyMember {
   gender          String?   @db.VarChar(255)
   dob             DateTime? @db.Date
   mobile          String?   @db.VarChar(255)
+  mobileDigits    String?   @map("mobile_digits") @db.VarChar(10)
   email           String?   @db.VarChar(255)
   education       String?   @db.VarChar(255)
   occupation      String?   @db.VarChar(255)
@@ -159,6 +164,7 @@ model FamilyMember {
   @@index([familyId], map: "family_members_family_idx")
   @@index([email], map: "family_members_email_idx")
   @@index([membershipId], map: "family_members_membership_idx")
+  @@index([mobileDigits], map: "family_members_mobile_digits_idx")
   @@map("family_members")
 }
 
@@ -267,6 +273,7 @@ model StudentApplication {
   status             String?   @default("SUBMITTED") @db.VarChar(64)
   studentName        String    @map("student_name") @db.Text
   mobile             String    @db.VarChar(255)
+  mobileDigits       String?   @map("mobile_digits") @db.VarChar(10)
   email              String?   @db.VarChar(255)
   dob                DateTime? @db.Date
   gender             String?   @db.VarChar(255)
@@ -289,6 +296,7 @@ model StudentApplication {
   updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   fatherName         String?   @map("father_name") @db.VarChar(255)
 
+  @@index([mobileDigits], map: "student_applications_mobile_digits_idx")
   @@map("student_applications")
 }
 
@@ -298,6 +306,7 @@ model Student {
   studentName        String    @map("student_name") @db.Text
   status             String?   @default("PENDING") @db.VarChar(64)
   mobile             String?   @db.VarChar(255)
+  mobileDigits       String?   @map("mobile_digits") @db.VarChar(10)
   email              String?   @db.VarChar(255)
   dob                DateTime? @db.Date
   gender             String?   @db.VarChar(255)
@@ -321,6 +330,7 @@ model Student {
   fatherName         String?   @map("father_name") @db.VarChar(255)
 
   @@index([email], map: "students_email_idx")
+  @@index([mobileDigits], map: "students_mobile_digits_idx")
   @@map("students")
 }
 

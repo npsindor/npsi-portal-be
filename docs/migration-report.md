@@ -248,6 +248,17 @@ registrations get no foreign key.
 Frontend: Playwright browser tests (`npm run test:browser`, run in its pipeline) cover public pages for
 anonymous visitors, the login redirect, cookie login without localStorage, one-call approval and paging.
 
+### Before the production deploy (2026-10-09, test only)
+
+- **No raw SQL left in app code:** duplicate mobile/email checks are typed, indexed Prisma counts on
+  new `mobile_digits` / `contact_digits` columns (migration `20261010000000_contact_digits`: columns,
+  indexes, backfill with the same rule, emails trimmed). The repositories keep the digits on every save.
+  On the production copy every one of 204 rows matches the old formula, so the checks answer the same.
+  Only `PrismaService` keeps SQL: the connection ping and the one-time legacy adoption (removable after
+  the first production deploy).
+- **Frontend ↔ backend contract:** `npm run openapi` writes `docs/openapi.json` (CI fails when stale);
+  the frontend keeps a copy and its unit tests fail if any endpoint it calls is missing from it.
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 

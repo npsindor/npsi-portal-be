@@ -1,6 +1,10 @@
 import { Injectable } from "@nestjs/common";
+import { withContactFields } from "../common/utils/text.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { FamilyMember, Prisma } from "../generated/prisma/client.js";
+
+// Every save keeps the digits of the mobile (duplicate checks) and a trimmed email.
+const contact = <T extends object>(data: T): T => withContactFields(data, "mobile", "mobileDigits");
 
 @Injectable()
 export class FamilyMembersRepository {
@@ -15,14 +19,14 @@ export class FamilyMembersRepository {
   }
 
   create(data: Prisma.FamilyMemberUncheckedCreateInput, db: Db = this.prisma): Promise<FamilyMember> {
-    return db.familyMember.create({ data });
+    return db.familyMember.create({ data: contact(data) });
   }
 
   // All or nothing: in its own transaction unless already inside one.
   createMany(rows: Prisma.FamilyMemberUncheckedCreateInput[], db: Db = this.prisma): Promise<FamilyMember[]> {
     const createAll = async (tx: Db): Promise<FamilyMember[]> => {
       const created: FamilyMember[] = [];
-      for (const data of rows) created.push(await tx.familyMember.create({ data }));
+      for (const data of rows) created.push(await tx.familyMember.create({ data: contact(data) }));
       return created;
     };
     return db === this.prisma ? this.prisma.$transaction(createAll) : createAll(db);
@@ -30,7 +34,7 @@ export class FamilyMembersRepository {
 
   // null when the id doesn't exist.
   async update(id: string, data: Prisma.FamilyMemberUncheckedUpdateInput, db: Db = this.prisma): Promise<FamilyMember | null> {
-    const { count } = await db.familyMember.updateMany({ where: { id }, data });
+    const { count } = await db.familyMember.updateMany({ where: { id }, data: contact(data) });
     return count ? this.findById(id, db) : null;
   }
 

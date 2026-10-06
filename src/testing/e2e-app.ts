@@ -56,7 +56,16 @@ export const startApp = async (): Promise<void> => {
   await app.init();
   const prisma = app.get(PrismaService);
   await prisma.runPendingMigrations();
-  await seed({ execute: (sql, params = []) => prisma.$executeRawUnsafe(sql, ...params) });
+  const execute = (sql: string, params: unknown[] = []) => prisma.$executeRawUnsafe(sql, ...params);
+  await seed({ execute });
+  // Seeded rows skip the repositories that keep the contact digits: apply the migration's backfill.
+  const backfill = fs.readFileSync(path.join(process.cwd(), "prisma/migrations/20261010000000_contact_digits/migration.sql"), "utf8");
+  for (const statement of backfill
+    .replace(/^\s*--.*$/gm, "")
+    .split(";")
+    .map((part) => part.trim())) {
+    if (statement.startsWith("UPDATE")) await execute(statement);
+  }
 };
 
 export const stopApp = async (): Promise<void> => {

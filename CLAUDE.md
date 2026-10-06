@@ -14,6 +14,7 @@ Backend API for the NPS Indore portal: NestJS 12 + TypeScript (strict, ESM) + My
 - Lint/format (Biome): `npm run check` (lint + format check), `npm run lint`, `npm run format`; fix with `npx biome check --write`
 - Migrations: `npm run db:migrate` (creates the DB if missing, baselines a legacy database, runs `prisma migrate deploy`). New migration: edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <change>` against a local database.
 - Health check: `curl http://localhost:4000/api/v1/health` (reports `env` from `APP_ENV`)
+- API description: `npm run openapi` writes `docs/openapi.json` (CI fails when it is stale); copy it to the frontend with `npm run openapi -- ../npsi-portal-fe/src/api/openapi.json`, whose tests check every endpoint it calls exists
 - Swagger: `http://localhost:4000/api/docs` (JSON: `/api/docs-json`)
 
 Tests run on Node's built-in test runner (`node:test`), not Jest: Nest 12 ships as ESM only. Specs are compiled by `tsc -p tsconfig.json` into `.test-build/` and run from there. The e2e and contract suites need local MySQL (credentials from `.env`); they create and drop their own databases and disable SMTP/reCAPTCHA.
@@ -58,7 +59,7 @@ Every model has its own module (template: `src/notifications/` or any other mode
 ## Conventions
 
 - **Thin controllers**: Swagger decorators, DTO in, call one service method, VO out. No business logic or SQL.
-- **Services** hold business rules; **repositories** hold all data access through `PrismaService`, using the typed client. Raw SQL (tagged-template `$queryRaw` only, never the `Unsafe` variants) is limited to what Prisma can't express: the duplicate mobile/email checks in `lookups.repository.ts` (digits-only `REGEXP_REPLACE`) and the legacy-database adoption in `PrismaService`.
+- **Services** hold business rules; **repositories** hold all data access through `PrismaService`, using the typed client. App code has no raw SQL except `PrismaService` (connection ping, one-time legacy-database adoption). Duplicate checks use stored digits: `mobile_digits` (applications, student applications, students, family members) and `contact_digits` (families) hold the last 10 digits, written by the repositories through `withContactFields` (which also trims emails); anything inserting rows with raw SQL must fill them too (tests run the backfill from migration `20261010000000_contact_digits`).
 - Dates: request dates are ISO 8601; a date-time without a zone is UTC (`parseDate`). The database, the Prisma connection (`timezone: "+00:00"`) and production MySQL all run on UTC, so expiry checks compare against `new Date()`.
 - Display ids (`NPSI-FAM-000123`, `NPSI-MEM-…`, `NPSI-STU-…`, `NPSI-APP-<year>-…`, `NPSI-STU-APP-<year>-…`, `FB-…`, `TRF-…`) come from `createWithDisplayId` (`common/utils/display-ids.ts`), which retries when two creates pick the same id.
 - Status and type fields take only their known values (`OptionalChoice`/`RequiredChoice` with the lists exported from each DTO file, e.g. `FAMILY_STATUSES`); add a value there (and to the frontend dropdown) before using it.
