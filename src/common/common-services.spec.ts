@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, mock, test } from "node:test";
+import { after, afterEach, beforeEach, describe, mock, test } from "node:test";
 import type { ConfigService } from "@nestjs/config";
 import { AppConfigService } from "../config/app-config.service.js";
 import type { EnvironmentVariables } from "../config/env.validation.js";
@@ -224,6 +224,16 @@ describe("requestLogger", () => {
     requestLogger(req, response as never, next);
     return { req, response, next, finish: () => listeners.finish?.() };
   };
+
+  // Logging is on unless LOG_REQUESTS=false, which CI sets to keep its output quiet.
+  const logsOn = process.env.LOG_REQUESTS;
+  beforeEach(() => {
+    delete process.env.LOG_REQUESTS;
+  });
+  after(() => {
+    if (logsOn === undefined) delete process.env.LOG_REQUESTS;
+    else process.env.LOG_REQUESTS = logsOn;
+  });
 
   test("assigns a request id, or keeps a sane incoming one", () => {
     const fresh = run();
