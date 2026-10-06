@@ -274,7 +274,7 @@ a breaking redesign, to be planned separately).
 1. **Deploy both branches together.** The frontend must call `/api/v1`, which only the new
    backend serves.
 2. **Deploy pipeline** (done on this branch): the check job runs Biome, build, unit, e2e and contract tests (MySQL 8.4 service);
-   Hostinger builds with `npm run build` (which runs `prisma generate`) and starts
+   Hostinger runs the `build` npm script (`prisma generate` + `nest build`; its API takes the script name, not `npm run build`) and starts
    `dist/main.js`; the health check calls `/api/v1/health`. Verify on the test environment first.
 3. **First boot on test/production** baselines the existing database automatically (see
    "Prisma data layer"). Take a database backup before the first production deploy.

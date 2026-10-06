@@ -6,7 +6,7 @@
 #           -> saddlebrown-newt-991262.hostingersite.com (api-test.npsindore.org)
 #
 # Push (or "Run workflow" in the Actions tab) -> checks (Biome, build, unit, e2e and contract tests on a throwaway MySQL)
-# -> Hostinger clones the branch, runs `npm run build` and starts dist/main.js
+# -> Hostinger clones the branch, runs the `build` npm script and starts dist/main.js
 # -> /api/v1/health must answer ok.
 #
 # Needs, on each environment:
@@ -97,7 +97,7 @@ jobs:
           test -n "$INSTALLATION_UUID" || { echo "::error::HOSTINGER_GIT_INSTALLATION_UUID variable is not set on this environment"; exit 1; }
           body=$(jq -n --arg owner "${{ github.repository_owner }}" --arg repo "${{ github.event.repository.name }}" --arg branch "${{ github.ref_name }}" --arg inst "$INSTALLATION_UUID" '{
             node_version: 22, app_type: "express", package_manager: "npm", entry_file: "dist/main.js",
-            root_directory: null, output_directory: null, build_script: "npm run build",
+            root_directory: null, output_directory: null, build_script: "build",
             source_type: "git", source_options: {owner: $owner, repository: $repo, branch: $branch, installation_uuid: $inst}
           }')
           status=$(curl -sS -o response.json -w '%{http_code}' -X POST "$HOSTINGER_API/accounts/$HOSTINGER_USERNAME/websites/$HOSTINGER_DOMAIN/nodejs/builds" \
