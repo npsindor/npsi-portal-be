@@ -113,5 +113,4 @@ const toUpdateData = (input: UpdateFamilyMemberDto): Prisma.FamilyMemberUnchecke
   photoUrl: input.photoUrl,
   status: input.status,
   linkedStudentId: input.linkedStudentId,
-  updatedAt: new Date(),
 });

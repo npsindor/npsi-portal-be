@@ -2,7 +2,9 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsArray, IsIn, IsOptional, ValidateNested } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalBoolean, OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalBoolean, OptionalDate, OptionalText, RequiredChoice, RequiredText } from "../../common/validation/fields.js";
+
+export const NOTIFICATION_TYPES = ["Announcement", "Event", "Registration", "Approval", "Correction", "Payment", "Campaign"] as const;
 
 export class CreateNotificationDto {
   @RequiredText("Title is required.")
@@ -11,7 +13,7 @@ export class CreateNotificationDto {
   @RequiredText("Message is required.")
   message!: string;
 
-  @RequiredText("Type is required.", 255, { description: "e.g. Registration, Event, Approval, Announcement" })
+  @RequiredChoice(NOTIFICATION_TYPES, "Type is required.")
   type!: string;
 
   @OptionalText(255, { description: "Family (or application) display id; empty or omitted = everyone (admins only)" })

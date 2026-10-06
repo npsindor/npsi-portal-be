@@ -43,11 +43,7 @@ export class ApplicationReviewService {
       if (!application) throw new ApiError(404, "Application not found.");
       if (application.status === "APPROVED") throw new ApiError(409, "This application has already been approved.");
       if (dto.decision !== "APPROVED") {
-        const updated = await this.applications.update(
-          id,
-          { status: dto.decision, adminRemarks: remarks, reviewedDate: new Date(), updatedAt: new Date() },
-          tx,
-        );
+        const updated = await this.applications.update(id, { status: dto.decision, adminRemarks: remarks, reviewedDate: new Date() }, tx);
         const key = dto.decision === "REJECTED" ? "applicationRejected" : "applicationCorrection";
         await this.notifications.create(workflowNotification(key, application.applicationId, { remarks }, lang), tx);
         return { application: updated as Application, family: null, members: [] };
@@ -55,7 +51,7 @@ export class ApplicationReviewService {
       const { family, members } = await this.createFamily(application, tx);
       const updated = await this.applications.update(
         id,
-        { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingFamilyId: family.familyId, updatedAt: new Date() },
+        { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingFamilyId: family.familyId },
         tx,
       );
       await this.notifications.create(workflowNotification("applicationApproved", family.familyId as string, { familyId: family.familyId }, lang), tx);

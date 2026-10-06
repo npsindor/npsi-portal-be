@@ -88,5 +88,4 @@ const toUpdateData = (input: UpdateStudentDto): Prisma.StudentUncheckedUpdateInp
   linkedFamilyId: input.linkedFamilyId,
   linkedMembershipId: input.linkedMembershipId,
   fatherName: input.fatherName,
-  updatedAt: new Date(),
 });

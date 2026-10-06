@@ -1,7 +1,10 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalBoolean, OptionalDate, OptionalInt, OptionalJson, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalBoolean, OptionalChoice, OptionalDate, OptionalInt, OptionalJson, OptionalText, RequiredText } from "../../common/validation/fields.js";
+
+export const FEEDBACK_STATUSES = ["Submitted", "In Review", "Resolved", "Closed"] as const;
+export const FEEDBACK_TYPES = ["General", "Suggestion", "Complaint", "Appreciation", "Bug", "Other"] as const;
 
 export class CreateFeedbackDto {
   @RequiredText("Member name is required.")
@@ -13,7 +16,7 @@ export class CreateFeedbackDto {
   @OptionalText(255)
   email?: string | null;
 
-  @OptionalText(255)
+  @OptionalChoice(FEEDBACK_TYPES)
   feedbackType?: string | null;
 
   @OptionalText(255)
@@ -31,7 +34,7 @@ export class CreateFeedbackDto {
   @OptionalInt()
   rating?: number | null;
 
-  @OptionalText(64)
+  @OptionalChoice(FEEDBACK_STATUSES)
   status?: string | null;
 
   @OptionalText()

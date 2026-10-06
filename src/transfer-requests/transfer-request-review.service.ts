@@ -37,7 +37,7 @@ export class TransferRequestReviewService {
       const request = await this.requests.findById(id, tx);
       if (!request) throw new ApiError(404, "Transfer request not found.");
       if (request.status === "APPROVED") throw new ApiError(409, "This transfer request has already been approved.");
-      const decided: Prisma.TransferRequestUncheckedUpdateInput = { adminRemarks: remarks, approvedById: admin.id, updatedAt: new Date() };
+      const decided: Prisma.TransferRequestUncheckedUpdateInput = { adminRemarks: remarks, approvedById: admin.id };
       if (dto.decision !== "APPROVED") return this.requests.update(id, { ...decided, status: dto.decision }, tx);
       const target = request.targetFamilyId ? await this.families.findByFamilyId(request.targetFamilyId, tx, "ACTIVE") : null;
       if (!target) throw new ApiError(404, "Target family not found.");
@@ -80,11 +80,7 @@ export class TransferRequestReviewService {
           tx,
         ),
     );
-    await this.students.update(
-      student.id,
-      { status: "TRANSFERRED", linkedFamilyId: familyId, linkedMembershipId: member.membershipId, updatedAt: new Date() },
-      tx,
-    );
+    await this.students.update(student.id, { status: "TRANSFERRED", linkedFamilyId: familyId, linkedMembershipId: member.membershipId }, tx);
     await this.families.changeMemberCount(target.id, 1, tx);
     const vars = { familyName: target.familyName, membershipId: member.membershipId };
     await this.notifications.create(workflowNotification("transferApproved", familyId, vars, lang), tx);
@@ -95,7 +91,7 @@ export class TransferRequestReviewService {
     const member = request.sourceMembershipId ? await this.familyMembers.findByMembershipId(request.sourceMembershipId, tx) : null;
     if (!member) throw new ApiError(404, "Source member not found.");
     const fromFamilyId = member.familyId;
-    await this.familyMembers.update(member.id, { familyId: target.familyId as string, status: "ACTIVE", updatedAt: new Date() }, tx);
+    await this.familyMembers.update(member.id, { familyId: target.familyId as string, status: "ACTIVE" }, tx);
     const from = await this.families.findByFamilyId(fromFamilyId, tx);
     if (from) await this.families.changeMemberCount(from.id, -1, tx);
     await this.families.changeMemberCount(target.id, 1, tx);

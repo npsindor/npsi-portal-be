@@ -1,7 +1,10 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+
+export const ANNOUNCEMENT_STATUSES = ["Active", "Archived"] as const;
+export const ANNOUNCEMENT_TYPES = ["General", "Event", "Urgent", "Festival"] as const;
 
 export class CreateAnnouncementDto {
   @RequiredText("Title is required.")
@@ -13,10 +16,10 @@ export class CreateAnnouncementDto {
   @OptionalDate()
   date?: string | null;
 
-  @OptionalText(255)
+  @OptionalChoice(ANNOUNCEMENT_TYPES)
   type?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(ANNOUNCEMENT_STATUSES)
   status?: string | null;
 
   @OptionalText()

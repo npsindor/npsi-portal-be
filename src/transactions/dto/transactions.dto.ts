@@ -1,13 +1,16 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredNumber, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredChoice, RequiredNumber, RequiredText } from "../../common/validation/fields.js";
+
+export const PAYMENT_STATUSES = ["PENDING", "SUCCESS", "FAILED", "REFUNDED"] as const;
+export const TRANSACTION_TYPES = ["Family Registration", "Membership Payment", "Event Registration", "Donation", "Other"] as const;
 
 export class CreateTransactionDto {
   @RequiredText("Transaction id is required.", 255)
   transactionId!: string;
 
-  @RequiredText("Type is required.", 255)
+  @RequiredChoice(TRANSACTION_TYPES, "Type is required.")
   type!: string;
 
   @RequiredNumber("Amount is required.")
@@ -16,7 +19,7 @@ export class CreateTransactionDto {
   @OptionalText(255)
   paymentMethod?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(PAYMENT_STATUSES)
   paymentStatus?: string | null;
 
   @OptionalText(255)

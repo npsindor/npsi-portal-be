@@ -218,6 +218,22 @@ target family (the old client-side one matched the student itself first and neve
 Checked locally on a copy of the production data with a cookie jar: login cookie flags, CORS with
 credentials, photo upload + profile save, fake image refused, paging (100 + 54 = 154), logout.
 
+### Data-quality round (2026-10-08, test only)
+
+- **Known values only:** 21 status/type fields accept just the values the data and the admin
+  dropdowns use (e.g. families `PENDING | ACTIVE | SUSPENDED | DEACTIVATED`); a typo is a 400.
+  Checked against a copy of production: every row of every resource saves back unchanged, except 8
+  Base44-era notifications whose title, message and type are all empty (candidates for deletion).
+- **Foreign keys** (migration `20261008000000_member_foreign_keys`): family members → families,
+  samiti members → samitis, `ON DELETE CASCADE`; a missing parent is a 400. Already applied cleanly
+  to the local production copy. Not added for event registrations → events (3 point to deleted
+  events) or transactions → families (1 orphan): needs a data decision first.
+- **CORS** no longer allows any `*.hostingersite.com` site; only npsindore.org sites and localhost.
+- **Prisma `@updatedAt`** replaces the hand-set timestamps (no database change).
+- Removed the unused legacy PostgreSQL migrations (`db/migrations/`).
+- **Uptime check:** `.github/workflows/uptime.yml`, every 15 minutes on both sites; GitHub emails on
+  failure. Active once on `main`.
+
 Not done here: **#2** (`TRUST_PROXY` must be measured on the deployed test site), and **#17** (DTO/Zod validation and domain modules:
 a breaking redesign, to be planned separately).
 
@@ -227,9 +243,9 @@ a breaking redesign, to be planned separately).
 |---|---|---|
 | Backend | `npm run check` (Biome lint + format, 70 files) | pass, 0 diagnostics |
 | Backend | `npm run build` (tsc, strict) | pass |
-| Backend | `npm test` (unit, 133 tests) | 133/133 pass |
+| Backend | `npm test` (unit, 136 tests) | 136/136 pass |
 | Backend | `npm run test:e2e` (31 tests, every v1 endpoint, real MySQL) | 31/31 pass |
-| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 101/101 pass |
+| Backend | `npm run test:contract` (NestJS + Prisma, v1 paths) | 104/104 pass |
 | Backend | Final comparison before removing the legacy app: same 88 contract tests on Express + Sequelize, old paths | 88/88 pass |
 | Backend | `npm audit` | 0 vulnerabilities |
 | Backend | Clean production-only install → build → start on a fresh DB | pass (Prisma client generated, `0_init` applied, 10 principles seeded) |

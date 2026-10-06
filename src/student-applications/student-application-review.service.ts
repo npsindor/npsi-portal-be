@@ -37,11 +37,7 @@ export class StudentApplicationReviewService {
       if (!application) throw new ApiError(404, "Application not found.");
       if (application.status === "APPROVED") throw new ApiError(409, "This application has already been approved.");
       if (dto.decision !== "APPROVED") {
-        const updated = await this.applications.update(
-          id,
-          { status: dto.decision, adminRemarks: remarks, reviewedDate: new Date(), updatedAt: new Date() },
-          tx,
-        );
+        const updated = await this.applications.update(id, { status: dto.decision, adminRemarks: remarks, reviewedDate: new Date() }, tx);
         const key = dto.decision === "REJECTED" ? "studentRejected" : "studentCorrection";
         await this.notifications.create(workflowNotification(key, application.applicationId, { remarks }, lang), tx);
         return { application: updated as StudentApplication, student: null };
@@ -80,7 +76,7 @@ export class StudentApplicationReviewService {
       );
       const updated = await this.applications.update(
         id,
-        { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingStudentId: student.studentId, updatedAt: new Date() },
+        { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingStudentId: student.studentId },
         tx,
       );
       await this.notifications.create(workflowNotification("studentApproved", student.studentId as string, { studentId: student.studentId }, lang), tx);

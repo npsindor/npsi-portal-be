@@ -21,7 +21,7 @@ model Announcement {
   type      String?   @db.VarChar(255)
   status    String?   @default("Active") @db.VarChar(64)
   createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   titleHi   String?   @map("title_hi") @db.Text
   bodyHi    String?   @map("body_hi") @db.Text
 
@@ -50,7 +50,7 @@ model Application {
   reviewedDate      DateTime? @map("reviewed_date") @db.DateTime(0)
   resultingFamilyId String?   @map("resulting_family_id") @db.VarChar(255)
   createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([applicationId, mobile], map: "applications_lookup_idx")
   @@map("applications")
@@ -75,7 +75,7 @@ model EventRegistration {
   registrantName  String?   @map("registrant_name") @db.VarChar(255)
   registrantEmail String?   @map("registrant_email") @db.VarChar(255)
   createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@map("event_registrations")
 }
@@ -101,7 +101,7 @@ model Event {
   terms             String?   @db.Text
   status            String?   @default("DRAFT") @db.VarChar(64)
   createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   titleHi           String?   @map("title_hi") @db.Text
   descriptionHi     String?   @map("description_hi") @db.Text
 
@@ -110,26 +110,27 @@ model Event {
 }
 
 model Family {
-  id               String    @id @db.VarChar(64)
-  familyId         String?   @unique(map: "family_id") @map("family_id") @db.VarChar(255)
-  familyName       String?   @map("family_name") @db.Text
-  headName         String?   @map("head_name") @db.Text
-  status           String?   @default("PENDING") @db.VarChar(64)
-  address          String?   @db.Text
-  city             String?   @db.VarChar(255)
-  district         String?   @db.VarChar(255)
-  state            String?   @db.VarChar(255)
-  pincode          String?   @db.VarChar(255)
-  nativePlace      String?   @map("native_place") @db.VarChar(255)
-  village          String?   @db.VarChar(255)
-  gotra            String?   @db.VarChar(255)
-  contactNumber    String?   @map("contact_number") @db.VarChar(255)
-  email            String?   @db.VarChar(255)
-  registrationDate DateTime? @map("registration_date") @db.DateTime(0)
-  memberCount      Int?      @default(0) @map("member_count")
-  applicationId    String?   @map("application_id") @db.VarChar(255)
-  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt        DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  id               String         @id @db.VarChar(64)
+  familyId         String?        @unique(map: "family_id") @map("family_id") @db.VarChar(255)
+  familyName       String?        @map("family_name") @db.Text
+  headName         String?        @map("head_name") @db.Text
+  status           String?        @default("PENDING") @db.VarChar(64)
+  address          String?        @db.Text
+  city             String?        @db.VarChar(255)
+  district         String?        @db.VarChar(255)
+  state            String?        @db.VarChar(255)
+  pincode          String?        @db.VarChar(255)
+  nativePlace      String?        @map("native_place") @db.VarChar(255)
+  village          String?        @db.VarChar(255)
+  gotra            String?        @db.VarChar(255)
+  contactNumber    String?        @map("contact_number") @db.VarChar(255)
+  email            String?        @db.VarChar(255)
+  registrationDate DateTime?      @map("registration_date") @db.DateTime(0)
+  memberCount      Int?           @default(0) @map("member_count")
+  applicationId    String?        @map("application_id") @db.VarChar(255)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  members          FamilyMember[]
 
   @@index([email], map: "families_email_idx")
   @@map("families")
@@ -152,7 +153,8 @@ model FamilyMember {
   status          String?   @default("PENDING") @db.VarChar(64)
   linkedStudentId String?   @map("linked_student_id") @db.VarChar(255)
   createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt       DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  family          Family    @relation(fields: [familyId], references: [familyId], onDelete: Cascade, onUpdate: Cascade, map: "family_members_family_id_fkey")
 
   @@index([familyId], map: "family_members_family_idx")
   @@index([email], map: "family_members_email_idx")
@@ -180,7 +182,7 @@ model Feedback {
   archived      Boolean   @default(false)
   submittedDate DateTime? @map("submitted_date") @db.DateTime(0)
   createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([email], map: "feedback_email_idx")
   @@map("feedback")
@@ -196,7 +198,7 @@ model Notification {
   date              DateTime? @db.DateTime(0)
   deepLink          String?   @map("deep_link") @db.Text
   createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt         DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([recipientFamilyId, date], map: "notifications_recipient_idx")
   @@map("notifications")
@@ -211,7 +213,7 @@ model Principle {
   contentHi     String   @map("content_hi") @db.Text
   status        String   @default("Active") @db.VarChar(64)
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt     DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([sectionNumber], map: "principles_section_idx")
   @@map("principles")
@@ -226,7 +228,7 @@ model Rule {
   contentHi     String   @map("content_hi") @db.Text
   status        String?  @default("Active") @db.VarChar(64)
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt     DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@map("rules")
 }
@@ -240,19 +242,21 @@ model SamitiMember {
   email     String?  @db.VarChar(255)
   status    String?  @default("Active") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt DateTime @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  samiti    Samiti   @relation(fields: [samitiId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "samiti_members_samiti_id_fkey")
 
   @@map("samiti_members")
 }
 
 model Samiti {
-  id          String    @id @db.VarChar(64)
-  name        String    @db.Text
-  description String?   @db.Text
-  formedDate  DateTime? @map("formed_date") @db.Date
-  status      String?   @default("Active") @db.VarChar(64)
-  createdAt   DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt   DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  id          String         @id @db.VarChar(64)
+  name        String         @db.Text
+  description String?        @db.Text
+  formedDate  DateTime?      @map("formed_date") @db.Date
+  status      String?        @default("Active") @db.VarChar(64)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime       @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  members     SamitiMember[]
 
   @@map("samitis")
 }
@@ -282,7 +286,7 @@ model StudentApplication {
   reviewedDate       DateTime? @map("reviewed_date") @db.DateTime(0)
   resultingStudentId String?   @map("resulting_student_id") @db.VarChar(255)
   createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt          DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   fatherName         String?   @map("father_name") @db.VarChar(255)
 
   @@map("student_applications")
@@ -313,7 +317,7 @@ model Student {
   linkedFamilyId     String?   @map("linked_family_id") @db.VarChar(255)
   linkedMembershipId String?   @map("linked_membership_id") @db.VarChar(255)
   createdAt          DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt          DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   fatherName         String?   @map("father_name") @db.VarChar(255)
 
   @@index([email], map: "students_email_idx")
@@ -334,7 +338,7 @@ model Transaction {
   date          DateTime? @db.DateTime(0)
   remarks       String?   @db.Text
   createdAt     DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt     DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([familyId, date], map: "transactions_family_idx")
   @@map("transactions")
@@ -358,7 +362,7 @@ model TransferRequest {
   oldFamilyId           String?   @map("old_family_id") @db.VarChar(255)
   newFamilyId           String?   @map("new_family_id") @db.VarChar(255)
   createdAt             DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt             DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   requesterName         String?   @map("requester_name") @db.VarChar(255)
   requesterEmail        String?   @map("requester_email") @db.VarChar(255)
   requesterMobile       String?   @map("requester_mobile") @db.VarChar(255)
@@ -381,7 +385,7 @@ model User {
   resetTokenHash      String?   @map("reset_token_hash") @db.Text
   resetTokenExpiresAt DateTime? @map("reset_token_expires_at") @db.DateTime(0)
   createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt           DateTime  @default(now()) @map("updated_at") @db.DateTime(0)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   phone               String?   @db.VarChar(20)
   otpHash             String?   @map("otp_hash") @db.VarChar(255)
   otpExpiresAt        DateTime? @map("otp_expires_at") @db.DateTime(0)

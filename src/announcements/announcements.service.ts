@@ -52,5 +52,4 @@ const toUpdateData = (input: UpdateAnnouncementDto): Prisma.AnnouncementUnchecke
   status: input.status,
   titleHi: input.titleHi,
   bodyHi: input.bodyHi,
-  updatedAt: new Date(),
 });

@@ -138,5 +138,4 @@ const toUpdateData = (input: UpdateStudentApplicationDto): Prisma.StudentApplica
   reviewedDate: parseDate(input.reviewedDate),
   resultingStudentId: input.resultingStudentId,
   fatherName: input.fatherName,
-  updatedAt: new Date(),
 });

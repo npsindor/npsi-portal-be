@@ -46,5 +46,4 @@ const toUpdateData = (input: UpdateSamitiDto): Prisma.SamitiUncheckedUpdateInput
   description: input.description,
   formedDate: parseDate(input.formedDate),
   status: input.status,
-  updatedAt: new Date(),
 });

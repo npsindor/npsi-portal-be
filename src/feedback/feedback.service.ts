@@ -95,5 +95,4 @@ const toUpdateData = (input: UpdateFeedbackDto): Prisma.FeedbackUncheckedUpdateI
   internalNote: input.internalNote,
   archived: input.archived,
   submittedDate: parseDate(input.submittedDate),
-  updatedAt: new Date(),
 });

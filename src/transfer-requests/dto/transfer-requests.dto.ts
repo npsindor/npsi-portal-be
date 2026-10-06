@@ -1,14 +1,17 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredChoice } from "../../common/validation/fields.js";
 import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
+export const TRANSFER_STATUSES = ["PENDING", "APPROVED", "REJECTED", "CORRECTION_REQUIRED"] as const;
+export const TRANSFER_TYPES = ["student_to_family", "family_to_family"] as const;
+
 export class CreateTransferRequestDto {
-  @RequiredText("Request type is required.", 255)
+  @RequiredChoice(TRANSFER_TYPES, "Request type is required.")
   requestType!: string;
 
-  @OptionalText(64, { notNull: true })
+  @OptionalChoice(TRANSFER_STATUSES, { notNull: true })
   status?: string;
 
   @OptionalText()

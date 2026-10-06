@@ -43,24 +43,24 @@ export class UsersRepository {
   }
 
   async setOtp(userId: string, otpHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { otpHash, otpExpiresAt: fromNow(OTP_TTL), updatedAt: new Date() } });
+    await this.prisma.user.update({ where: { id: userId }, data: { otpHash, otpExpiresAt: fromNow(OTP_TTL) } });
   }
 
   async verifyAndStartSession(userId: string, tokenHash: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { isVerified: true, sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL), otpHash: null, otpExpiresAt: null, updatedAt: new Date() },
+      data: { isVerified: true, sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL), otpHash: null, otpExpiresAt: null },
     });
   }
 
   async startSession(userId: string, tokenHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL), updatedAt: new Date() } });
+    await this.prisma.user.update({ where: { id: userId }, data: { sessionToken: tokenHash, sessionExpiresAt: fromNow(SESSION_TTL) } });
   }
 
   async setResetTokenByEmail(email: string, tokenHash: string): Promise<void> {
     await this.prisma.user.updateMany({
       where: { email },
-      data: { resetTokenHash: tokenHash, resetTokenExpiresAt: fromNow(RESET_TTL), updatedAt: new Date() },
+      data: { resetTokenHash: tokenHash, resetTokenExpiresAt: fromNow(RESET_TTL) },
     });
   }
 
@@ -68,7 +68,7 @@ export class UsersRepository {
   async resetPassword(passwordHash: string, tokenHash: string): Promise<number> {
     const { count } = await this.prisma.user.updateMany({
       where: { resetTokenHash: tokenHash, resetTokenExpiresAt: { gt: new Date() } },
-      data: { passwordHash, resetTokenHash: null, resetTokenExpiresAt: null, isVerified: true, updatedAt: new Date() },
+      data: { passwordHash, resetTokenHash: null, resetTokenExpiresAt: null, isVerified: true },
     });
     return count;
   }
@@ -89,7 +89,6 @@ export class UsersRepository {
         passwordHash,
         isVerified: true,
         status: "invited",
-        updatedAt: new Date(),
       },
     });
   }
@@ -97,16 +96,16 @@ export class UsersRepository {
   async setInviteResetToken(userId: string, tokenHash: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
-      data: { resetTokenHash: tokenHash, resetTokenExpiresAt: fromNow(INVITE_TTL), updatedAt: new Date() },
+      data: { resetTokenHash: tokenHash, resetTokenExpiresAt: fromNow(INVITE_TTL) },
     });
   }
 
   updateProfile(userId: string, data: { fullName?: string | null; phone?: string | null; photoUrl?: string | null }): Promise<UserRow> {
-    return this.prisma.user.update({ where: { id: userId }, data: { ...data, updatedAt: new Date() } });
+    return this.prisma.user.update({ where: { id: userId }, data: { ...data } });
   }
 
   async updatePassword(userId: string, passwordHash: string): Promise<void> {
-    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash, updatedAt: new Date() } });
+    await this.prisma.user.update({ where: { id: userId }, data: { passwordHash } });
   }
 
   // Never called without a token: an empty filter would match every user.

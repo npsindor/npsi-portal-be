@@ -61,5 +61,4 @@ const toUpdateData = (input: UpdateTransactionDto): Prisma.TransactionUncheckedU
   referenceId: input.referenceId,
   date: parseDate(input.date),
   remarks: input.remarks,
-  updatedAt: new Date(),
 });

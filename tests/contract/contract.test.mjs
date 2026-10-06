@@ -44,6 +44,7 @@ describe("cross-cutting", () => {
   test("disallowed CORS origin is rejected with the error format", async () => {
     const res = await api("health").set("Origin", "https://evil.example.com");
     assertError(res, 500, "Not allowed by CORS");
+    assertError(await api("health").set("Origin", "https://someone-else.hostingersite.com"), 500, "Not allowed by CORS");
   });
   test("JSON bodies over 2 MB are rejected", async () => {
     const res = await api("login").send({ email: "x".repeat(2.2 * 1024 * 1024), password: "x" });
@@ -713,22 +714,22 @@ describe("entities: create", () => {
   });
   test("transfer request: ownership checks and forced PENDING status", async () => {
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "MEMBER", sourceFamilyId: FAMILY2 }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", sourceFamilyId: FAMILY2 }),
       403,
       "You can only request a transfer for your own family.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "MEMBER", sourceMembershipId: "NPSI-MEM-000002" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", sourceMembershipId: "NPSI-MEM-000002" }),
       403,
       "You can only request a transfer for a member of your own family.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "STUDENT", sourceStudentId: "NPSI-STU-999999" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "student_to_family", sourceStudentId: "NPSI-STU-999999" }),
       403,
       "You can only request a transfer for your own student record.",
     );
     const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
-      requestType: "MEMBER",
+      requestType: "family_to_family",
       sourceFamilyId: FAMILY1,
       sourceMembershipId: "NPSI-MEM-000001",
       status: "APPROVED",
@@ -768,6 +769,22 @@ describe("column value formats", () => {
     const patched = await api("update", ["Feedback", feedback.body.id], { token: TOKENS.admin }).send({ archived: false, questions: ["a", "b"] });
     assert.equal(patched.body.archived, false);
     assert.deepEqual(patched.body.questions, ["a", "b"]);
+  });
+  test("statuses and types are limited to their known values", async () => {
+    assertError(
+      await api("create", ["Family"], { token: TOKENS.admin }).send({ familyName: "X", status: "ACTIV" }),
+      400,
+      "status must be one of the following values: PENDING, ACTIVE, SUSPENDED, DEACTIVATED",
+    );
+    assertError(
+      await api("update", ["Event", IDS.event], { token: TOKENS.admin }).send({ status: "LIVE" }),
+      400,
+      "status must be one of the following values: DRAFT, PUBLISHED, ARCHIVED",
+    );
+    await query("UPDATE events SET updated_at = '2020-01-01 00:00:00' WHERE id = ?", [IDS.event]);
+    const ok = await api("update", ["Event", IDS.event], { token: TOKENS.admin }).send({ status: "PUBLISHED" });
+    assert.equal(ok.status, 200);
+    assert.ok(new Date(ok.body.updatedAt).getFullYear() > 2020, "an update moves updatedAt (Prisma @updatedAt)");
   });
   test("wrong types are 400s that name the field", async () => {
     assertError(await api("create", ["Event"], { token: TOKENS.admin }).send({ title: "T", date: "soon", venue: "Hall" }), 400, "Date is required.");
@@ -857,6 +874,24 @@ describe("entities: update", () => {
     assert.equal(res.status, 200);
     assert.equal(res.body.read, true);
     assert.equal(res.body.title, "Own");
+  });
+});
+
+describe("foreign keys", () => {
+  test("a member must belong to an existing family (400, not a database error)", async () => {
+    assertError(
+      await api("create", ["FamilyMember"], { token: TOKENS.admin }).send({ familyId: "NPSI-FAM-999999", name: "Ghost", relationship: "Son" }),
+      400,
+      "A referenced record does not exist.",
+    );
+  });
+  test("deleting a family deletes its members", async () => {
+    const family = await api("create", ["Family"], { token: TOKENS.admin }).send({ familyName: "Temporary", status: "ACTIVE" });
+    const member = await api("create", ["FamilyMember"], { token: TOKENS.admin }).send({ familyId: family.body.familyId, name: "Temp", relationship: "Self" });
+    assert.equal(member.status, 201);
+    assert.equal((await api("remove", ["Family", family.body.id], { token: TOKENS.admin })).status, 204);
+    const [row] = await query("SELECT COUNT(*) AS n FROM family_members WHERE id = ?", [member.body.id]);
+    assert.equal(row.n, 0);
   });
 });
 

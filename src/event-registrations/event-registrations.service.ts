@@ -158,5 +158,4 @@ const toUpdateData = (input: UpdateEventRegistrationDto): Prisma.EventRegistrati
   registeredDate: parseDate(input.registeredDate),
   registrantName: input.registrantName,
   registrantEmail: input.registrantEmail,
-  updatedAt: new Date(),
 });

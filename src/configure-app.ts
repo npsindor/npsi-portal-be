@@ -14,7 +14,9 @@ export const DOCS_PATH = "api/docs";
 
 // Only this project's own frontends: the live domain and its subdomains, the
 // Hostinger preview domains, and local dev.
-const ALLOWED_ORIGIN_PATTERN = /^https:\/\/([a-z0-9-]+\.)*npsindore\.org$|^https:\/\/([a-z0-9-]+\.)*hostingersite\.com$|^http:\/\/localhost(:\d+)?$/i;
+// The portal's own sites (npsindore.org and its subdomains) and local development.
+// Not the shared *.hostingersite.com domain: any Hostinger customer's site lives there.
+const ALLOWED_ORIGIN_PATTERN = /^https:\/\/([a-z0-9-]+\.)*npsindore\.org$|^http:\/\/localhost(:\d+)?$/i;
 
 // Errors raised by Express middleware before Nest's router (CORS rejection,
 // invalid or oversized JSON) get the same `{ error }` body as everything else.

@@ -49,5 +49,4 @@ const toUpdateData = (input: UpdatePrincipleDto): Prisma.PrincipleUncheckedUpdat
   contentEn: input.contentEn,
   contentHi: input.contentHi,
   status: input.status,
-  updatedAt: new Date(),
 });

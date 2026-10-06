@@ -96,5 +96,4 @@ const toUpdateData = (input: UpdateFamilyDto): Prisma.FamilyUncheckedUpdateInput
   registrationDate: parseDate(input.registrationDate),
   memberCount: input.memberCount,
   applicationId: input.applicationId,
-  updatedAt: new Date(),
 });

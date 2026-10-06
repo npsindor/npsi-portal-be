@@ -47,6 +47,6 @@ export class FamiliesRepository {
   // Never below zero.
   async changeMemberCount(id: string, delta: number, db: Db = this.prisma): Promise<void> {
     const family = await db.family.findUnique({ where: { id }, select: { memberCount: true } });
-    if (family) await db.family.update({ where: { id }, data: { memberCount: Math.max((family.memberCount ?? 0) + delta, 0), updatedAt: new Date() } });
+    if (family) await db.family.update({ where: { id }, data: { memberCount: Math.max((family.memberCount ?? 0) + delta, 0) } });
   }
 }

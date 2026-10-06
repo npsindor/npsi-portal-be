@@ -1,7 +1,9 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+
+export const SAMITI_STATUSES = ["Active", "Inactive"] as const;
 
 export class CreateSamitiDto {
   @RequiredText("Name is required.")
@@ -13,7 +15,7 @@ export class CreateSamitiDto {
   @OptionalDate()
   formedDate?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(SAMITI_STATUSES)
   status?: string | null;
 }
 

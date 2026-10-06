@@ -1,7 +1,7 @@
 import { applyDecorators } from "@nestjs/common";
 import { ApiProperty, ApiPropertyOptional, type ApiPropertyOptions } from "@nestjs/swagger";
 import { Transform, type TransformFnParams } from "class-transformer";
-import { IsBoolean, IsDateString, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
 
 // Property decorators for request DTOs: Swagger docs, the lenient input
 // conversions HTML forms need (numbers sent as text, "" for an empty optional
@@ -73,3 +73,10 @@ export const RequiredDate = (message: string, options: FieldOptions = {}): Prope
 // Any JSON value (object or array).
 export const OptionalJson = (options: FieldOptions = {}): PropertyDecorator =>
   applyDecorators(docs({ oneOf: [{ type: "object" }, { type: "array", items: {} }], nullable: true }, options), IsOptional());
+
+// One of a fixed list (statuses, types): anything else is a 400 naming the allowed values.
+export const OptionalChoice = (values: readonly string[], options: FieldOptions = {}): PropertyDecorator =>
+  applyDecorators(docs({ type: "string", enum: [...values], nullable: !options.notNull }, options), Transform(blankToNull), optional(options), IsIn(values));
+
+export const RequiredChoice = (values: readonly string[], message: string, options: FieldOptions = {}): PropertyDecorator =>
+  applyDecorators(docs({ type: "string", enum: [...values] }, options, true), Matches(NOT_BLANK, { message }), IsIn(values));

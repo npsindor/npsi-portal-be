@@ -179,5 +179,4 @@ const toUpdateData = (input: UpdateApplicationDto): Prisma.ApplicationUncheckedU
   adminRemarks: input.adminRemarks,
   reviewedDate: parseDate(input.reviewedDate),
   resultingFamilyId: input.resultingFamilyId,
-  updatedAt: new Date(),
 });

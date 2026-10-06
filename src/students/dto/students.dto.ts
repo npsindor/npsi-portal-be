@@ -1,13 +1,15 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+
+export const STUDENT_STATUSES = ["PENDING", "ACTIVE", "INACTIVE", "TRANSFERRED"] as const;
 
 export class CreateStudentDto {
   @RequiredText("Student name is required.")
   studentName!: string;
 
-  @OptionalText(64)
+  @OptionalChoice(STUDENT_STATUSES)
   status?: string | null;
 
   @OptionalText(255)

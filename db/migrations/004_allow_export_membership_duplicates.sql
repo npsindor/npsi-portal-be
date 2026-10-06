@@ -1,1 +1,0 @@
-ALTER TABLE IF EXISTS family_members DROP CONSTRAINT IF EXISTS family_members_membership_id_key;

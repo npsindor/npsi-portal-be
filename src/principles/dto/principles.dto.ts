@@ -1,7 +1,9 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalInt, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalInt, RequiredText } from "../../common/validation/fields.js";
+
+export const PRINCIPLE_STATUSES = ["Active", "Archived"] as const;
 
 export class CreatePrincipleDto {
   @OptionalInt()
@@ -19,7 +21,7 @@ export class CreatePrincipleDto {
   @RequiredText("Content hi is required.")
   contentHi!: string;
 
-  @OptionalText(64, { notNull: true })
+  @OptionalChoice(PRINCIPLE_STATUSES, { notNull: true })
   status?: string;
 }
 

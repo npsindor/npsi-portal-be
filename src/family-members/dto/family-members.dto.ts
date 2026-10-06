@@ -2,7 +2,9 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+
+export const FAMILY_MEMBER_STATUSES = ["PENDING", "ACTIVE", "INACTIVE"] as const;
 
 export class CreateFamilyMemberDto {
   @RequiredText("Family id is required.", 64)
@@ -38,7 +40,7 @@ export class CreateFamilyMemberDto {
   @OptionalText()
   photoUrl?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(FAMILY_MEMBER_STATUSES)
   status?: string | null;
 
   @OptionalText(255)

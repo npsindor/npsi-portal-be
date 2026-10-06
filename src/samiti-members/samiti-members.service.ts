@@ -49,5 +49,4 @@ const toUpdateData = (input: UpdateSamitiMemberDto): Prisma.SamitiMemberUnchecke
   mobile: input.mobile,
   email: input.email,
   status: input.status,
-  updatedAt: new Date(),
 });

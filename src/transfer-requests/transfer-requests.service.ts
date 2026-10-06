@@ -145,5 +145,4 @@ const toUpdateData = (input: UpdateTransferRequestDto): Prisma.TransferRequestUn
   requesterMobile: input.requesterMobile,
   targetFamilyName: input.targetFamilyName,
   requestedDate: parseDate(input.requestedDate),
-  updatedAt: new Date(),
 });

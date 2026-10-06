@@ -1,7 +1,0 @@
-ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS session_token TEXT;
-ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ;
-ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS reset_token_hash TEXT;
-ALTER TABLE IF EXISTS users ADD COLUMN IF NOT EXISTS reset_token_expires_at TIMESTAMPTZ;
-CREATE INDEX IF NOT EXISTS users_session_token_idx ON users (session_token);
-CREATE INDEX IF NOT EXISTS users_reset_token_idx ON users (reset_token_hash);

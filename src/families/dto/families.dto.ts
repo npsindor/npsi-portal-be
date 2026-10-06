@@ -1,7 +1,9 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalInt, OptionalText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalInt, OptionalText } from "../../common/validation/fields.js";
+
+export const FAMILY_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "DEACTIVATED"] as const;
 
 export class CreateFamilyDto {
   @OptionalText()
@@ -10,7 +12,7 @@ export class CreateFamilyDto {
   @OptionalText()
   headName?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(FAMILY_STATUSES)
   status?: string | null;
 
   @OptionalText()

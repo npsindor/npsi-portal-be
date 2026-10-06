@@ -59,7 +59,7 @@ export class NotificationsService {
       input = input.read === undefined ? {} : { read: input.read };
     }
     const data = toUpdateData(input);
-    if (Object.values(data).some((value) => value !== undefined)) await this.repo.update(id, { ...data, updatedAt: new Date() });
+    if (Object.values(data).some((value) => value !== undefined)) await this.repo.update(id, { ...data });
     const row = await this.repo.findById(id);
     if (!row) throw new ApiError(404, "Record not found");
     return toNotificationVo(row);

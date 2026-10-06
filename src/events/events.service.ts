@@ -78,5 +78,4 @@ const toUpdateData = (input: UpdateEventDto): Prisma.EventUncheckedUpdateInput =
   status: input.status,
   titleHi: input.titleHi,
   descriptionHi: input.descriptionHi,
-  updatedAt: new Date(),
 });

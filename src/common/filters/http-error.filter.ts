@@ -17,6 +17,8 @@ export const toErrorResponse = (exception: unknown): { status: number; body: Err
     const text = Array.isArray(message) ? message.join("; ") : String(message ?? error ?? exception.message);
     return { status: exception.getStatus(), body: { error: text } };
   }
+  // A write that points at a family/samiti that doesn't exist (foreign key, Prisma P2003).
+  if ((exception as { code?: unknown } | null)?.code === "P2003") return { status: 400, body: { error: "A referenced record does not exist." } };
   const { status, message } = (exception ?? {}) as { status?: unknown; message?: unknown };
   return { status: typeof status === "number" ? status : 500, body: { error: String(message ?? "Internal Server Error") } };
 };

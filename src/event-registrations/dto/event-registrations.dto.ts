@@ -1,8 +1,11 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalDate, OptionalInt, OptionalJson, OptionalNumber, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalDate, OptionalInt, OptionalJson, OptionalNumber, OptionalText, RequiredText } from "../../common/validation/fields.js";
 import { LANGS, type Lang } from "../../notifications/notification-texts.js";
+
+export const EVENT_REGISTRATION_STATUSES = ["REGISTERED", "ATTENDED", "CANCELLED"] as const;
+export const PAYMENT_STATUSES = ["PENDING", "SUCCESS", "FAILED", "REFUNDED"] as const;
 
 // The registration id (EVT-REG-…) is assigned by the server.
 export class CreateEventRegistrationDto {
@@ -30,13 +33,13 @@ export class CreateEventRegistrationDto {
   @OptionalNumber()
   totalFee?: number | null;
 
-  @OptionalText(64)
+  @OptionalChoice(PAYMENT_STATUSES)
   paymentStatus?: string | null;
 
   @OptionalText(255)
   transactionId?: string | null;
 
-  @OptionalText(64)
+  @OptionalChoice(EVENT_REGISTRATION_STATUSES)
   status?: string | null;
 
   @OptionalText(255)
