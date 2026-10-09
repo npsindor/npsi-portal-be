@@ -32,13 +32,25 @@ const LEGACY_MIGRATIONS = [
 export class PrismaService extends PrismaClient implements OnApplicationBootstrap, OnApplicationShutdown {
   constructor(config: AppConfigService) {
     const db = config.database;
-    super({ adapter: new PrismaMariaDb({ host: db.host, port: db.port, user: db.user, password: db.password, database: db.name, timezone: "+00:00" }) });
+    super({
+      adapter: new PrismaMariaDb({
+        host: db.host,
+        port: db.port,
+        user: db.user,
+        password: db.password,
+        database: db.name,
+        timezone: "+00:00",
+        // Avoid filling ten connections on every watch-mode restart.
+        connectionLimit: 3,
+        minimumIdle: 1,
+      }),
+    });
   }
 
   onApplicationBootstrap(): void {
     if (process.env.SKIP_DB_BOOTSTRAP === "true") return;
     void this.testConnection().then(async (connected) => {
-      if (connected) await this.runPendingMigrations();
+      if (connected && process.env.SKIP_DB_MIGRATIONS !== "true") await this.runPendingMigrations();
     });
   }
 

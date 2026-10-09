@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "nest start --watch",
+    "dev": "SKIP_DB_MIGRATIONS=true nest start --watch",
     "db:migrate": "node scripts/migrate.mjs",
     "db:import": "node scripts/import-base44-exports.mjs database",
     "db:import-users": "node scripts/import-users-export.mjs",
@@ -18,8 +18,8 @@
     "test:cov": "rm -rf .test-build && tsc -p tsconfig.json && node --enable-source-maps --test --experimental-test-coverage --test-coverage-include='src/**/*.service.ts' --test-coverage-include='.test-build/**/*.service.js' --test-coverage-lines=80 --test-coverage-branches=80 --test-coverage-functions=80 '.test-build/**/*.spec.js'",
     "test:e2e": "rm -rf .test-build && tsc -p tsconfig.json && node --enable-source-maps --test --test-reporter=spec --test-concurrency=1 '.test-build/**/*.e2e-spec.js'",
     "postinstall": "prisma generate",
-    "start:dev": "nest start --watch",
-    "start:debug": "nest start --debug --watch",
+    "start:dev": "SKIP_DB_MIGRATIONS=true nest start --watch",
+    "start:debug": "SKIP_DB_MIGRATIONS=true nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "openapi": "nest build && node dist/openapi.js"
   },

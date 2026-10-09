@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { displayIdPrefixRange } from "../common/utils/display-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { EventRegistration, Prisma } from "../generated/prisma/client.js";
 
@@ -37,7 +38,7 @@ export class EventRegistrationsRepository {
   // The latest EVT-REG- ids, for allocating the next one.
   async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
     const rows = await db.eventRegistration.findMany({
-      where: { registrationId: { startsWith: prefix } },
+      where: { registrationId: displayIdPrefixRange(prefix) },
       orderBy: { registrationId: "desc" },
       take: 20,
       select: { registrationId: true },

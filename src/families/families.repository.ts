@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { displayIdPrefixRange } from "../common/utils/display-ids.js";
 import { withContactFields } from "../common/utils/text.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Family, Prisma } from "../generated/prisma/client.js";
@@ -36,7 +37,7 @@ export class FamiliesRepository {
   // The latest display ids with this prefix, for allocating the next one.
   async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
     const rows = await db.family.findMany({
-      where: { familyId: { startsWith: prefix } },
+      where: { familyId: displayIdPrefixRange(prefix) },
       orderBy: { familyId: "desc" },
       take: 20,
       select: { familyId: true },

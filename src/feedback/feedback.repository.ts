@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { displayIdPrefixRange } from "../common/utils/display-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Feedback, Prisma } from "../generated/prisma/client.js";
 
@@ -32,7 +33,7 @@ export class FeedbackRepository {
   // The latest display ids with this prefix, for allocating the next one.
   async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
     const rows = await db.feedback.findMany({
-      where: { feedbackId: { startsWith: prefix } },
+      where: { feedbackId: displayIdPrefixRange(prefix) },
       orderBy: { feedbackId: "desc" },
       take: 20,
       select: { feedbackId: true },

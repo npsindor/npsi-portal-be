@@ -17,19 +17,22 @@ const connection = await mysql.createConnection({
   user: process.env.MYSQL_USER || "root",
   password: process.env.MYSQL_PASSWORD || "cdn123",
 });
-await connection.query(`CREATE DATABASE IF NOT EXISTS \`${database.replaceAll("`", "``")}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-const [tables] = await connection.query(
-  "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('_prisma_migrations', 'SequelizeMeta')",
-  [database],
-);
-const names = new Set(tables.map((t) => t.name));
 let baseline = false;
-if (!names.has("_prisma_migrations") && names.has("SequelizeMeta")) {
-  const [[{ n }]] = await connection.query(`SELECT COUNT(*) AS n FROM \`${database.replaceAll("`", "``")}\`.SequelizeMeta`);
-  if (n < LEGACY_MIGRATIONS) throw new Error(`Legacy database has ${n}/${LEGACY_MIGRATIONS} sequelize migrations; apply them before switching to Prisma Migrate.`);
-  baseline = true;
+try {
+  await connection.query(`CREATE DATABASE IF NOT EXISTS \`${database.replaceAll("`", "``")}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  const [tables] = await connection.query(
+    "SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = ? AND TABLE_NAME IN ('_prisma_migrations', 'SequelizeMeta')",
+    [database],
+  );
+  const names = new Set(tables.map((t) => t.name));
+  if (!names.has("_prisma_migrations") && names.has("SequelizeMeta")) {
+    const [[{ n }]] = await connection.query(`SELECT COUNT(*) AS n FROM \`${database.replaceAll("`", "``")}\`.SequelizeMeta`);
+    if (n < LEGACY_MIGRATIONS) throw new Error(`Legacy database has ${n}/${LEGACY_MIGRATIONS} sequelize migrations; apply them before switching to Prisma Migrate.`);
+    baseline = true;
+  }
+} finally {
+  await connection.end();
 }
-await connection.end();
 
 const prisma = (...args) => execFileSync(process.execPath, [path.resolve("node_modules/prisma/build/index.js"), ...args], { stdio: "inherit" });
 if (baseline) prisma("migrate", "resolve", "--applied", "0_init");

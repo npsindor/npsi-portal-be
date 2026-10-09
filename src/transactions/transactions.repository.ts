@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { displayIdPrefixRange } from "../common/utils/display-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, Transaction } from "../generated/prisma/client.js";
 
@@ -32,7 +33,7 @@ export class TransactionsRepository {
   // The latest TXN- ids, for allocating the next one.
   async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
     const rows = await db.transaction.findMany({
-      where: { transactionId: { startsWith: prefix } },
+      where: { transactionId: displayIdPrefixRange(prefix) },
       orderBy: { transactionId: "desc" },
       take: 20,
       select: { transactionId: true },

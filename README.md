@@ -15,7 +15,7 @@ The frontend lives in a separate repo and talks to this API through `VITE_API_BA
 npm install                 # also generates the Prisma client
 cp .env.example .env        # then fill in MYSQL_PASSWORD (and SMTP_* if needed)
 npm run db:migrate          # creates the database if missing and applies Prisma migrations
-                            # (the server also applies pending migrations on every start)
+                            # (run again after pulling new migrations; watch mode skips automatic migrations)
 npm run start:dev           # nest start --watch: the API on http://localhost:4000, reloads on changes
 ```
 
@@ -28,6 +28,8 @@ curl http://localhost:4000/api/v1/health
 ### Environment files
 
 The API server loads `.env.local` first, then `.env` (values in `.env.local` win; variables already set in the process environment win over both). The scripts in `scripts/` only read `.env`, so keep database settings in `.env`. See `.env.example` for all variables. Never commit `.env` files.
+
+The API pool allows three connections per process and keeps one idle connection ready for reuse. Development and debug watch commands set `SKIP_DB_MIGRATIONS=true` to avoid migration connections on every restart. Normal startup still applies migrations automatically; set the same variable to skip them when migrations are handled separately.
 
 ## Scripts
 
