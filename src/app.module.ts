@@ -4,6 +4,7 @@ import { ApplicationsModule } from "./applications/applications.module.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { CommonModule } from "./common/common.module.js";
 import { AppConfigModule } from "./config/config.module.js";
+import { ContactInfoModule } from "./contact-info/contact-info.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { EventRegistrationsModule } from "./event-registrations/event-registrations.module.js";
 import { EventsModule } from "./events/events.module.js";
@@ -30,6 +31,7 @@ import { UploadsModule } from "./uploads/uploads.module.js";
     DatabaseModule,
     CommonModule,
     HealthModule,
+    ContactInfoModule,
     AuthModule,
     MeModule,
     LookupsModule,
