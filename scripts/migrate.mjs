@@ -4,19 +4,25 @@
 // does on startup. Reads .env.local then .env (process environment wins).
 import { execFileSync } from "node:child_process";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 import dotenv from "dotenv";
 import mysql from "mysql2/promise";
 
-dotenv.config({ path: [path.resolve(".env.local"), path.resolve(".env")], quiet: true });
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+dotenv.config({ path: [path.join(root, ".env.local"), path.join(root, ".env")], quiet: true });
 
 const LEGACY_MIGRATIONS = 8;
 const database = process.env.MYSQL_DATABASE || "patidar_samaj";
-const connection = await mysql.createConnection({
+const settings = {
   host: process.env.MYSQL_HOST || "localhost",
   port: Number(process.env.MYSQL_PORT || 3306),
   user: process.env.MYSQL_USER || "root",
   password: process.env.MYSQL_PASSWORD || "cdn123",
-});
+};
+const host = settings.host.includes(":") && !settings.host.startsWith("[") ? `[${settings.host}]` : settings.host;
+const databaseUrl = new URL(`mysql://${encodeURIComponent(settings.user)}:${encodeURIComponent(settings.password)}@${host}:${settings.port}/${encodeURIComponent(database)}`).toString();
+const connection = await mysql.createConnection(settings);
 let baseline = false;
 try {
   await connection.query(`CREATE DATABASE IF NOT EXISTS \`${database.replaceAll("`", "``")}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
@@ -34,6 +40,8 @@ try {
   await connection.end();
 }
 
-const prisma = (...args) => execFileSync(process.execPath, [path.resolve("node_modules/prisma/build/index.js"), ...args], { stdio: "inherit" });
+const prisma = (...args) => execFileSync(process.execPath, [path.join(path.dirname(createRequire(import.meta.url).resolve("prisma/package.json")), "build/index.js"), ...args, "--config", path.join(root, "prisma.config.ts")], {
+  cwd: root, stdio: "inherit", env: { ...process.env, DATABASE_URL: databaseUrl },
+});
 if (baseline) prisma("migrate", "resolve", "--applied", "0_init");
 prisma("migrate", "deploy");

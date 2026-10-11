@@ -107,3 +107,11 @@ UPDATE users SET role = 'admin' WHERE email = 'you@example.com';
 Set `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` and `SMTP_FROM`, then restart the server. If SMTP is not configured, the API logs a warning and skips sending; the reset token is never returned in the API response, so without SMTP read it from the database to test the flow locally.
 
 Note: if your local `.env` points at a real mailbox, emails sent while testing locally are delivered for real.
+
+### Production migration assets
+
+Build releases with `npm run build` and deploy the **entire `dist/` directory**, including `dist/prisma/schema.prisma`, `dist/prisma/migrations/`, and `dist/prisma.config.mjs`. The build copies the complete migration history automatically; future migrations do not require deployment configuration changes. Keep production dependencies installed, including the Prisma CLI.
+
+Startup passes the bundled Prisma config by absolute path, so schema discovery does not depend on the hosting process's working directory. Startup migrations and `npm run db:migrate` use the same `MYSQL_*` connection settings as the API, overriding any stale `DATABASE_URL` for their Prisma subprocess. Special characters in credentials are URL-encoded. `SKIP_DB_MIGRATIONS=true` disables startup migration deployment; leave it unset or false when startup should apply migrations. The API waits for its database connection and migrations before accepting requests. A connection or migration failure stops startup; it no longer serves requests against an outdated schema. If assets are missing, the startup log explains which build/deployment step is required.
+
+For hosts using a custom build command, use `npm run build` instead of only `nest build`. The production start command remains `npm run start:prod`. Redeploy a newly built artifact to fix an existing release missing its migration assets.
