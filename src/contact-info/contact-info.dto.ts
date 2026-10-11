@@ -61,3 +61,21 @@ export class ContactInfoThanksVo {
   @ApiProperty({ example: "Thank you! Your details have been saved." })
   message!: string;
 }
+
+export class ContactInfoVo {
+  @ApiProperty() id!: string;
+  @ApiProperty() fullName!: string;
+  @ApiProperty() contactNumber!: string;
+  @ApiProperty({ type: String, nullable: true }) email!: string | null;
+  @ApiProperty() indoreArea!: string;
+  @ApiProperty() nativeVillage!: string;
+  @ApiProperty() isStudent!: boolean;
+  @ApiProperty({ format: "date-time" }) createdAt!: string;
+}
+
+export class ContactInfoPageVo {
+  @ApiProperty({ type: ContactInfoVo, isArray: true }) items!: ContactInfoVo[];
+  @ApiProperty() total!: number;
+  @ApiProperty() limit!: number;
+  @ApiProperty() offset!: number;
+}

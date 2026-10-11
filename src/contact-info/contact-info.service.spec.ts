@@ -65,12 +65,33 @@ test("rejects invalid, missing and oversized fields and non-boolean student valu
   await assert.rejects(validate({}));
 });
 
+test("lists one page newest first with the total and ISO dates", async () => {
+  const createdAt = new Date("2026-10-11T10:00:00Z");
+  const row = { id: "c1", fullName: "A", contactNumber: "9876543210", email: null, indoreArea: "Rau", nativeVillage: "Borawan", isStudent: false, createdAt };
+  let findArgs: unknown;
+  const prisma = {
+    contactInfo: {
+      findMany: async (args: unknown) => {
+        findArgs = args;
+        return [row];
+      },
+      count: async () => 7,
+    },
+    $transaction: (queries: Promise<unknown>[]) => Promise.all(queries),
+  };
+  const service = new ContactInfoService(prisma as unknown as PrismaService);
+  assert.deepEqual(await service.list({ limit: 1, offset: 3 }), { items: [{ ...row, createdAt: "2026-10-11T10:00:00.000Z" }], total: 7, limit: 1, offset: 3 });
+  assert.deepEqual((findArgs as { orderBy: unknown }).orderBy, [{ createdAt: "desc" }, { id: "desc" }]);
+  assert.deepEqual(await service.list({}).then(({ limit, offset }) => [limit, offset]), [100, 0]);
+});
+
 test("public HTTP endpoint validates input, inserts once and rate limits submissions", async () => {
   const { Test } = await import("@nestjs/testing");
   const { default: request } = await import("supertest");
   const { DatabaseModule } = await import("../database/database.module.js");
   const { PrismaService: PrismaToken } = await import("../database/prisma.service.js");
   const { ContactInfoModule } = await import("./contact-info.module.js");
+  const { AdminGuard } = await import("../common/guards/auth.guards.js");
   let inserts = 0;
   const module = await Test.createTestingModule({ imports: [DatabaseModule, ContactInfoModule] })
     .overrideProvider(PrismaToken)
@@ -82,6 +103,8 @@ test("public HTTP endpoint validates input, inserts once and rate limits submiss
         },
       },
     })
+    .overrideGuard(AdminGuard)
+    .useValue({ canActivate: () => false })
     .compile();
   const app = module.createNestApplication();
   app.setGlobalPrefix("api/v1");
@@ -94,7 +117,7 @@ test("public HTTP endpoint validates input, inserts once and rate limits submiss
     for (let i = 0; i < 9; i++) await request(app.getHttpServer()).post("/api/v1/contact-info").send({}).expect(400);
     await request(app.getHttpServer()).post("/api/v1/contact-info").send(valid).expect(429);
     assert.equal(inserts, 1);
-    await request(app.getHttpServer()).get("/api/v1/contact-info").expect(404);
+    await request(app.getHttpServer()).get("/api/v1/contact-info").expect(403);
   } finally {
     await app.close();
   }

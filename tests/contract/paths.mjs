@@ -41,6 +41,8 @@ const v1 = {
   checkMobile: (qs = "") => ["GET", `/api/v1/mobile-availability${qs}`],
   checkEmail: (qs = "") => ["GET", `/api/v1/email-availability${qs}`],
   stats: () => ["GET", "/api/v1/stats"],
+  submitContactInfo: () => ["POST", "/api/v1/contact-info"],
+  listContactInfo: (qs = "") => ["GET", `/api/v1/contact-info${qs}`],
   upload: () => ["POST", "/api/v1/uploads"],
   list: (entity, qs = "") => ["GET", `/api/v1/${RESOURCES[entity]}${qs}`],
   create: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}`],

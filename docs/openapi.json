@@ -34,6 +34,64 @@
       }
     },
     "/api/v1/contact-info": {
+      "get": {
+        "description": "Pagination uses limit (default 100, maximum 500) and offset.",
+        "operationId": "ContactInfoController_list",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "default": 100,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Rows to skip, for paging",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactInfoPageVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid pagination"
+          },
+          "401": {
+            "description": "Authentication required"
+          },
+          "403": {
+            "description": "Admin access required"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "List community contacts (admin only), newest first",
+        "tags": [
+          "contact info"
+        ]
+      },
       "post": {
         "operationId": "ContactInfoController_create",
         "parameters": [],
@@ -6727,6 +6785,73 @@
         "required": [
           "ok",
           "error"
+        ]
+      },
+      "ContactInfoVo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "contactNumber": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "indoreArea": {
+            "type": "string"
+          },
+          "nativeVillage": {
+            "type": "string"
+          },
+          "isStudent": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "fullName",
+          "contactNumber",
+          "email",
+          "indoreArea",
+          "nativeVillage",
+          "isStudent",
+          "createdAt"
+        ]
+      },
+      "ContactInfoPageVo": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ContactInfoVo"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "offset": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
         ]
       },
       "CreateContactInfoDto": {
