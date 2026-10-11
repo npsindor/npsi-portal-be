@@ -9,7 +9,7 @@
     "db:import": "node scripts/import-base44-exports.mjs database",
     "db:import-users": "node scripts/import-users-export.mjs",
     "test:contract": "npm run build && node --test --test-reporter=spec tests/contract/contract.test.mjs",
-    "build": "prisma generate && nest build",
+    "build": "prisma generate && nest build && node scripts/package-prisma.mjs",
     "start": "nest start",
     "lint": "biome lint",
     "format": "biome format --write",
@@ -21,7 +21,8 @@
     "start:dev": "SKIP_DB_MIGRATIONS=true nest start --watch",
     "start:debug": "SKIP_DB_MIGRATIONS=true nest start --debug --watch",
     "start:prod": "node dist/main.js",
-    "openapi": "nest build && node dist/openapi.js"
+    "openapi": "npm run build && node dist/openapi.js",
+    "test:build": "npm run build && node --test tests/build/prisma-package.test.mjs"
   },
   "dependencies": {
     "@nestjs/cli": "^12.0.8",

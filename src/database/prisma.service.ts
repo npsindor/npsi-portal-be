@@ -1,16 +1,21 @@
 import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Injectable, type OnApplicationBootstrap, type OnApplicationShutdown } from "@nestjs/common";
 import { PrismaMariaDb } from "@prisma/adapter-mariadb";
 import { AppConfigService } from "../config/app-config.service.js";
 import { PROJECT_ROOT } from "../config/project-root.js";
 import { type Prisma, PrismaClient } from "../generated/prisma/client.js";
 
+import { migrationDatabaseUrl } from "./migration-url.js";
+
 // A Prisma client or the client of a running transaction (`prisma.$transaction(async (tx) => …)`):
 // repository methods take one so a service can run several of them as one unit.
 export type Db = Prisma.TransactionClient;
 
-const PRISMA_CLI = path.join(PROJECT_ROOT, "node_modules/prisma/build/index.js");
+const PRISMA_CLI = path.join(path.dirname(createRequire(import.meta.url).resolve("prisma/package.json")), "build/index.js");
 const BASELINE_MIGRATION = "0_init";
 // Every sequelize-cli migration the 0_init baseline already contains.
 const LEGACY_MIGRATIONS = [
@@ -26,11 +31,11 @@ const LEGACY_MIGRATIONS = [
 
 // The Prisma client for the whole app (MySQL through the MariaDB driver
 // adapter, configured from the existing MYSQL_* variables). On startup it
-// connects and applies pending Prisma migrations without blocking the server,
-// like the legacy app did with sequelize-cli; a failure is logged, not fatal.
+// connects and finishes pending migrations before accepting requests. A failed
+// migration stops startup instead of serving requests against an outdated schema.
 @Injectable()
 export class PrismaService extends PrismaClient implements OnApplicationBootstrap, OnApplicationShutdown {
-  constructor(config: AppConfigService) {
+  constructor(private readonly config: AppConfigService) {
     const db = config.database;
     super({
       adapter: new PrismaMariaDb({
@@ -47,11 +52,10 @@ export class PrismaService extends PrismaClient implements OnApplicationBootstra
     });
   }
 
-  onApplicationBootstrap(): void {
+  async onApplicationBootstrap(): Promise<void> {
     if (process.env.SKIP_DB_BOOTSTRAP === "true") return;
-    void this.testConnection().then(async (connected) => {
-      if (connected && process.env.SKIP_DB_MIGRATIONS !== "true") await this.runPendingMigrations();
-    });
+    if (!(await this.testConnection())) throw new Error("Database connection failed; server startup stopped.");
+    if (process.env.SKIP_DB_MIGRATIONS !== "true") await this.runPendingMigrations();
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -81,7 +85,8 @@ export class PrismaService extends PrismaClient implements OnApplicationBootstra
     } catch (error) {
       const e = error as { stdout?: Buffer; stderr?: Buffer };
       const output = e.stderr?.toString() || e.stdout?.toString();
-      console.error("⚠️  Migration run failed (server will still start):", output || (error instanceof Error ? error.message : error));
+      console.error("❌ Migration run failed; server startup stopped:", output || (error instanceof Error ? error.message : error));
+      throw new Error("Database migrations failed. Check the migration log before restarting the server.");
     }
   }
 
@@ -105,6 +110,28 @@ export class PrismaService extends PrismaClient implements OnApplicationBootstra
   }
 
   private prismaCli(args: string[]): string {
-    return execFileSync(process.execPath, [PRISMA_CLI, ...args], { cwd: PROJECT_ROOT, stdio: "pipe", env: process.env }).toString();
+    // Compiled releases carry their own schema and full migration history.
+    // Source/test execution can use the repository config instead.
+    const appDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+    const bundledConfig = path.join(appDirectory, "prisma.config.mjs");
+    const configPath = existsSync(bundledConfig) ? bundledConfig : path.join(PROJECT_ROOT, "prisma.config.ts");
+    const assets = path.join(existsSync(bundledConfig) ? appDirectory : PROJECT_ROOT, "prisma");
+    if (!existsSync(configPath) || !existsSync(path.join(assets, "schema.prisma")) || !existsSync(path.join(assets, "migrations/migration_lock.toml"))) {
+      throw new Error(
+        "Prisma migration assets are missing. Build with npm run build and deploy the entire dist directory, including dist/prisma and dist/prisma.config.mjs.",
+      );
+    }
+    const migrations = path.join(assets, "migrations");
+    const folders = readdirSync(migrations, { withFileTypes: true }).filter((entry) => entry.isDirectory());
+    if (!folders.length || folders.some((entry) => !existsSync(path.join(migrations, entry.name, "migration.sql")))) {
+      throw new Error("Prisma migration history is incomplete. Deploy the entire dist/prisma/migrations directory.");
+    }
+    // The API uses MYSQL_*; a stale DATABASE_URL must never migrate another database.
+    const url = migrationDatabaseUrl(this.config.database);
+    return execFileSync(process.execPath, [PRISMA_CLI, ...args, "--config", configPath], {
+      cwd: appDirectory,
+      stdio: "pipe",
+      env: { ...process.env, DATABASE_URL: url },
+    }).toString();
   }
 }
