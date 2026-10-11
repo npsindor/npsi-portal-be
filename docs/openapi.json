@@ -33,6 +33,44 @@
         ]
       }
     },
+    "/api/v1/contact-info": {
+      "post": {
+        "operationId": "ContactInfoController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateContactInfoDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactInfoThanksVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or missing contact details"
+          },
+          "429": {
+            "description": "Too many submissions; try again later"
+          }
+        },
+        "summary": "Submit community contact details without an account",
+        "tags": [
+          "contact info"
+        ]
+      }
+    },
     "/api/v1/auth/registrations": {
       "post": {
         "operationId": "AuthController_register",
@@ -6689,6 +6727,70 @@
         "required": [
           "ok",
           "error"
+        ]
+      },
+      "CreateContactInfoDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "maxLength": 150
+          },
+          "contactNumber": {
+            "type": "string",
+            "description": "Indian mobile number, optionally prefixed with +91",
+            "example": "9876543210"
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "indoreArea": {
+            "type": "string",
+            "maxLength": 150,
+            "description": "Selected Indore area or the entered Other value"
+          },
+          "nativeVillage": {
+            "type": "string",
+            "maxLength": 150,
+            "description": "Selected Nimad village or the entered Other value"
+          },
+          "isStudent": {
+            "type": "boolean",
+            "default": false
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "hi"
+            ],
+            "default": "en"
+          }
+        },
+        "required": [
+          "fullName",
+          "contactNumber",
+          "indoreArea",
+          "nativeVillage"
+        ]
+      },
+      "ContactInfoThanksVo": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "example": true
+          },
+          "message": {
+            "type": "string",
+            "example": "Thank you! Your details have been saved."
+          }
+        },
+        "required": [
+          "success",
+          "message"
         ]
       },
       "RegisterDto": {
