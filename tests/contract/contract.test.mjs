@@ -1238,3 +1238,27 @@ describe("notifications: broadcasts are read per member", () => {
     assert.equal(unread.body.read, false);
   });
 });
+
+describe("contact info: admin list", () => {
+  const contact = { fullName: "Contact One", contactNumber: "9811111111", indoreArea: "Rau", nativeVillage: "Borawan" };
+  test("401 without a token, 403 for a member", async () => {
+    assertError(await api("listContactInfo"), 401, "Authentication required.");
+    assertError(await api("listContactInfo", [], { token: TOKENS.member }), 403, "Admin access required.");
+  });
+  test("admin pages through submissions, newest first", async () => {
+    assert.equal((await api("submitContactInfo").send(contact)).status, 201);
+    assert.equal((await api("submitContactInfo").send({ ...contact, fullName: "Contact Two", isStudent: true })).status, 201);
+    const first = await api("listContactInfo", ["?limit=1"], { token: TOKENS.admin });
+    assert.equal(first.status, 200);
+    assert.deepEqual([first.body.limit, first.body.offset], [1, 0]);
+    assert.ok(first.body.total >= 2);
+    assert.equal(first.body.items.length, 1);
+    assert.deepEqual(keys(first.body.items[0]), ["contactNumber", "createdAt", "email", "fullName", "id", "indoreArea", "isStudent", "nativeVillage"]);
+    const second = await api("listContactInfo", ["?limit=1&offset=1"], { token: TOKENS.admin });
+    assert.notEqual(second.body.items[0].id, first.body.items[0].id);
+    assert.ok(second.body.items[0].createdAt <= first.body.items[0].createdAt);
+  });
+  test("400 for an invalid limit", async () => {
+    assert.equal((await api("listContactInfo", ["?limit=501"], { token: TOKENS.admin })).status, 400);
+  });
+});
