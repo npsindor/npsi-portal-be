@@ -386,6 +386,12 @@ model TransferRequest {
 }
 
 model User {
+  sehatMr SehatMr?
+  sehatRequests SehatRequest[]
+  sehatReports SehatReport[]
+  sehatNotifications SehatNotification[]
+  safarEntries SafarEntry[]
+  safarNotices SafarNotice[]
   id                  String             @id @db.VarChar(64)
   email               String?            @unique(map: "email") @db.VarChar(255)
   fullName            String?            @map("full_name") @db.VarChar(255)
@@ -449,4 +455,190 @@ model ContactInfo {
   createdAt     DateTime @default(now()) @map("created_at") @db.DateTime(0)
 
   @@map("contact_info")
+}
+
+model SafarEntry {
+  clientRequestId String @map("client_request_id") @db.VarChar(36)
+  id String @id @db.VarChar(64)
+  userId String @map("user_id") @db.VarChar(64)
+  kind String @db.VarChar(16)
+  requestType String @map("request_type") @db.VarChar(16)
+  name String @db.VarChar(150)
+  phone String @db.VarChar(10)
+  email String? @db.VarChar(254)
+  origin String @db.VarChar(150)
+  destination String @db.VarChar(150)
+  originKey String @map("origin_key") @db.VarChar(150)
+  destinationKey String @map("destination_key") @db.VarChar(150)
+  travelDate DateTime @map("travel_date") @db.Date
+  preferredTime String @map("preferred_time") @db.VarChar(5)
+  itemDetails String? @map("item_details") @db.Text
+  instructions String? @db.Text
+  notificationMethod String @map("notification_method") @db.VarChar(16)
+  lang String @db.VarChar(2)
+  status String @default("OPEN") @db.VarChar(16)
+  consentAt DateTime @default(now()) @map("consent_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests SafarMatch[] @relation("SafarRequest")
+  offers SafarMatch[] @relation("SafarOffer")
+  @@unique([userId, clientRequestId])
+  @@index([userId, createdAt])
+  @@index([originKey, destinationKey, travelDate, kind, status], map: "safar_route_idx")
+  @@map("safar_entries")
+}
+
+model SafarMatch {
+  id String @id @db.VarChar(64)
+  requestId String @map("request_id") @db.VarChar(64)
+  offerId String @map("offer_id") @db.VarChar(64)
+  requestAccepted Boolean @default(false) @map("request_accepted")
+  offerAccepted Boolean @default(false) @map("offer_accepted")
+  status String @default("PROPOSED") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  request SafarEntry @relation("SafarRequest", fields: [requestId], references: [id], onDelete: Cascade)
+  offer SafarEntry @relation("SafarOffer", fields: [offerId], references: [id], onDelete: Cascade)
+  notices SafarNotice[]
+  @@unique([requestId, offerId])
+  @@map("safar_matches")
+}
+
+model SafarNotice {
+  id String @id @db.VarChar(64)
+  userId String @map("user_id") @db.VarChar(64)
+  matchId String @map("match_id") @db.VarChar(64)
+  kind String @db.VarChar(16)
+  emailStatus String @map("email_status") @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  match SafarMatch @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  @@unique([userId, matchId, kind])
+  @@index([userId, createdAt])
+  @@map("safar_notices")
+}
+
+model SehatMr {
+  id String @id @db.VarChar(64)
+  userId String @unique @map("user_id") @db.VarChar(64)
+  membershipId String @map("membership_id") @db.VarChar(255)
+  name String @db.VarChar(150)
+  company String @db.VarChar(180)
+  role String @db.VarChar(150)
+  city String @db.VarChar(150)
+  cityKey String @map("city_key") @db.VarChar(150)
+  areas Json
+  areaKeys Json @map("area_keys")
+  phone String @db.VarChar(10)
+  whatsapp String? @db.VarChar(10)
+  assistance String @db.VarChar(20)
+  publishContact Boolean @default(false) @map("publish_contact")
+  emailOptIn Boolean @default(false) @map("email_opt_in")
+  whatsappOptIn Boolean @default(false) @map("whatsapp_opt_in")
+  lang String @db.VarChar(2)
+  status String @default("PENDING") @db.VarChar(20)
+  reviewNote String? @map("review_note") @db.Text
+  verifiedAt DateTime? @map("verified_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  requests SehatRequest[]
+  routes SehatRouting[]
+  @@index([cityKey, status])
+  @@map("sehat_mrs")
+}
+model SehatResource {
+  id String @id @db.VarChar(64)
+  titleEn String @map("title_en") @db.VarChar(200)
+  titleHi String @map("title_hi") @db.VarChar(200)
+  descriptionEn String @map("description_en") @db.Text
+  descriptionHi String @map("description_hi") @db.Text
+  source String @db.VarChar(200)
+  url String @db.Text
+  category String @db.VarChar(20)
+  city String? @db.VarChar(150)
+  published Boolean @default(false)
+  verified Boolean @default(false)
+  verifiedAt DateTime? @map("verified_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  @@map("sehat_resources")
+}
+model SehatRequest {
+  id String @id @db.VarChar(64)
+  reference String @unique @db.VarChar(40)
+  clientRequestId String @map("client_request_id") @db.VarChar(36)
+  userId String @map("user_id") @db.VarChar(64)
+  medicine String @db.VarChar(180)
+  composition String? @db.VarChar(200)
+  quantity Int
+  assistance String @db.VarChar(20)
+  city String @db.VarChar(150)
+  cityKey String @map("city_key") @db.VarChar(150)
+  area String @db.VarChar(150)
+  areaKey String @map("area_key") @db.VarChar(150)
+  name String @db.VarChar(150)
+  phone String @db.VarChar(10)
+  whatsapp String? @db.VarChar(10)
+  notes String? @db.Text
+  emailOptIn Boolean @default(false) @map("email_opt_in")
+  whatsappOptIn Boolean @default(false) @map("whatsapp_opt_in")
+  lang String @db.VarChar(2)
+  status String @default("PENDING") @db.VarChar(24)
+  assignedMrId String? @map("assigned_mr_id") @db.VarChar(64)
+  consentAt DateTime @default(now()) @map("consent_at") @db.DateTime(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedMr SehatMr? @relation(fields: [assignedMrId], references: [id], onDelete: SetNull)
+  routes SehatRouting[]
+  @@unique([userId, clientRequestId])
+  @@index([cityKey, status])
+  @@map("sehat_requests")
+}
+model SehatRouting {
+  id String @id @db.VarChar(64)
+  requestId String @map("request_id") @db.VarChar(64)
+  mrId String @map("mr_id") @db.VarChar(64)
+  status String @default("INVITED") @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  request SehatRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  mr SehatMr @relation(fields: [mrId], references: [id], onDelete: Cascade)
+  @@unique([requestId, mrId])
+  @@map("sehat_routings")
+}
+model SehatReport {
+  id String @id @db.VarChar(64)
+  userId String @map("user_id") @db.VarChar(64)
+  targetType String @map("target_type") @db.VarChar(20)
+  targetId String @map("target_id") @db.VarChar(64)
+  message String @db.Text
+  status String @default("OPEN") @db.VarChar(20)
+  resolution String? @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@map("sehat_reports")
+}
+model SehatNotification {
+  id String @id @db.VarChar(64)
+  userId String @map("user_id") @db.VarChar(64)
+  dedupeKey String @map("dedupe_key") @db.VarChar(190)
+  topic String @db.VarChar(40)
+  entityId String @map("entity_id") @db.VarChar(64)
+  channel String @db.VarChar(16)
+  status String @db.VarChar(20)
+  providerId String? @map("provider_id") @db.VarChar(255)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, dedupeKey, channel])
+  @@map("sehat_notifications")
+}
+model SehatAudit {
+  id String @id @db.VarChar(64)
+  actorId String @map("actor_id") @db.VarChar(64)
+  action String @db.VarChar(40)
+  entityType String @map("entity_type") @db.VarChar(24)
+  entityId String @map("entity_id") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  @@map("sehat_audits")
 }

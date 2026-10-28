@@ -1,3 +1,5 @@
+import { SafarModule } from "./safar-saathi/safar.controller.js";
+import { SehatModule } from "./sehat-saathi/sehat.controller.js";
 import { Module } from "@nestjs/common";
 import { AnnouncementsModule } from "./announcements/announcements.module.js";
 import { ApplicationsModule } from "./applications/applications.module.js";
@@ -28,6 +30,8 @@ import { UploadsModule } from "./uploads/uploads.module.js";
 @Module({
   imports: [
     AppConfigModule,
+    SehatModule,
+    SafarModule,
     DatabaseModule,
     CommonModule,
     HealthModule,
