@@ -386,6 +386,9 @@ model TransferRequest {
 }
 
 model User {
+ sagunProfiles SagunProfile[]
+ sagunInquiries SagunInquiry[]
+ sagunNotices SagunNotice[]
   sehatMr SehatMr?
   sehatRequests SehatRequest[]
   sehatReports SehatReport[]
@@ -641,4 +644,79 @@ model SehatAudit {
   entityId String @map("entity_id") @db.VarChar(64)
   createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
   @@map("sehat_audits")
+}
+
+model SagunProfile {
+ id String @id @db.VarChar(64)
+ userId String @map("user_id") @db.VarChar(64)
+ reference String @unique @db.VarChar(32)
+ data Json
+ displayName String @default("") @map("display_name") @db.VarChar(150)
+ candidateType String @default("") @map("candidate_type") @db.VarChar(12)
+ birthDate DateTime? @map("birth_date") @db.Date
+ city String @default("") @db.VarChar(150)
+ gotra String @default("") @db.VarChar(150)
+ education String @default("") @db.VarChar(200)
+ occupation String @default("") @db.VarChar(200)
+ maritalStatus String @default("") @map("marital_status") @db.VarChar(20)
+ status String @default("DRAFT") @db.VarChar(20)
+ visibility String @default("PRIVATE") @db.VarChar(16)
+ reviewNotes String? @map("review_notes") @db.Text
+ createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+ updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+ user User @relation(fields:[userId], references:[id], onDelete:Cascade)
+ files SagunFile[]
+ inquiries SagunInquiry[]
+ @@index([status,visibility,city])
+ @@index([userId,createdAt])
+ @@map("sagun_profiles")
+}
+model SagunFile {
+ id String @id @db.VarChar(64)
+ profileId String @map("profile_id") @db.VarChar(64)
+ kind String @db.VarChar(16)
+ filename String @db.VarChar(80)
+ mime String @db.VarChar(40)
+ size Int
+ consentAt DateTime @default(now()) @map("consent_at") @db.DateTime(0)
+ profile SagunProfile @relation(fields:[profileId],references:[id],onDelete:Cascade)
+ @@unique([profileId,kind])
+ @@map("sagun_files")
+}
+model SagunInquiry {
+ id String @id @db.VarChar(64)
+ profileId String @map("profile_id") @db.VarChar(64)
+ userId String @map("user_id") @db.VarChar(64)
+ message String @db.Text
+ status String @default("PENDING") @db.VarChar(16)
+ shareSagun Boolean @default(false) @map("share_sagun")
+ createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+ profile SagunProfile @relation(fields:[profileId],references:[id],onDelete:Cascade)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@unique([profileId,userId])
+ @@map("sagun_inquiries")
+}
+model SagunConfig {
+ id String @id @db.VarChar(16)
+ fields Json
+ updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+ @@map("sagun_config")
+}
+model SagunAudit {
+ id String @id @db.VarChar(64)
+ actorId String @map("actor_id") @db.VarChar(64)
+ action String @db.VarChar(32)
+ entityId String @map("entity_id") @db.VarChar(64)
+ createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+ @@map("sagun_audits")
+}
+model SagunNotice {
+ id String @id @db.VarChar(64)
+ userId String @map("user_id") @db.VarChar(64)
+ entityId String @map("entity_id") @db.VarChar(64)
+ topic String @db.VarChar(32)
+ createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
+ user User @relation(fields:[userId],references:[id],onDelete:Cascade)
+ @@index([userId,createdAt])
+ @@map("sagun_notices")
 }
