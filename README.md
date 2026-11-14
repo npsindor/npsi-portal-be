@@ -115,3 +115,50 @@ Build releases with `npm run build` and deploy the **entire `dist/` directory**,
 Startup passes the bundled Prisma config by absolute path, so schema discovery does not depend on the hosting process's working directory. Startup migrations and `npm run db:migrate` use the same `MYSQL_*` connection settings as the API, overriding any stale `DATABASE_URL` for their Prisma subprocess. Special characters in credentials are URL-encoded. `SKIP_DB_MIGRATIONS=true` disables startup migration deployment; leave it unset or false when startup should apply migrations. The API waits for its database connection and migrations before accepting requests. A connection or migration failure stops startup; it no longer serves requests against an outdated schema. If assets are missing, the startup log explains which build/deployment step is required.
 
 For hosts using a custom build command, use `npm run build` instead of only `nest build`. The production start command remains `npm run start:prod`. Redeploy a newly built artifact to fix an existing release missing its migration assets.
+
+### Safar Saathi
+
+`/transportation` now uses the authenticated `/api/v1/safar-saathi` API, not browser demo storage. Apply migrations and rebuild/restart the API when deploying this feature.
+
+- Public `GET /safar-saathi/capabilities` exposes available notification channels.
+- Approved, active members can `GET /safar-saathi/me`, `POST /safar-saathi/entries`, cancel their own entries with `PATCH /safar-saathi/entries/:id/cancellation`, and accept/decline/complete their own matches with `PATCH /safar-saathi/matches/:id`.
+- Entries require a registered account/membership mobile, a future-or-today date, a valid time, and consent. Requests for delivery also require item details. Client UUIDs make retries idempotent.
+- Matching uses normalized origin, destination, date, and assistance type. Common Hindi/English city aliases are supported; this is exact route/date coordination, not geospatial routing. Self-matches are excluded. Contact details stay private until both parties accept.
+- Private notices persist in `safar_notices`. Email is sent only when selected and SMTP is configured; failures remain visible in the private inbox. SMS is not configured and cannot be selected. No notification contains another member’s contact details.
+- The additive migration accommodates the existing `users.id` collation without changing member tables. `node scripts/deploy-safar-migration.mjs --apply` refuses unrelated pending migrations.
+- `node scripts/verify-safar-transaction.mjs` checks the real service inside a transaction that always rolls back, with no email/SMS sent. Build first. Unit coverage lives in `src/safar-saathi/safar.service.spec.ts`; frontend browser coverage is in `tests/browser/safar-saathi.spec.js`.
+
+### Sehat Saathi
+
+Public health resources and the consented verified MR directory are at `/medical`; administration is at `/admin/sehat-saathi`. The page uses Bootstrap 5.3.8 scoped to `.sehat-module`, so existing portal pages retain their styling. Hindi is the default for a first visit to this module; saved language choices take precedence.
+
+The `/api/v1/sehat-saathi` endpoints persist MR applications, medicine-access enquiries, area routing, complaints, notification logs and audit records. Only active approved members can submit. MR verification is a separate administrator decision; editing a profile returns it to pending and withdraws/reassigns active work. Only approved MRs with publication consent appear publicly. Unassigned MRs see only a request's reference, city, area and assistance type. Medicine and member contact details become visible only to the assigned MR after acceptance. Acceptance is claimed atomically; another MR cannot claim the same request.
+
+Admin management covers profile verification, resource CRUD, request CRUD/assignment/status, report CRUD and notification retry/deletion. Audit history is deliberately append-only and exportable: actor, action, entity and timestamp are recorded without copying health/contact details into the audit log. No prescriptions or medical-report uploads, diagnosis, prescription generation, sales or informal medicine transfers are supported. Sample enquiries are limited to lawful authorized-channel assistance, without availability promises.
+
+Deployment:
+
+1. Build the API with `npm run build`.
+2. Apply the additive migration with `node scripts/deploy-sehat-migration.mjs --apply`. This refuses unrelated pending migrations and accommodates the existing user-ID collation.
+3. Optionally add the four researched official resource links with `node scripts/seed-sehat-resources.mjs`. Existing URLs are not overwritten. No doctor, hospital or MR profile is invented.
+4. Restart the backend. Notification outbox work runs every 30 seconds, independently of form submission.
+
+Notifications always have a private in-app record. Email uses the existing SMTP configuration and opt-in. WhatsApp uses Meta Cloud API only when `SEHAT_WHATSAPP_AUTHORIZED=true` and the token, business phone ID, Graph API version and approved English/Hindi template names are configured. Templates must be generic, have no parameters and include the organization's medical dashboard link; they must not contain medicine names or contact information. Configure `SEHAT_WA_LANGUAGE_EN` / `SEHAT_WA_LANGUAGE_HI` to match approved template locales. Provider acceptance is logged as `ACCEPTED`, never claimed as delivered; provider errors remain `FAILED` or `UNAVAILABLE` with admin retry. Opt-outs, inactive accounts and withdrawn MR invitations are rechecked before dispatch.
+
+Tests: `src/sehat-saathi/*.spec.ts` covers validation and provider adapters with no external sends. `node scripts/verify-sehat-transaction.mjs` exercises the real database inside an always-rolled-back transaction with temporary `.invalid` accounts and disabled message providers. Browser tests are `tests/browser/sehat-saathi.spec.js` in the frontend. Regenerate scoped Bootstrap CSS after upgrading Bootstrap with `node scripts/build-sehat-css.mjs`.
+
+Official references used for seeded resources and safeguards: [MoHFW](https://www.mohfw.gov.in/), [NHA PM-JAY](https://nha.gov.in/PM-JAY), [ERSS](https://112.gov.in/), [CDSCO](https://cdsco.gov.in/opencms/opencms/en/Home/), and [Meta template messages](https://whatsapp.github.io/WhatsApp-Nodejs-SDK/api-reference/messages/template/).
+
+## Sagun matrimonial module
+
+- Member page: `/sagun`; admin page: `/admin/sagun`. Both support Hindi and English. Only active, verified users with approved active community membership can register or browse profiles.
+- Apply the isolated migration with `node scripts/deploy-sagun-migration.mjs`. The helper refuses unrelated or incomplete migrations. No candidate/demo profiles are seeded.
+- Profiles start private and in draft. Submission requires the configured fields, candidate/display/terms consent, an eligible adult candidate and a photograph. Admin approval and explicit member visibility are both needed before listing. Editing or replacing a document returns the profile to draft and requires resubmission.
+- Private uploads use `SAGUN_PRIVATE_DIR`, defaulting to a sibling of `UPLOADS_DIR` named `<uploads-directory-name>-sagun-private`. Configure an absolute persistent directory outside every public/static web root, writable only by the backend process; back it up with the database. Do not expose it through nginx, Apache, CDN or a static file mount. The service creates directories with mode 0700 and files with mode 0600. Every download requires authentication and authorization; identity, horoscope and supporting documents remain owner/admin only. Candidate photos are available to approved members only for published profiles. Maximum upload size is 10 MB; photos accept JPEG/PNG, optional documents also accept PDF.
+- Contact details need both owner contact-sharing consent and an accepted inquiry. Private Sagun records additionally need an explicit grant for that inquiry; owners can revoke it. Sagun items and amounts remain optional and require voluntary-arrangements acknowledgement. Admin field settings cannot disable eligibility/privacy consent or make gifts/documents mandatory.
+- Notifications are private in-app notices; this module does not send email/SMS/WhatsApp messages. Sensitive updates and restricted reads are audited without storing copied personal data in audit entries.
+- Verify using `node scripts/verify-sagun-transaction.mjs` after building. It creates temporary test members inside an always-rolled-back transaction and deletes temporary private files; it sends no external messages. Browser tests are in the frontend's `tests/browser/sagun.spec.js`.
+
+Eligibility and voluntary customary arrangements should be reviewed against applicable law; this module is not legal advice. Primary references: [Prohibition of Child Marriage Act](https://www.indiacode.nic.in/bitstream/123456789/19301/1/576a376198f41prohibition_of_child_marriage_act.pdf) and [Dowry Prohibition Act](https://www.indiacode.nic.in/bitstream/123456789/16243/1/196128.pdf).
+
+Sagun's government-source mapping, one-page administration and compliance boundaries are documented in [docs/sagun-guidelines.md](docs/sagun-guidelines.md). No new SQL migration is needed for gift-list metadata or additional consent fields because profile data is stored in validated JSON.
