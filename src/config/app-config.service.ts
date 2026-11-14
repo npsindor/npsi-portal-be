@@ -49,6 +49,25 @@ export class AppConfigService {
       port: Number(this.get("MYSQL_PORT") || 3306),
     };
   }
+  get msg91() {
+    return {
+      authKey: this.get("MSG91_AUTH_KEY"),
+      whatsappNumber: this.get("MSG91_WHATSAPP_NUMBER"),
+      namespace: this.get("MSG91_WHATSAPP_NAMESPACE"),
+      language: this.get("MSG91_WHATSAPP_LANGUAGE") || "en",
+      otpTemplate: this.get("MSG91_WHATSAPP_OTP_TEMPLATE"),
+      // Authentication templates with a "copy code" button need the code as a button parameter too.
+      otpButton: this.get("MSG91_WHATSAPP_OTP_BUTTON") === "true",
+      noticeTemplate: this.get("MSG91_WHATSAPP_NOTICE_TEMPLATE"),
+      smsOtpTemplateId: this.get("MSG91_SMS_OTP_TEMPLATE_ID"),
+      smsOtpVar: this.get("MSG91_SMS_OTP_VAR") || "otp",
+    };
+  }
+  // Payment screenshots hold bank details: kept outside the public uploads folder.
+  get paymentsDir(): string {
+    const dir = this.get("PAYMENTS_PRIVATE_DIR");
+    return dir ? path.resolve(dir) : path.join(path.dirname(this.uploadsDir), `${path.basename(this.uploadsDir)}-payments-private`);
+  }
   get smtp() {
     const port = Number(this.get("SMTP_PORT") || 587);
     return {

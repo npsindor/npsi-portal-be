@@ -7,11 +7,28 @@ import { RECAPTCHA_FAILED, RecaptchaService } from "../common/recaptcha/recaptch
 import type { UserRow } from "../common/session/session.service.js";
 import { createToken, generateOtp, hashOtp, hashPassword, randomId, randomInvitePassword, safeEqual, sha256, verifyPassword } from "../common/utils/crypto.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
-import { normalizeMobile } from "../common/utils/text.js";
+import { EMAIL_PATTERN, normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
-import type { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateMeDto, VerifyOtpDto } from "./dto/auth.dto.js";
+import type {
+  ChangePasswordDto,
+  EmailDto,
+  InviteDto,
+  LoginDto,
+  MobileOtpDto,
+  MobileRegisterDto,
+  RegisterDto,
+  ResetPasswordDto,
+  UpdateMeDto,
+  VerifyMobileOtpDto,
+  VerifyOtpDto,
+} from "./dto/auth.dto.js";
+import { MobileOtpService, type OtpPurpose, validMobile } from "./mobile-otp.service.js";
 import { UsersRepository } from "./users.repository.js";
-import { type InvitationVo, PublicUserVo, type RegistrationVo, type SessionVo } from "./vo/auth.vo.js";
+import { type InvitationVo, type MobileOtpVo, type MobileVerificationVo, PublicUserVo, type RegistrationVo, type SessionVo } from "./vo/auth.vo.js";
+
+export const MOBILE_TAKEN = "This mobile number is already registered.";
+export const NOT_VERIFIED = "Please verify your account before logging in.";
+const PASSWORD_RULE = "Password must be at least 6 characters.";
 
 const OK: OkVo = { ok: true };
 const logMailError = (label: string) => (error: unknown) => console.error(`[mailer] ${label} failed:`, error instanceof Error ? error.message : error);
@@ -28,7 +45,54 @@ export class AuthService {
     private readonly mail: MailService,
     private readonly recaptcha: RecaptchaService,
     private readonly config: AppConfigService,
+    private readonly mobileOtp: MobileOtpService,
   ) {}
+
+  // Step 1 of mobile registration / password reset: send a code to the mobile (WhatsApp → SMS → email fallback).
+  async requestMobileOtp(body: MobileOtpDto): Promise<MobileOtpVo> {
+    const mobile = validMobile(body?.mobile);
+    const purpose: OtpPurpose = body?.purpose === "RESET" ? "RESET" : "REGISTER";
+    if (purpose === "RESET") {
+      // Same answer whether or not the number is registered, so this can't be used to probe accounts.
+      const user = await this.users.findByPhone(mobile);
+      if (!user) return { ok: true, channel: "WHATSAPP", expiresInSeconds: 600 };
+      return { ok: true, ...(await this.mobileOtp.send(mobile, purpose, user.email)) };
+    }
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
+    const email = body?.email?.trim().toLowerCase() || null;
+    if (email && !EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
+    if (await this.users.findIdByPhone(mobile)) throw new ApiError(409, MOBILE_TAKEN);
+    if (email && (await this.users.findIdByEmail(email))) throw new ApiError(409, "An account with this email already exists.");
+    return { ok: true, ...(await this.mobileOtp.send(mobile, purpose, email)) };
+  }
+
+  async verifyMobileOtp(body: VerifyMobileOtpDto): Promise<MobileVerificationVo> {
+    const mobile = validMobile(body?.mobile);
+    const purpose: OtpPurpose = body?.purpose === "RESET" ? "RESET" : "REGISTER";
+    return { verificationToken: await this.mobileOtp.verify(mobile, purpose, String(body?.code || "").trim()) };
+  }
+
+  // Step 3 of mobile registration: the verified mobile + a password create an active account and log it in.
+  async registerWithMobile(body: MobileRegisterDto): Promise<SessionVo> {
+    const mobile = validMobile(body?.phone);
+    if (!body?.password || body.password.length < 6) throw new ApiError(400, PASSWORD_RULE);
+    const email = body.email?.trim().toLowerCase() || null;
+    if (email && !EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
+    if (await this.users.findIdByPhone(mobile)) throw new ApiError(409, MOBILE_TAKEN);
+    await this.mobileOtp.consume(mobile, "REGISTER", body.verificationToken);
+    const id = randomId();
+    try {
+      await this.users.insertMobileRegistered(id, email, body.fullName?.trim().slice(0, 255) || null, mobile, hashPassword(body.password));
+    } catch (error) {
+      if ((error as { code?: string }).code === "P2002") throw new ApiError(409, "An account with this email already exists.");
+      throw error;
+    }
+    const token = createToken();
+    await this.users.startSession(id, sha256(token));
+    const user = (await this.users.findById(id)) as UserRow;
+    this.sendRegistrationEmails(user).catch(logMailError("registration email"));
+    return { user: PublicUserVo.from(user), accessToken: token };
+  }
 
   async register(body: RegisterDto): Promise<RegistrationVo> {
     const { email, password, fullName, phone, recaptchaToken } = body || {};
@@ -86,7 +150,11 @@ export class AuthService {
     const phone = normalizeMobile(identifier);
     const user = await this.users.findForLogin(identifier, phone || identifier);
     if (!user || !verifyPassword(body?.password || "", user.passwordHash)) throw new ApiError(401, "Invalid email/phone or password.");
-    if (!user.isVerified) throw new ApiError(403, "Please verify your account before logging in.");
+    if (!user.isVerified) {
+      // Send a fresh code so the login screen can go straight to the code entry.
+      if (user.email) this.issueOtp(user).catch(logMailError("otp email"));
+      throw new ApiError(403, NOT_VERIFIED);
+    }
     const token = createToken();
     await this.users.startSession(user.id, sha256(token));
     return { user: PublicUserVo.from(user), accessToken: token };
@@ -115,6 +183,15 @@ export class AuthService {
 
   async resetPassword(body: ResetPasswordDto): Promise<OkVo> {
     const { resetToken, newPassword } = body || {};
+    if (body?.verificationToken) {
+      const mobile = validMobile(body.phone);
+      if (!newPassword || newPassword.length < 6) throw new ApiError(400, PASSWORD_RULE);
+      const user = await this.users.findByPhone(mobile);
+      await this.mobileOtp.consume(mobile, "RESET", body.verificationToken);
+      if (!user) throw new ApiError(400, "This reset link is invalid or expired.");
+      await this.users.resetPasswordFor(user.id, hashPassword(newPassword));
+      return OK;
+    }
     if (!resetToken || !newPassword || newPassword.length < 6)
       throw new ApiError(400, "A valid reset token and password of at least 6 characters are required.");
     const changed = await this.users.resetPassword(hashPassword(newPassword), sha256(resetToken)); // also logs out every device
@@ -124,13 +201,30 @@ export class AuthService {
 
   // Admin-only (enforced by the controller guard): creates or re-invites an
   // account with a random temporary password, returned once in the response.
-  async invite(body: InviteDto): Promise<InvitationVo> {
+  async invite(body: InviteDto, kind: "family" | "student" = "family"): Promise<InvitationVo> {
     const email = body?.email?.trim().toLowerCase();
-    const { role, fullName, phone } = body || {};
+    const { role, fullName } = body || {};
     if (!email) throw new ApiError(400, "Email is required.");
-    const loginPhone = normalizeMobile(phone || email);
-    const defaultPassword = randomInvitePassword();
     let user = await this.users.findByEmail(email);
+    // Never hand someone else's mobile to this account: phone login would then match two users.
+    const phoneOwner = body?.phone ? await this.users.findIdByPhone(body.phone) : null;
+    const phone = phoneOwner && phoneOwner.id !== user?.id ? undefined : body?.phone;
+    const loginPhone = normalizeMobile(phone || email);
+    // An account that already has its own password keeps it: approval must not lock its owner out.
+    if (user && user.status !== "invited" && user.passwordHash) {
+      if (!user.isVerified) await this.users.markVerified(user.id);
+      const loginUrl = `${this.config.frontendUrl}/login`;
+      const approved = memberInviteEmail({
+        name: user.fullName || email.split("@")[0],
+        setPasswordUrl: loginUrl,
+        loginUrl,
+        username: user.email || user.phone,
+        kind,
+      });
+      await this.mail.send({ to: email, subject: approved.subject, html: approved.html, text: approved.text }).catch(logMailError("approval email"));
+      return { ok: true, username: user.email || user.phone || loginPhone, password: null };
+    }
+    const defaultPassword = randomInvitePassword();
     if (!user) {
       const id = randomId();
       await this.users.insertInvited(id, email, fullName, phone, hashPassword(defaultPassword), role === "admin" ? "admin" : "user");
@@ -144,7 +238,7 @@ export class AuthService {
     const setPasswordUrl = `${this.config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
     const loginUrl = `${this.config.frontendUrl}/login`;
     const username = user.email || user.phone || loginPhone;
-    const invite = memberInviteEmail({ name: user.fullName || email.split("@")[0], setPasswordUrl, loginUrl, username, password: defaultPassword });
+    const invite = memberInviteEmail({ name: user.fullName || email.split("@")[0], setPasswordUrl, loginUrl, username, password: defaultPassword, kind });
     await this.mail.send({ to: email, subject: invite.subject, html: invite.html, text: invite.text }).catch(logMailError("invite email"));
     return { ok: true, username, password: defaultPassword };
   }
@@ -206,10 +300,12 @@ export class AuthService {
   }
 
   async sendRegistrationEmails(user: UserRow): Promise<void> {
-    const email = user.email as string;
-    const name = user.fullName || email.split("@")[0];
-    const welcome = memberWelcomeEmail({ name, loginUrl: `${this.config.frontendUrl}/login` });
-    await this.mail.send({ to: email, subject: welcome.subject, html: welcome.html, text: welcome.text });
+    const email = user.email;
+    const name = user.fullName || email?.split("@")[0] || user.phone || "Member";
+    if (email) {
+      const welcome = memberWelcomeEmail({ name, loginUrl: `${this.config.frontendUrl}/login` });
+      await this.mail.send({ to: email, subject: welcome.subject, html: welcome.html, text: welcome.text });
+    }
     const registeredAt = new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" });
     const admin = adminNewRegistrationEmail({ name, email, phone: user.phone, registeredAt });
     await this.mail.send({ to: this.config.adminEmails.join(","), subject: admin.subject, html: admin.html, text: admin.text });

@@ -89,13 +89,16 @@ describe("NotificationsService.list", () => {
       ],
     );
   });
-  test("members get their family plus broadcasts; without a family, only broadcasts", async () => {
+  test("members get their family, their own account's and broadcast notifications", async () => {
     const { service, repo } = build();
     await service.list(member(), {});
     await service.list(user({ id: "u-x" }), {});
     assert.deepEqual(
       repo.list.mock.calls.map((call) => call.arguments[0]),
-      [FAM, "__none__"],
+      [
+        { familyId: FAM, userId: "u-m" },
+        { familyId: null, userId: "u-x" },
+      ],
     );
   });
 });

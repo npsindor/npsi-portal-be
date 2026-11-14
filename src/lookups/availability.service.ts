@@ -21,10 +21,22 @@ export class AvailabilityService {
     return target ? this.repo.mobileTaken(target, excludeApplicationId) : false;
   }
 
+  async isStudentMobileTaken(mobile: unknown, excludeApplicationId?: string): Promise<boolean> {
+    const target = normalizeMobile(mobile);
+    return target ? this.repo.studentMobileTaken(target, excludeApplicationId) : false;
+  }
+
   async isEmailTaken(email: unknown, excludeApplicationId?: string): Promise<boolean> {
     const target = String(email || "")
       .trim()
       .toLowerCase();
     return target ? this.repo.emailTaken(target, excludeApplicationId) : false;
+  }
+
+  async isStudentEmailTaken(email: unknown, excludeApplicationId?: string): Promise<boolean> {
+    const target = String(email || "")
+      .trim()
+      .toLowerCase();
+    return target ? this.repo.studentEmailTaken(target, excludeApplicationId) : false;
   }
 }

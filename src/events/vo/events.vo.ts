@@ -26,6 +26,7 @@ export class EventVo {
   @ApiProperty({ type: "string", format: "date-time" }) updatedAt!: Date;
   @ApiProperty({ type: "string", nullable: true }) titleHi!: string | null;
   @ApiProperty({ type: "string", nullable: true }) descriptionHi!: string | null;
+  @ApiProperty({ enum: ["GENERAL", "GARBA", "CULTURAL"] }) category!: string;
 }
 
 export const toEventVo = (row: Event): EventVo => ({
@@ -52,4 +53,5 @@ export const toEventVo = (row: Event): EventVo => ({
   updatedAt: row.updatedAt,
   titleHi: row.titleHi,
   descriptionHi: row.descriptionHi,
+  category: row.category,
 });

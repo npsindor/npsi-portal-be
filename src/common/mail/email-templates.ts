@@ -61,30 +61,35 @@ export const memberInviteEmail = ({
   username,
   password,
   loginUrl,
+  kind = "family",
 }: {
   name: string;
   setPasswordUrl: string;
   username?: string | null;
   password?: string;
   loginUrl?: string;
+  kind?: "family" | "student";
 }): EmailContent => {
+  const what = kind === "student" ? "स्टूडेंट पंजीकरण" : "परिवार पंजीकरण";
   const subject = `${name}, आपका पंजीकरण स्वीकृत हुआ — ${ORG_NAME}`;
   const displayUsername = username || "email or mobile";
-  const displayPassword = password || "NPS@1234";
+  // Without a temporary password (the account already has its own) the credential lines are left out.
+  const passwordHtml = password ? `<p><strong>Temporary Password:</strong> ${esc(password)}</p>` : "<p>अपने पहले से बने Password से Login करें।</p>";
+  const passwordNote = password ? "<p>यह temporary password आपके first login के बाद बदलना Recommended है।</p>" : "";
   const html = wrap(`
     <p>आदरणीय ${esc(name)} जी,</p>
-    <p>हमें यह बताते हुए हर्ष है कि आपका परिवार पंजीकरण आवेदन स्वीकृत कर दिया गया है। ${ORG_NAME} में आपका हार्दिक स्वागत है। 🙏</p>
+    <p>हमें यह बताते हुए हर्ष है कि आपका ${what} आवेदन स्वीकृत कर दिया गया है। ${ORG_NAME} में आपका हार्दिक स्वागत है। 🙏</p>
     <p><strong>Login Username:</strong> ${esc(displayUsername)}</p>
-    <p><strong>Temporary Password:</strong> ${esc(displayPassword)}</p>
+    ${passwordHtml}
     <p>सदस्य पोर्टल में Login करने के लिए नीचे दिए गए बटन पर क्लिक करें:</p>
     <p style="text-align:center;margin:28px 0;">
       <a href="${loginUrl || setPasswordUrl}" style="background:#D4AF37;color:#102A43;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:999px;display:inline-block;">Login</a>
     </p>
     <p>यदि आप चाहें, तो Login के बाद अपने Password को Change कर सकते हैं।</p>
-    <p>यह temporary password आपके first login के बाद बदलना Recommended है।</p>
+    ${passwordNote}
     <p>सादर,<br/>${ORG_NAME}<br/>${TAGLINE}</p>
   `);
-  const text = `आदरणीय ${name} जी,\n\nआपका परिवार पंजीकरण आवेदन स्वीकृत कर दिया गया है।\nLogin Username: ${displayUsername}\nTemporary Password: ${displayPassword}\nLogin URL: ${loginUrl || setPasswordUrl}\n\nकृपया Login के बाद Password बदलें।\n\nसादर,\n${ORG_NAME}`;
+  const text = `आदरणीय ${name} जी,\n\nआपका ${what} आवेदन स्वीकृत कर दिया गया है।\nLogin Username: ${displayUsername}\n${password ? `Temporary Password: ${password}\nकृपया Login के बाद Password बदलें।\n` : ""}Login URL: ${loginUrl || setPasswordUrl}\n\nसादर,\n${ORG_NAME}`;
   return { subject, html, text };
 };
 
@@ -149,4 +154,19 @@ export const adminNewRegistrationEmail = ({
   `);
   const text = `नया सदस्य पंजीकरण\nनाम: ${name}\nईमेल: ${email}\nमोबाइल नंबर: ${phone || "—"}\nपंजीकरण समय: ${registeredAt}`;
   return { subject, html, text };
+};
+
+// A registration / payment status update for the applicant, with the same text as the in-app notification.
+export const statusUpdateEmail = ({ name, title, message, loginUrl }: { name: string; title: string; message: string; loginUrl: string }): EmailContent => {
+  const subject = `${title} — ${ORG_NAME}`;
+  const html = wrap(`
+    <p>आदरणीय ${esc(name)} जी,</p>
+    <p><strong>${esc(title)}</strong></p>
+    <p>${esc(message)}</p>
+    <p style="text-align:center;margin:28px 0;">
+      <a href="${loginUrl}" style="background:#D4AF37;color:#102A43;text-decoration:none;font-weight:bold;padding:12px 28px;border-radius:999px;display:inline-block;">Login / लॉगिन</a>
+    </p>
+    <p>सादर,<br/>${ORG_NAME}<br/>${TAGLINE}</p>
+  `);
+  return { subject, html, text: `${name},\n\n${title}\n${message}\n\nLogin: ${loginUrl}\n\n${ORG_NAME}` };
 };

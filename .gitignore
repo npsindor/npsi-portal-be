@@ -34,3 +34,6 @@ coverage/
 
 # Private Sagun uploads must never enter source control.
 /uploads-sagun-private/
+
+# Private payment screenshots (member data)
+*-payments-private/

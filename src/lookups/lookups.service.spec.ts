@@ -4,13 +4,14 @@ import { as, rejectsWith } from "../testing/fakes.js";
 import { applicationRow } from "../testing/rows.js";
 import { AvailabilityService } from "./availability.service.js";
 import type { LookupsRepository } from "./lookups.repository.js";
-import { LookupsService } from "./lookups.service.js";
+import { LookupsService, maskName } from "./lookups.service.js";
 
 const fakeRepo = () => ({
   publicFamily: mock.fn(async (id: string) =>
-    id === "NPSI-FAM-000001" ? { familyId: id, familyName: "F", headName: "H", status: "ACTIVE", city: "Indore", registrationDate: null } : null,
+    id === "NPSI-FAM-000001" ? { familyId: id, familyName: "F", headName: "Ramesh Patidar", status: "ACTIVE", registrationDate: null } : null,
   ),
-  publicMembers: mock.fn(async () => [{ name: "M", relationship: "Self", gender: "Male", status: "ACTIVE" }]),
+  memberCount: mock.fn(async () => 4),
+  studentApplication: mock.fn(async (..._args: unknown[]) => null),
   application: mock.fn(async (id: string, mobile: string) =>
     id === "APP-1" && mobile === "9876543210" ? applicationRow({ id: "a1", applicationId: id, membersData: [{ n: 1 }] }) : null,
   ),
@@ -32,7 +33,11 @@ describe("LookupsService", () => {
     const { service } = build();
     const result = await service.verifyFamily("NPSI-FAM-000001");
     assert.equal(result.family.familyId, "NPSI-FAM-000001");
-    assert.equal(result.members.length, 1);
+    // Public and enumerable by sequential id: no member names, contacts or address; the head's name is masked.
+    assert.deepEqual(Object.keys(result).sort(), ["family"]);
+    assert.deepEqual(Object.keys(result.family).sort(), ["familyId", "familyName", "headName", "memberCount", "registrationDate", "status"]);
+    assert.equal(result.family.headName, "R***** P******");
+    assert.equal(result.family.memberCount, 4);
     await rejectsWith(service.verifyFamily("NPSI-FAM-999999"), 404, "No family found for this ID.");
   });
   test("applicationStatus validates input and maps the record", async () => {
@@ -41,7 +46,24 @@ describe("LookupsService", () => {
     await rejectsWith(service.applicationStatus({ mobile: " " }), 400, "Application ID and mobile number are required.");
     await rejectsWith(service.applicationStatus({ applicationId: "APP-1", mobile: "1" }), 404, "No application found for this ID and mobile number.");
     const found = await service.applicationStatus({ applicationId: " APP-1 ", mobile: " 9876543210 " });
-    assert.deepEqual([found.id, found.applicationId, found.membersData], ["a1", "APP-1", [{ n: 1 }]]);
+    assert.equal(found.applicationId, "APP-1");
+    // Only the decision: never the stored form (mobile, email, address, members, internal id).
+    assert.deepEqual(Object.keys(found).sort(), [
+      "adminRemarks",
+      "applicationId",
+      "familyHeadName",
+      "familyName",
+      "resultingFamilyId",
+      "reviewedDate",
+      "status",
+      "submittedDate",
+    ]);
+  });
+  test("maskName keeps initials only", () => {
+    assert.equal(maskName("Ramesh Patidar"), "R***** P******");
+    assert.equal(maskName("  A  Verylongsurname "), "A V******");
+    assert.equal(maskName("राम पाटीदार"), "र** प******");
+    assert.equal(maskName(null), null);
   });
   test("availability checks and stats", async () => {
     const { service } = build();

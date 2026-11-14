@@ -33,6 +33,12 @@ export class LoginDto {
 
 export class ResetPasswordDto {
   @ApiPropertyOptional({ description: "Token from the reset email" }) @IsOptional() resetToken?: string;
+  @ApiPropertyOptional({ example: "9876543210", description: "Mobile reset: the verified mobile (with verificationToken instead of resetToken)" })
+  @IsOptional()
+  phone?: string;
+  @ApiPropertyOptional({ description: "Mobile reset: token from POST /auth/mobile-otps/verifications (purpose RESET)" })
+  @IsOptional()
+  verificationToken?: string;
   @ApiPropertyOptional({ example: "newSecret1", minLength: 6 }) @IsOptional() newPassword?: string;
 }
 
@@ -58,4 +64,27 @@ export class UpdateMeDto {
 export class ChangePasswordDto {
   @ApiPropertyOptional({ example: "oldSecret1" }) @IsOptional() currentPassword?: string;
   @ApiPropertyOptional({ example: "newSecret1", minLength: 6 }) @IsOptional() newPassword?: string;
+}
+
+export class MobileOtpDto {
+  @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() mobile?: string;
+  @ApiPropertyOptional({ enum: ["REGISTER", "RESET"], default: "REGISTER" }) @IsOptional() purpose?: string;
+  @ApiPropertyOptional({ description: "Registration only: optional email, also used to deliver the code while WhatsApp/SMS is unavailable" })
+  @IsOptional()
+  email?: string;
+  @ApiPropertyOptional({ description: "Google reCAPTCHA v3 token (registration)" }) @IsOptional() recaptchaToken?: string;
+}
+
+export class VerifyMobileOtpDto {
+  @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() mobile?: string;
+  @ApiPropertyOptional({ enum: ["REGISTER", "RESET"], default: "REGISTER" }) @IsOptional() purpose?: string;
+  @ApiPropertyOptional({ example: "123456" }) @IsOptional() code?: string;
+}
+
+export class MobileRegisterDto {
+  @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() phone?: string;
+  @ApiPropertyOptional({ description: "Token from POST /auth/mobile-otps/verifications (purpose REGISTER)" }) @IsOptional() verificationToken?: string;
+  @ApiPropertyOptional({ example: "secret1", minLength: 6 }) @IsOptional() password?: string;
+  @ApiPropertyOptional({ example: "member@example.com" }) @IsOptional() email?: string;
+  @ApiPropertyOptional({ example: "Ram Patidar" }) @IsOptional() fullName?: string;
 }

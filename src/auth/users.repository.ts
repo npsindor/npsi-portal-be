@@ -26,6 +26,27 @@ export class UsersRepository {
     return this.prisma.user.findFirst({ where: { phone }, select: { id: true } });
   }
 
+  findByPhone(phone: string): Promise<UserRow | null> {
+    return this.prisma.user.findFirst({ where: { phone }, orderBy: { createdAt: "asc" } });
+  }
+
+  // An account created through mobile OTP: verified and active from the start; email is optional.
+  async insertMobileRegistered(id: string, email: string | null, fullName: string | null, phone: string, passwordHash: string): Promise<void> {
+    await this.prisma.user.create({ data: { id, email, fullName, phone, passwordHash, role: "user", status: "active", isVerified: true } });
+  }
+
+  // Mobile-OTP password reset: new password, verified, every device logged out.
+  async resetPasswordFor(userId: string, passwordHash: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.user.update({ where: { id: userId }, data: { passwordHash, isVerified: true, resetTokenHash: null, resetTokenExpiresAt: null } }),
+      this.prisma.session.deleteMany({ where: { userId } }),
+    ]);
+  }
+
+  async markVerified(userId: string): Promise<void> {
+    await this.prisma.user.update({ where: { id: userId }, data: { isVerified: true } });
+  }
+
   findByEmail(email: string): Promise<UserRow | null> {
     return this.prisma.user.findFirst({ where: { email } });
   }
@@ -35,7 +56,7 @@ export class UsersRepository {
   }
 
   findForLogin(identifier: string, phone: string): Promise<UserRow | null> {
-    return this.prisma.user.findFirst({ where: { OR: [{ email: identifier }, { phone }] } });
+    return this.prisma.user.findFirst({ where: { OR: [{ email: identifier }, { phone }] }, orderBy: { createdAt: "asc" } });
   }
 
   async insertRegistered(id: string, email: string, fullName: string | null, phone: string, passwordHash: string): Promise<void> {

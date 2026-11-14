@@ -68,6 +68,7 @@ function fixture(configured = false) {
   const db: Row = {
     family: { findFirst: async () => (approved ? { contactNumber: "9000000000" } : null) },
     familyMember: { findFirst: async () => null },
+    student: { findFirst: async () => null },
     safarEntry: {
       count: async ({ where }: Row) => entries.filter((row) => checkEntry(row, where)).length,
       create: async ({ data }: Row) => {

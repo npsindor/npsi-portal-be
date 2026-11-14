@@ -12,7 +12,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { OptionalUser } from "../common/decorators/current-user.decorator.js";
+import { CurrentUser, OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard, OptionalUserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
@@ -42,8 +42,8 @@ export class AnnouncementsController {
   @ApiBadRequestResponse({ type: ErrorVo })
   @ApiUnauthorizedResponse({ type: ErrorVo })
   @ApiForbiddenResponse({ type: ErrorVo })
-  create(@Body() body: CreateAnnouncementDto): Promise<AnnouncementVo> {
-    return this.announcements.create(body);
+  create(@Body() body: CreateAnnouncementDto, @CurrentUser() user: UserRow): Promise<AnnouncementVo> {
+    return this.announcements.create(body, user);
   }
 
   @Patch(":id")

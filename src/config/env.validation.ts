@@ -24,6 +24,17 @@ export class EnvironmentVariables {
   @IsOptional() @IsString() SMTP_PASS?: string;
   @IsOptional() @IsString() SMTP_FROM?: string;
   @IsOptional() @IsString() ADMIN_NOTIFICATION_EMAILS?: string;
+  // MSG91 (WhatsApp OTP and notices, SMS OTP fallback). All optional: without them OTPs go by email.
+  @IsOptional() @IsString() MSG91_AUTH_KEY?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_NUMBER?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_NAMESPACE?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_LANGUAGE?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_OTP_TEMPLATE?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_OTP_BUTTON?: string;
+  @IsOptional() @IsString() MSG91_WHATSAPP_NOTICE_TEMPLATE?: string;
+  @IsOptional() @IsString() MSG91_SMS_OTP_TEMPLATE_ID?: string;
+  @IsOptional() @IsString() MSG91_SMS_OTP_VAR?: string;
+  @IsOptional() @IsString() PAYMENTS_PRIVATE_DIR?: string;
 }
 
 export const validateEnv = (config: Record<string, unknown>): EnvironmentVariables => {

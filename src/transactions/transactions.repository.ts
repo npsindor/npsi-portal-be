@@ -30,6 +30,31 @@ export class TransactionsRepository {
     await this.prisma.transaction.deleteMany({ where: { id } });
   }
 
+  // The registration fee recorded for an application (its display id is the reference), newest first.
+  feeFor(applicationId: string, db: Db = this.prisma): Promise<Transaction | null> {
+    return db.transaction.findFirst({
+      where: { referenceId: applicationId, type: { in: ["Family Registration", "Student Registration"] } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+  }
+
+  feesFor(applicationIds: string[]): Promise<Transaction[]> {
+    if (!applicationIds.length) return Promise.resolve([]);
+    return this.prisma.transaction.findMany({
+      where: { referenceId: { in: applicationIds }, type: { in: ["Family Registration", "Student Registration"] } },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    });
+  }
+
+  registrationFees(status: string | undefined, take: number, skip = 0): Promise<Transaction[]> {
+    return this.prisma.transaction.findMany({
+      where: { type: { in: ["Family Registration", "Student Registration"] }, ...(status ? { paymentStatus: status } : {}) },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+      take,
+      skip,
+    });
+  }
+
   // The latest TXN- ids, for allocating the next one.
   async latestDisplayIds(prefix: string, db: Db = this.prisma): Promise<(string | null)[]> {
     const rows = await db.transaction.findMany({

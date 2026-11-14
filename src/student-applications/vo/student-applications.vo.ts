@@ -29,6 +29,10 @@ export class StudentApplicationVo {
   @ApiProperty({ type: "string", format: "date-time" }) createdAt!: Date;
   @ApiProperty({ type: "string", format: "date-time" }) updatedAt!: Date;
   @ApiProperty({ type: "string", nullable: true }) fatherName!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) motherName!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) educationLevel!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) linkedFamilyId!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) linkedMembershipId!: string | null;
 }
 
 export const toStudentApplicationVo = (row: StudentApplication): StudentApplicationVo => ({
@@ -58,4 +62,8 @@ export const toStudentApplicationVo = (row: StudentApplication): StudentApplicat
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
   fatherName: row.fatherName,
+  motherName: row.motherName,
+  educationLevel: row.educationLevel,
+  linkedFamilyId: row.linkedFamilyId,
+  linkedMembershipId: row.linkedMembershipId,
 });

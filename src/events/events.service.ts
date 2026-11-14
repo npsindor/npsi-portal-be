@@ -30,9 +30,11 @@ export class EventsService {
     return toEventVo(row);
   }
 
-  // An event with registrations (and their payments) can't be deleted; cancel or archive it instead.
+  // Preserve registrations and financial history; events with linked records must be archived.
   async remove(id: string): Promise<void> {
     if (await this.repo.hasRegistrations(id)) throw new ApiError(409, "This event has registrations, so it can't be deleted. Archive it instead.");
+    if (await this.repo.hasFinancialOrRosterRecords(id))
+      throw new ApiError(409, "This event has financial or roster history, so it can't be deleted. Archive it instead.");
     await this.repo.delete(id);
   }
 }
@@ -59,6 +61,7 @@ const toCreateData = (input: CreateEventDto): Omit<Prisma.EventUncheckedCreateIn
   status: input.status,
   titleHi: input.titleHi,
   descriptionHi: input.descriptionHi,
+  category: input.category,
 });
 
 const toUpdateData = (input: UpdateEventDto): Prisma.EventUncheckedUpdateInput => ({
@@ -82,4 +85,5 @@ const toUpdateData = (input: UpdateEventDto): Prisma.EventUncheckedUpdateInput =
   status: input.status,
   titleHi: input.titleHi,
   descriptionHi: input.descriptionHi,
+  category: input.category,
 });

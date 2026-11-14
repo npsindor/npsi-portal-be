@@ -11,6 +11,7 @@ import { NOT_AN_IMAGE } from "./uploads.service.js";
 // client's filename/extension is never used (no path traversal, no ".php
 // disguised as .jpg").
 export const UPLOAD_MIME_EXTENSIONS: Record<string, string> = { "image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp", "image/gif": ".gif" };
+const MIME_ALIASES: Record<string, string> = { "image/jpg": "image/jpeg", "image/pjpeg": "image/jpeg", "image/x-png": "image/png" };
 export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 
 // Runs multer itself (instead of Nest's FileInterceptor) so every upload error
@@ -28,6 +29,8 @@ export class UploadFileInterceptor implements NestInterceptor {
       }),
       limits: { fileSize: MAX_UPLOAD_BYTES },
       fileFilter: (_request, file, callback) => {
+        // Some phones/browsers label JPEGs "image/jpg" or "image/pjpeg"; the stored bytes are still checked afterwards.
+        file.mimetype = MIME_ALIASES[file.mimetype.toLowerCase()] || file.mimetype.toLowerCase();
         if (!UPLOAD_MIME_EXTENSIONS[file.mimetype]) return callback(new Error(NOT_AN_IMAGE));
         callback(null, true);
       },

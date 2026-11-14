@@ -15,16 +15,33 @@ const temp=await mkdtemp(path.join(os.tmpdir(),'sagun-verify-'));const previous=
 const ids=[randomUUID(),randomUUID(),randomUUID(),randomUUID()];const rollback=new Error('ROLLBACK_SAGUN_VERIFICATION');let checks=0;
 const complete=()=>Object.fromEntries(sagunFields.filter(field=>field.required).map(field=>[field.key,field.type==='checkbox'?true:field.type==='number'?field.min??1:field.type==='select'?field.options[0].value:field.type==='date'?'1995-01-01':field.type==='photo'?'':field.type==='tel'?'9000000000':field.key==='pincode'?'452001':'Verification only']));
 const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9kAAAAASUVORK5CYII=','base64');
+const hasApiError=code=>error=>error?.getResponse?.()?.error===code;
 try{
  try{
   await db.$transaction(async tx=>{
    const users=[];
    for(const [index,id] of ids.entries()){
     const email=`sagun-verification-${id}@example.invalid`;users.push(await tx.user.create({data:{id,email,fullName:'Sagun Verification',phone:'9000000000',role:index===0?'admin':'user',status:'active',isVerified:true}}));
-    await tx.family.create({data:{id:randomUUID(),familyId:`SAGUN-QA-${id}`,email,status:'ACTIVE',contactNumber:'9000000000',headName:'Sagun Verification'}});
+    await tx.family.create({data:{id:randomUUID(),familyId:`SAGUN-QA-${id}`,email,status:'ACTIVE',contactNumber:'9000000000',headName:'Sagun Verification',village:'Verification Village'}});
    }
+   const member=(index,data)=>tx.familyMember.create({data:{id:randomUUID(),familyId:`SAGUN-QA-${ids[index]}`,status:'ACTIVE',...data}});
+   const groom=await member(1,{membershipId:'NPSI-MEM-QA-STUDENT',name:'Verification only',relationship:'Son',gender:'Male',dob:new Date('1995-01-01T00:00:00Z')});
+   const linkedStudentId=`NPSI-STU-QA-${ids[1]}`;
+   await tx.student.create({data:{id:randomUUID(),studentId:linkedStudentId,studentName:'Verification student name conflict',status:'ACTIVE',dob:new Date('1994-01-01T00:00:00Z'),gender:'Male',course:'B.Tech',institution:'Verification University',academicYear:'2025-2026',linkedFamilyId:`SAGUN-QA-${ids[1]}`,linkedMembershipId:groom.membershipId}});
+   await tx.familyMember.update({where:{id:groom.id},data:{linkedStudentId}});
+   const brother=await member(1,{name:'Verification brother',relationship:'Son',gender:'Male',dob:new Date('1990-01-01T00:00:00Z')});
+   const minor=await member(1,{name:'Verification minor',relationship:'Daughter',gender:'Female',dob:new Date(Date.now()-17*365*86400000)});
+   const outsider=await member(2,{name:'Verification outsider',relationship:'Son',gender:'Male',dob:new Date('1994-01-01T00:00:00Z')});
    const transactional=new Proxy(tx,{get(target,key){return key==='$transaction'?work=>work(tx):Reflect.get(target,key);}});const service=new SagunService(transactional,config);
-   const draft=await service.save(undefined,{action:'DRAFT',data:{candidateType:'GROOM',fullName:'Verification only'}},users[1]);assert.equal(draft.status,'DRAFT');checks++;
+   const eligible=await service.eligibleMembers(users[1]);assert.equal(eligible.members.find(row=>row.id===groom.id).eligible,true);assert.equal(eligible.members.find(row=>row.id===minor.id).reason,'UNDERAGE');assert.equal(eligible.members.some(row=>row.id===outsider.id),false);checks++;
+   const prefill=await service.memberPrefill(groom.id,users[1]);assert.equal(prefill.prefill.dob,'1995-01-01');assert.equal(prefill.prefill.candidateType,'GROOM');assert.equal(prefill.prefill.fatherName,'Sagun Verification');assert.equal(prefill.prefill.education,'B.Tech');assert.equal(prefill.prefill.college,'Verification University');assert.equal(prefill.student.studentId,linkedStudentId);assert.deepEqual(prefill.sourceConflicts,['name','dob']);checks++;
+   await assert.rejects(()=>service.memberPrefill(outsider.id,users[1]),hasApiError('SAGUN_MEMBER_NOT_IN_FAMILY'));checks++;
+   await assert.rejects(()=>service.save(undefined,{action:'DRAFT',data:{fullName:'No member'}},users[1]),hasApiError('SAGUN_MEMBER_ID'));checks++;
+   await assert.rejects(()=>service.save(undefined,{action:'DRAFT',memberId:outsider.id,data:{}},users[1]),hasApiError('SAGUN_MEMBER_NOT_IN_FAMILY'));checks++;
+   await assert.rejects(()=>service.save(undefined,{action:'DRAFT',memberId:minor.id,data:{}},users[1]),hasApiError('SAGUN_ELIGIBILITY'));checks++;
+   await assert.rejects(()=>service.save(undefined,{action:'DRAFT',memberId:groom.id,category:'BRIDE',data:{}},users[1]),hasApiError('SAGUN_CATEGORY'));checks++;
+   const draft=await service.save(undefined,{action:'DRAFT',memberId:groom.id,data:{candidateType:'BRIDE',dob:'2001-01-01',fullName:'Verification only'}},users[1]);assert.equal(draft.status,'DRAFT');assert.equal(draft.data.candidateType,'GROOM');assert.equal(draft.data.dob,'1995-01-01');assert.equal(draft.familyId,`SAGUN-QA-${ids[1]}`);assert.equal(draft.studentId,linkedStudentId);checks++;
+   await assert.rejects(()=>service.save(undefined,{action:'DRAFT',memberId:groom.id,data:{}},users[1]),hasApiError('SAGUN_DUPLICATE'));checks++;
    await assert.rejects(()=>service.save(draft.id,{action:'DRAFT',data:{}},users[2]));checks++;
    await assert.rejects(()=>service.adminData(users[1]));checks++;
    await assert.rejects(()=>service.review(draft.id,{status:'APPROVED'},users[0]));checks++;
@@ -38,7 +55,12 @@ try{
    await assert.rejects(()=>service.file(uploaded.id,users[2]));checks++;
    const data={...complete(),fullName:'Verification only',photoFileId:uploaded.id,identityFileId:identity.id,visibility:'MEMBERS',shareContact:true,cashSagun:100,voluntaryConsent:true,sagunItems:[{name:'Voluntary coconut',quantity:'1',offeredBy:'GROOM_FAMILY',donorName:'Verification donor',donorRelationship:'Uncle',recipient:'BRIDE',recordStatus:'GIVEN',givenOn:'2026-10-29',value:100}]};
    await service.save(draft.id,{action:'SUBMIT',data},users[1]);assert.equal((await service.browse({},users[2])).records.some(row=>row.id===draft.id),false);checks++;
+   await assert.rejects(()=>service.review(draft.id,{status:'REJECTED'},users[0]),hasApiError('SAGUN_REMARKS_REQUIRED'));checks++;
+   await service.review(draft.id,{status:'UNDER_REVIEW'},users[0]);await assert.rejects(()=>service.save(draft.id,{action:'DRAFT',data},users[1]),hasApiError('SAGUN_EDIT_LOCKED'));checks++;
    await service.review(draft.id,{status:'APPROVED',notes:'Verification only'},users[0]);
+   assert.equal((await service.stats(users[0])).approved>=1,true);assert.equal((await service.adminList({search:linkedStudentId},users[0])).total,1);checks++;
+   await service.adminEdit(draft.id,{data:{occupation:'Corrected occupation'},remarks:'Verification correction'},users[0]);await assert.rejects(()=>service.adminEdit(draft.id,{data:{dob:'1990-01-01'},remarks:'Not allowed'},users[0]),hasApiError('SAGUN_ADMIN_EDIT_FIELD'));checks++;
+   const actions=(await service.applicationLogs(draft.id,users[0])).map(row=>row.action);for(const action of ['CREATED','SUBMITTED','SOURCE_DATA_CONFLICT','REVIEW_UNDER_REVIEW','REVIEW_APPROVED','ADMIN_EDIT'])assert.ok(actions.includes(action),action);checks++;
    const listed=(await service.browse({candidateType:'GROOM',minAge:25,maxAge:60},users[2])).records.find(row=>row.id===draft.id);assert.ok(listed);assert.equal('birthDate'in listed,false);checks++;
    const privateView=await service.detail(draft.id,users[2]);assert.equal(privateView.contact,null);assert.equal(privateView.sagun,null);assert.equal('dob'in privateView.data,false);assert.equal('monthlyIncome'in privateView.data,false);checks++;
    assert.equal((await service.file(uploaded.id,users[2])).buffer.length,png.length);checks++;
@@ -60,13 +82,13 @@ try{
    await service.configure({overrides:{college:{required:true,en:'University'}}},users[0]);
    await assert.rejects(()=>service.save(draft.id,{action:'SUBMIT',data},users[1]));checks++;
    await service.configure({overrides:{}},users[0]);
-   const prepared=await service.save(undefined,{action:'DRAFT',ownerUserId:users[1].id,data:{}},users[0]);
+   const prepared=await service.save(undefined,{action:'DRAFT',ownerUserId:users[1].id,memberId:brother.id,data:{}},users[0]);
    await assert.rejects(()=>service.save(prepared.id,{action:'DRAFT',data:{candidateConsent:true}},users[0]));checks++;
    await assert.rejects(()=>service.withdrawConsent(draft.id,users[2]));checks++;
    await assert.rejects(()=>service.withdrawConsent(draft.id,users[0]));checks++;
    await tx.sagunInquiry.update({where:{id:inquiry.id},data:{status:'ACCEPTED',shareSagun:true}});
    await service.withdrawConsent(draft.id,users[1]);
-   const withdrawn=await tx.sagunProfile.findUniqueOrThrow({where:{id:draft.id}});assert.equal(withdrawn.status,'DEACTIVATED');assert.equal(withdrawn.visibility,'PRIVATE');assert.equal(withdrawn.data.candidateConsent,false);assert.equal(withdrawn.data.sagunItems[0].donorName,'Verification donor');checks++;
+   const withdrawn=await tx.sagunProfile.findUniqueOrThrow({where:{id:draft.id}});assert.equal(withdrawn.status,'INACTIVE');assert.equal(withdrawn.visibility,'PRIVATE');assert.equal(withdrawn.data.candidateConsent,false);assert.equal(withdrawn.data.sagunItems[0].donorName,'Verification donor');checks++;
    const revoked=await tx.sagunInquiry.findUniqueOrThrow({where:{id:inquiry.id}});assert.equal(revoked.shareSagun,false);assert.equal(revoked.status,'DECLINED');checks++;
    await service.remove(draft.id,users[1]);await assert.rejects(()=>service.file(uploaded.id,users[1]));checks++;
    assert.ok((await service.adminData(users[0])).audits.some(row=>row.action==='READ_PRIVATE_DOCUMENT'));checks++;

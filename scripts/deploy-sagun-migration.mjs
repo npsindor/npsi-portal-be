@@ -13,13 +13,14 @@ try {
   const applied = new Set(rows.filter(row => row.finished).map(row => row.name));
   const pending = readdirSync('prisma/migrations', { withFileTypes: true }).filter(item => item.isDirectory() && !applied.has(item.name)).map(item => item.name);
   console.log(JSON.stringify({ pending }));
-  if (pending.some(name => name !== '20261028020000_sagun')) throw new Error('Unrelated pending migrations exist; refusing to apply them.');
+  const sagunMigrations = ['20261028020000_sagun', '20261110000000_sagun_family_link', '20261113000000_sagun_student_link'];
+  if (pending.some(name => !sagunMigrations.includes(name))) throw new Error('Unrelated pending migrations exist; refusing to apply them.');
   if (process.argv.includes('--apply') && pending.length) {
     const cli = path.join(path.dirname(createRequire(import.meta.url).resolve('prisma/package.json')), 'build/index.js');
     execFileSync(process.execPath, [cli, 'migrate', 'deploy'], { stdio: 'inherit', env: { ...process.env, DATABASE_URL: migrationDatabaseUrl(database) } });
   }
   if (process.argv.includes('--apply')) {
-    const [tables] = await connection.query("SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sagun_profiles', 'sagun_files', 'sagun_inquiries', 'sagun_config', 'sagun_audits', 'sagun_notices')");
+    const [tables] = await connection.query("SELECT TABLE_NAME AS name FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('sagun_profiles', 'sagun_files', 'sagun_inquiries', 'sagun_config', 'sagun_audits', 'sagun_notices', 'sagun_application_logs', 'sagun_settings')");
     console.log(JSON.stringify({ sagunTables: tables.map(table => table.name) }));
   }
 } finally { await connection.end(); }

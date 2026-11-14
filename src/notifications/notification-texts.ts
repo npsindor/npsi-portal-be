@@ -38,6 +38,20 @@ const TEMPLATES: Record<Lang, Record<string, Template>> = {
     transferApproved: { type: "Approval", title: "Transfer Approved", message: "Your transfer to {familyName} is approved. Member ID: {membershipId}." },
     transferMoved: { type: "Approval", title: "Transfer Approved", message: "Your membership was moved from {fromFamilyId} to {toFamilyName}." },
     eventRegistered: { type: "Event", title: "Event Registration Confirmed", message: "You have been registered for {eventTitle}." },
+    paymentVerified: { type: "Payment", title: "Payment Verified", message: "Your payment of ₹{amount} for application {applicationId} has been verified." },
+    paymentRejected: {
+      type: "Payment",
+      title: "Payment Not Accepted",
+      message: "Your payment for application {applicationId} could not be verified: {remarks}. Please upload a correct payment screenshot.",
+    },
+    paymentRefunded: { type: "Payment", title: "Payment Refunded", message: "₹{amount} for application {applicationId} has been refunded. Reason: {remarks}" },
+    paymentRefundRequested: { type: "Payment", title: "Refund Update", message: "The refund for application {applicationId} is {status}. Reason: {remarks}" },
+    paymentRefundRejected: { type: "Payment", title: "Refund Not Approved", message: "The refund for application {applicationId} was not approved: {remarks}" },
+    registrationResubmitted: {
+      type: "Registration",
+      title: "Application Resubmitted",
+      message: "Your application {applicationId} has been resubmitted for verification.",
+    },
   },
   hi: {
     applicationSubmitted: {
@@ -68,10 +82,26 @@ const TEMPLATES: Record<Lang, Record<string, Template>> = {
     transferApproved: { type: "Approval", title: "ट्रांसफर स्वीकृत", message: "{familyName} में आपका ट्रांसफर स्वीकृत हो गया। सदस्य आईडी: {membershipId}।" },
     transferMoved: { type: "Approval", title: "ट्रांसफर स्वीकृत", message: "आपकी सदस्यता {fromFamilyId} से {toFamilyName} में स्थानांतरित हो गई।" },
     eventRegistered: { type: "Event", title: "कार्यक्रम रजिस्ट्रेशन की पुष्टि", message: "आपको इस कार्यक्रम के लिए रजिस्टर किया गया है: {eventTitle}." },
+    paymentVerified: { type: "Payment", title: "भुगतान सत्यापित", message: "आवेदन {applicationId} हेतु आपका ₹{amount} का भुगतान सत्यापित हो गया है।" },
+    paymentRejected: {
+      type: "Payment",
+      title: "भुगतान स्वीकार नहीं हुआ",
+      message: "आवेदन {applicationId} का भुगतान सत्यापित नहीं हो सका: {remarks}. कृपया सही भुगतान स्क्रीनशॉट अपलोड करें।",
+    },
+    paymentRefunded: { type: "Payment", title: "भुगतान वापस किया गया", message: "आवेदन {applicationId} के ₹{amount} वापस कर दिए गए हैं। कारण: {remarks}" },
+    paymentRefundRequested: { type: "Payment", title: "रिफंड की जानकारी", message: "आवेदन {applicationId} का रिफंड {status} है। कारण: {remarks}" },
+    paymentRefundRejected: { type: "Payment", title: "रिफंड स्वीकृत नहीं", message: "आवेदन {applicationId} का रिफंड स्वीकृत नहीं हुआ: {remarks}" },
+    registrationResubmitted: { type: "Registration", title: "आवेदन पुनः जमा हुआ", message: "आपका आवेदन {applicationId} सत्यापन हेतु पुनः जमा हो गया है।" },
   },
 };
 
 export type NotificationKey = keyof (typeof TEMPLATES)["en"];
+
+export const notificationText = (key: NotificationKey, vars: Record<string, string | null | undefined>, lang: Lang = "en") => {
+  const template = TEMPLATES[lang][key];
+  const fill = (text: string) => text.replace(/\{(\w+)\}/g, (_match, name: string) => vars[name] ?? "");
+  return { type: template.type, title: fill(template.title), message: fill(template.message) };
+};
 
 // A notification row for `recipientFamilyId` (a family, application or student display id).
 export const workflowNotification = (
@@ -79,8 +109,14 @@ export const workflowNotification = (
   recipientFamilyId: string,
   vars: Record<string, string | null | undefined>,
   lang: Lang = "en",
-): Prisma.NotificationUncheckedCreateInput => {
-  const template = TEMPLATES[lang][key];
-  const fill = (text: string) => text.replace(/\{(\w+)\}/g, (_match, name: string) => vars[name] ?? "");
-  return { id: randomId(), type: template.type, title: fill(template.title), message: fill(template.message), recipientFamilyId, date: new Date() };
-};
+): Prisma.NotificationUncheckedCreateInput => ({ id: randomId(), ...notificationText(key, vars, lang), recipientFamilyId, date: new Date() });
+
+// A notification for one account (an applicant before their family / student record exists, or after).
+export const userNotification = (
+  key: NotificationKey,
+  recipientUserId: string,
+  vars: Record<string, string | null | undefined>,
+  lang: Lang = "en",
+): Prisma.NotificationUncheckedCreateInput => ({ id: randomId(), ...notificationText(key, vars, lang), recipientUserId, date: new Date() });
+
+export const asLang = (value: unknown): Lang => (value === "hi" ? "hi" : "en");

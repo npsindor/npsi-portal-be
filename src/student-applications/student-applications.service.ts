@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { APPROVE_THROUGH_REVIEW } from "../applications/applications.service.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { RECAPTCHA_FAILED, RecaptchaService } from "../common/recaptcha/recaptcha.service.js";
@@ -11,6 +12,7 @@ import { blank, EMAIL_PATTERN, normalizeMobile } from "../common/utils/text.js";
 import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { AvailabilityService } from "../lookups/availability.service.js";
+import { MembershipRepository } from "../membership/membership.repository.js";
 import { workflowNotification } from "../notifications/notification-texts.js";
 import { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { CreateStudentApplicationDto, StudentApplicationListQueryDto, UpdateStudentApplicationDto } from "./dto/student-applications.dto.js";
@@ -27,6 +29,7 @@ export class StudentApplicationsService {
     private readonly repo: StudentApplicationsRepository,
     private readonly notifications: NotificationsRepository,
     private readonly availability: AvailabilityService,
+    private readonly membership: MembershipRepository,
     private readonly recaptcha: RecaptchaService,
   ) {}
 
@@ -36,8 +39,22 @@ export class StudentApplicationsService {
   }
 
   async create(dto: CreateStudentApplicationDto, user: UserRow | null): Promise<StudentApplicationVo> {
-    const { recaptchaToken, lang, ...input } = dto;
+    const { recaptchaToken, lang, memberId, ...input } = dto;
     const isPublic = user?.role !== "admin";
+    let familyLink: { linkedFamilyId: string; linkedMemberId: string; linkedMembershipId: string | null } | null = null;
+    if (memberId) {
+      if (!user || user.role !== "user") throw new ApiError(403, "Sign in with the family member account to link a student to family records.");
+      const userMobile = normalizeMobile(user.phone);
+      let familyId = await this.membership.ownFamilyId(user);
+      if (!familyId && userMobile) {
+        familyId =
+          (await this.prisma.familyMember.findFirst({ where: { mobileDigits: userMobile, status: "ACTIVE" }, select: { familyId: true } }))?.familyId ?? null;
+      }
+      if (!familyId) throw new ApiError(403, "No approved family membership is linked to this account.");
+      const member = await this.prisma.familyMember.findFirst({ where: { id: memberId, familyId, status: "ACTIVE" } });
+      if (!member) throw new ApiError(403, "This member is not part of your approved family.");
+      familyLink = { linkedFamilyId: familyId, linkedMemberId: member.id, linkedMembershipId: member.membershipId };
+    }
     if (isPublic) {
       assertNoMarkup(input);
       input.status = "PENDING_VERIFICATION";
@@ -45,13 +62,14 @@ export class StudentApplicationsService {
       delete input.reviewedDate;
       delete input.resultingStudentId;
     }
-    if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
-    await this.validate(input);
+    // Admins entering an application from the admin panel have no reCAPTCHA token.
+    if (isPublic && !(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
+    await this.validate(input, Boolean(familyLink));
     const row = await this.prisma.$transaction(async (tx) => {
       const application = await createWithDisplayId(
         `NPSI-STU-APP-${new Date().getFullYear()}-`,
         (prefix) => this.repo.latestDisplayIds(prefix, tx),
-        (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input) }, tx),
+        (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input), ...(familyLink ?? {}) }, tx),
       );
       if (isPublic) {
         const { applicationId } = application;
@@ -63,6 +81,7 @@ export class StudentApplicationsService {
   }
 
   async update(id: string, dto: UpdateStudentApplicationDto): Promise<StudentApplicationVo> {
+    if (dto.status === "APPROVED") throw new ApiError(409, APPROVE_THROUGH_REVIEW);
     const row = await this.repo.update(id, toUpdateData(dto));
     if (!row) throw new ApiError(404, "Record not found");
     return toStudentApplicationVo(row);
@@ -72,7 +91,7 @@ export class StudentApplicationsService {
     return this.repo.delete(id);
   }
 
-  private async validate(input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang">): Promise<void> {
+  private async validate(input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang" | "memberId">, linkedFamilyMember = false): Promise<void> {
     if (blank(input.studentName)) throw new ApiError(400, "Student name is required.");
     if (!input.mobile || normalizeMobile(input.mobile).length !== 10) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (input.guardianMobile && normalizeMobile(input.guardianMobile).length !== 10)
@@ -81,15 +100,16 @@ export class StudentApplicationsService {
     if (blank(input.gender)) throw new ApiError(400, "Gender is required.");
     if (blank(input.fatherName)) throw new ApiError(400, "Father's name is required.");
     if (blank(input.academicYear)) throw new ApiError(400, "Academic year is required.");
-    if (await this.availability.isMobileTaken(input.mobile)) throw new ApiError(409, "This mobile number is already registered on the portal.");
-    if (await this.availability.isEmailTaken(input.email)) throw new ApiError(409, "This email is already registered on the portal.");
+    if (await this.availability.isStudentMobileTaken(input.mobile)) throw new ApiError(409, "This mobile number is already registered on the portal.");
+    const emailTaken = linkedFamilyMember ? await this.availability.isStudentEmailTaken(input.email) : await this.availability.isEmailTaken(input.email);
+    if (emailTaken) throw new ApiError(409, "This email is already registered on the portal.");
   }
 }
 
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
 // Required columns are checked by validate() first.
 const toCreateData = (
-  input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang">,
+  input: Omit<CreateStudentApplicationDto, "recaptchaToken" | "lang" | "memberId">,
 ): Omit<Prisma.StudentApplicationUncheckedCreateInput, "id" | "applicationId"> => ({
   status: input.status,
   studentName: input.studentName as string,
@@ -113,6 +133,8 @@ const toCreateData = (
   reviewedDate: parseDate(input.reviewedDate),
   resultingStudentId: input.resultingStudentId,
   fatherName: input.fatherName,
+  motherName: input.motherName,
+  educationLevel: input.educationLevel,
 });
 
 const toUpdateData = (input: UpdateStudentApplicationDto): Prisma.StudentApplicationUncheckedUpdateInput => ({
@@ -138,4 +160,6 @@ const toUpdateData = (input: UpdateStudentApplicationDto): Prisma.StudentApplica
   reviewedDate: parseDate(input.reviewedDate),
   resultingStudentId: input.resultingStudentId,
   fatherName: input.fatherName,
+  motherName: input.motherName,
+  educationLevel: input.educationLevel,
 });

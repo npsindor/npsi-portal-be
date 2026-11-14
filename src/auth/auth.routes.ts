@@ -12,4 +12,7 @@ export const AUTH_ROUTES = {
   changePassword: "password",
   me: "me",
   logout: "sessions/current",
+  mobileOtp: "mobile-otps",
+  mobileOtpVerify: "mobile-otps/verifications",
+  mobileRegister: "mobile-registrations",
 } as const;

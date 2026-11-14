@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Module, Param, Patch, Post, UseGuards } from "@nestjs/common";
+import { Body, Controller, Get, Module, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
-import { UserGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
-import { CreateSafarDto, SafarDecisionDto } from "./safar.dto.js";
+import { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto, SafarDecisionDto } from "./safar.dto.js";
 import { SafarService } from "./safar.service.js";
 
 @ApiTags("Safar Saathi")
@@ -42,6 +42,20 @@ export class SafarController {
   @ApiOperation({ summary: "Accept, decline or complete your own match; contacts require mutual acceptance" })
   decide(@Param("id") id: string, @Body() body: SafarDecisionDto, @CurrentUser() user: UserRow) {
     return this.service.decide(id, body.decision, user);
+  }
+  @Get("admin/entries")
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Admin: all transportation requests and offers, filtered by status/kind/search" })
+  adminEntries(@Query() query: SafarAdminQueryDto) {
+    return this.service.adminEntries(query);
+  }
+  @Patch("admin/entries/:id")
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Admin: set a request's status with remarks (the member is notified)" })
+  adminUpdate(@Param("id") id: string, @Body() body: SafarAdminUpdateDto, @CurrentUser() user: UserRow) {
+    return this.service.adminUpdate(id, body, user);
   }
 }
 @Module({ controllers: [SafarController], providers: [SafarService] })

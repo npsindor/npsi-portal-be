@@ -1,27 +1,33 @@
-import { Controller, Get, Param, Query } from "@nestjs/common";
+import { Controller, Get, Param, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
+  ApiBearerAuth,
   ApiInternalServerErrorResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
   ApiTags,
   ApiTooManyRequestsResponse,
+  ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
-import { ApplicationVo } from "../applications/vo/applications.vo.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
+import { UserGuard } from "../common/guards/auth.guards.js";
 import { ApplicationStatusQueryDto, EmailQueryDto, FamilyIdParamDto, MobileQueryDto } from "./dto/lookups.dto.js";
 import { LOOKUP_ROUTES as R } from "./lookups.routes.js";
 import { LookupsService } from "./lookups.service.js";
-import { AvailabilityVo, FamilyVerificationVo, StatsVo } from "./vo/lookups.vo.js";
+import { ApplicationStatusVo, AvailabilityVo, FamilyVerificationVo, StatsVo } from "./vo/lookups.vo.js";
 
 @ApiTags("public lookups")
 @Controller()
 export class LookupsController {
   constructor(private readonly lookups: LookupsService) {}
 
+  // Logged-in members only: family ids are sequential, so a public lookup would let anyone list every family.
   @Get(R.verifyFamily)
-  @ApiOperation({ summary: "Verify a membership card: public family summary by family id" })
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Verify a membership card: family summary by family id (logged-in members only)" })
+  @ApiUnauthorizedResponse({ type: ErrorVo, description: "Not logged in" })
   @ApiOkResponse({ type: FamilyVerificationVo })
   @ApiNotFoundResponse({ type: ErrorVo })
   @ApiTooManyRequestsResponse({ description: "Rate limit exceeded" })
@@ -31,11 +37,11 @@ export class LookupsController {
 
   @Get(R.applicationStatus)
   @ApiOperation({ summary: "Track a family application by its id and the applicant's mobile" })
-  @ApiOkResponse({ type: ApplicationVo })
+  @ApiOkResponse({ type: ApplicationStatusVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "applicationId or mobile missing" })
   @ApiNotFoundResponse({ type: ErrorVo })
   @ApiTooManyRequestsResponse({ description: "Rate limit exceeded" })
-  applicationStatus(@Query() query: ApplicationStatusQueryDto): Promise<ApplicationVo> {
+  applicationStatus(@Query() query: ApplicationStatusQueryDto): Promise<ApplicationStatusVo> {
     return this.lookups.applicationStatus(query);
   }
 

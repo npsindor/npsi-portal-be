@@ -23,8 +23,20 @@ import { clearSessionCookie, setSessionCookie } from "../common/session/session-
 import { AppConfigService } from "../config/app-config.service.js";
 import { AUTH_ROUTES as R } from "./auth.routes.js";
 import { AuthService } from "./auth.service.js";
-import { ChangePasswordDto, EmailDto, InviteDto, LoginDto, RegisterDto, ResetPasswordDto, UpdateMeDto, VerifyOtpDto } from "./dto/auth.dto.js";
-import { InvitationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
+import {
+  ChangePasswordDto,
+  EmailDto,
+  InviteDto,
+  LoginDto,
+  MobileOtpDto,
+  MobileRegisterDto,
+  RegisterDto,
+  ResetPasswordDto,
+  UpdateMeDto,
+  VerifyMobileOtpDto,
+  VerifyOtpDto,
+} from "./dto/auth.dto.js";
+import { InvitationVo, MobileOtpVo, MobileVerificationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
 
 @ApiTags("auth")
 @ApiTooManyRequestsResponse({ description: "Rate limit exceeded (auth and OTP routes)" })
@@ -61,6 +73,37 @@ export class AuthController {
     return session;
   }
 
+  @Post(R.mobileOtp)
+  @HttpCode(200)
+  @ApiOperation({ summary: "Send a 6-digit code to a mobile (WhatsApp, then SMS, then the given email) for registration or password reset" })
+  @ApiOkResponse({ type: MobileOtpVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid mobile/email or reCAPTCHA failed" })
+  @ApiConflictResponse({ type: ErrorVo, description: "Registration: mobile or email already registered" })
+  @ApiInternalServerErrorResponse({ type: ErrorVo, description: "503: no delivery channel available" })
+  requestMobileOtp(@Body() body: MobileOtpDto): Promise<MobileOtpVo> {
+    return this.auth.requestMobileOtp(body);
+  }
+
+  @Post(R.mobileOtpVerify)
+  @HttpCode(200)
+  @ApiOperation({ summary: "Check a mobile code; returns a single-use verification token (15 minutes)" })
+  @ApiOkResponse({ type: MobileVerificationVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Wrong or expired code" })
+  verifyMobileOtp(@Body() body: VerifyMobileOtpDto): Promise<MobileVerificationVo> {
+    return this.auth.verifyMobileOtp(body);
+  }
+
+  @Post(R.mobileRegister)
+  @ApiOperation({ summary: "Create an account for a verified mobile with a password, and log it in" })
+  @ApiCreatedResponse({ type: SessionVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Short password, invalid email or expired mobile verification" })
+  @ApiConflictResponse({ type: ErrorVo, description: "Mobile or email already registered" })
+  async registerWithMobile(@Body() body: MobileRegisterDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
+    const session = await this.auth.registerWithMobile(body);
+    setSessionCookie(response, session.accessToken, this.secureCookies);
+    return session;
+  }
+
   @Post(R.resendOtp)
   @HttpCode(200)
   @ApiOperation({ summary: "Email a new OTP to an unverified account (same response either way)" })
@@ -93,7 +136,7 @@ export class AuthController {
 
   @Post(R.resetPassword)
   @HttpCode(200)
-  @ApiOperation({ summary: "Set a new password using the emailed reset token" })
+  @ApiOperation({ summary: "Set a new password using the emailed reset token, or a verified mobile (phone + verificationToken)" })
   @ApiOkResponse({ type: OkVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Missing input, short password, or invalid/expired token" })
   resetPassword(@Body() body: ResetPasswordDto): Promise<OkVo> {

@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { describe, mock, test } from "node:test";
 import type { PrismaService } from "../database/prisma.service.js";
 import type { AvailabilityService } from "../lookups/availability.service.js";
+import type { MembershipRepository } from "../membership/membership.repository.js";
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
-import { fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
+import { fakeMembership, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
 import { admin, as, fakeRecaptcha, rejectsWith } from "../testing/fakes.js";
 import { notificationRow, studentApplicationRow } from "../testing/rows.js";
 import type { CreateStudentApplicationDto } from "./dto/student-applications.dto.js";
@@ -12,13 +13,18 @@ import { StudentApplicationsService } from "./student-applications.service.js";
 
 const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false } = {}) => {
   const repo = fakeModelRepo(studentApplicationRow);
-  const availability = { isMobileTaken: mock.fn(async () => mobileTaken), isEmailTaken: mock.fn(async () => emailTaken) };
+  const availability = {
+    isMobileTaken: mock.fn(async () => mobileTaken),
+    isStudentMobileTaken: mock.fn(async () => mobileTaken),
+    isEmailTaken: mock.fn(async () => emailTaken),
+  };
   const notifications = fakeModelRepo(notificationRow);
   const service = new StudentApplicationsService(
     as<PrismaService>(fakePrisma()),
     as<StudentApplicationsRepository>(repo),
     as<NotificationsRepository>(notifications),
     as<AvailabilityService>(availability),
+    as<MembershipRepository>(fakeMembership()),
     fakeRecaptcha(recaptcha).service,
   );
   return { service, repo, notifications };
