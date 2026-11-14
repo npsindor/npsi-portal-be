@@ -24,6 +24,8 @@ import { type ApplicationVo, toApplicationVo } from "./vo/applications.vo.js";
 
 // The family registration fee (no payment gateway: recorded as PENDING for admins to reconcile).
 export const REGISTRATION_FEE = 500;
+// Approving must go through the review endpoint, which creates the family / student record.
+export const APPROVE_THROUGH_REVIEW = "Use Approve (review) to approve an application; it creates the member record.";
 
 // Family registration applications. Anyone may submit one (public form with
 // reCAPTCHA); it always starts PENDING_VERIFICATION and admins review it. A
@@ -57,7 +59,8 @@ export class ApplicationsService {
       delete input.reviewedDate;
       delete input.resultingFamilyId;
     }
-    if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
+    // Admins entering an application from the admin panel have no reCAPTCHA token.
+    if (isPublic && !(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     await this.validate(input);
     const row = await this.prisma.$transaction(async (tx) => {
       const application = await createWithDisplayId(
@@ -96,6 +99,7 @@ export class ApplicationsService {
   }
 
   async update(id: string, dto: UpdateApplicationDto): Promise<ApplicationVo> {
+    if (dto.status === "APPROVED") throw new ApiError(409, APPROVE_THROUGH_REVIEW);
     const row = await this.repo.update(id, toUpdateData(dto));
     if (!row) throw new ApiError(404, "Record not found");
     return toApplicationVo(row);

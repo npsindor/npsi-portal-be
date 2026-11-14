@@ -29,7 +29,7 @@ export class NotificationsService {
 
   async list(user: UserRow, query: NotificationListQueryDto): Promise<NotificationVo[]> {
     const order = query.order ?? "-createdAt";
-    const recipient = user.role === "admin" ? null : (await this.membership.ownFamilyId(user)) || "__none__";
+    const recipient = user.role === "admin" ? null : { familyId: await this.membership.ownFamilyId(user), userId: user.id };
     const rows = await this.repo.list(recipient, toOrderBy(order), query.limit ?? DEFAULT_LIMIT, query.offset);
     if (user.role === "admin") return rows.map(toNotificationVo);
     // A broadcast's read state is the member's own (family notifications share the family's flag).
@@ -58,11 +58,14 @@ export class NotificationsService {
     } else {
       const notification = await this.repo.recipientOf(id);
       const ownFamilyId = await this.membership.ownFamilyId(user);
-      if (!notification || (notification.recipientFamilyId && notification.recipientFamilyId !== ownFamilyId)) {
+      const mine = notification?.recipientUserId
+        ? notification.recipientUserId === user.id
+        : !notification?.recipientFamilyId || notification.recipientFamilyId === ownFamilyId;
+      if (!notification || !mine) {
         throw new ApiError(403, "You can only update your own notifications.");
       }
       // Members may only mark notifications read; a broadcast only for themselves.
-      if (!notification.recipientFamilyId) {
+      if (!notification.recipientFamilyId && !notification.recipientUserId) {
         if (input.read !== undefined) await this.repo.setReadBy(user.id, id, input.read);
         const row = await this.repo.findById(id);
         if (!row) throw new ApiError(404, "Record not found");
@@ -83,7 +86,7 @@ export class NotificationsService {
 }
 
 // A notification for everyone (no recipient; older admin screens stored an empty one).
-const isBroadcast = (row: { recipientFamilyId: string | null }): boolean => !row.recipientFamilyId;
+const isBroadcast = (row: { recipientFamilyId: string | null; recipientUserId?: string | null }): boolean => !row.recipientFamilyId && !row.recipientUserId;
 
 // An admin's blank recipient means everyone, stored as NULL (an empty string matched no member).
 const blankToNull = (value: string | null | undefined): string | null => (value?.trim() ? value : null);

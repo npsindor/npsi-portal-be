@@ -8,6 +8,14 @@ import type { EventRegistration, Family, FamilyMember, Feedback, Student } from 
 export class MeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
+  activeFamilyOwnedBy(userId: string): Promise<Family | null> {
+    return this.prisma.family.findFirst({ where: { ownerUserId: userId, status: "ACTIVE" } });
+  }
+
+  studentOwnedBy(userId: string): Promise<Student | null> {
+    return this.prisma.student.findFirst({ where: { userId, AND: [{ status: { not: "TRANSFERRED" } }, { status: { not: null } }] } });
+  }
+
   activeFamilyByEmail(email: string): Promise<Family | null> {
     return this.prisma.family.findFirst({ where: { email, status: "ACTIVE" } });
   }

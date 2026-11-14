@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { AuthService } from "../auth/auth.service.js";
+import type { ApplicantNotifier } from "../common/messaging/applicant-notifier.service.js";
 import type { PrismaService } from "../database/prisma.service.js";
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { StudentsRepository } from "../students/students.repository.js";
-import { fakeAuth, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
+import { fakeAuth, fakeFees, fakeModelRepo, fakeNotifier, fakePrisma } from "../testing/fake-repo.js";
 import { as, rejectsWith } from "../testing/fakes.js";
 import { notificationRow, studentApplicationRow, studentRow } from "../testing/rows.js";
+import type { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { StudentApplicationReviewService } from "./student-application-review.service.js";
 import type { StudentApplicationsRepository } from "./student-applications.repository.js";
 
@@ -33,6 +35,8 @@ const build = (application = pending) => {
     as<StudentsRepository>(students),
     as<NotificationsRepository>(notifications),
     as<AuthService>(auth),
+    as<TransactionsRepository>(fakeFees()),
+    as<ApplicantNotifier>(fakeNotifier()),
   );
   return { service, students, notifications, auth };
 };

@@ -4,6 +4,8 @@ import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalChoice, OptionalDate, OptionalInt, OptionalNumber, OptionalText, RequiredDate, RequiredText } from "../../common/validation/fields.js";
 
 export const EVENT_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
+// Events & Programs page sections.
+export const EVENT_CATEGORIES = ["GENERAL", "GARBA", "CULTURAL"] as const;
 
 export class CreateEventDto {
   @RequiredText("Title is required.")
@@ -65,6 +67,9 @@ export class CreateEventDto {
 
   @OptionalText()
   descriptionHi?: string | null;
+
+  @OptionalChoice(EVENT_CATEGORIES, { notNull: true, description: "Events page section: GARBA (Maa Na Garba), CULTURAL or GENERAL (default)" })
+  category?: string;
 }
 
 export class UpdateEventDto extends PartialType(CreateEventDto) {}

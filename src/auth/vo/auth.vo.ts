@@ -28,5 +28,21 @@ export class SessionVo {
 export class InvitationVo {
   @ApiProperty({ example: true }) ok: true;
   @ApiProperty({ example: "new.member@example.com" }) username: string;
-  @ApiProperty({ example: "NPS@a1B2c3D4!", description: "Temporary password, also emailed to the user" }) password: string;
+  @ApiProperty({
+    example: "NPS@a1B2c3D4!",
+    description: "Temporary password, also emailed; null when the account already had its own password",
+    nullable: true,
+    type: String,
+  })
+  password: string | null;
+}
+
+export class MobileOtpVo {
+  @ApiProperty({ example: true }) ok: true;
+  @ApiProperty({ enum: ["WHATSAPP", "SMS", "EMAIL", "DEV"], description: "Where the code was sent" }) channel: string;
+  @ApiProperty({ example: 600 }) expiresInSeconds: number;
+}
+
+export class MobileVerificationVo {
+  @ApiProperty({ description: "Single-use token for registration or password reset, valid 15 minutes" }) verificationToken: string;
 }

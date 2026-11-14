@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import type { AuthService } from "../auth/auth.service.js";
+import type { ApplicantNotifier } from "../common/messaging/applicant-notifier.service.js";
 import type { PrismaService } from "../database/prisma.service.js";
 import type { FamiliesRepository } from "../families/families.repository.js";
 import type { FamilyMembersRepository } from "../family-members/family-members.repository.js";
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
-import { fakeAuth, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
+import type { StudentsRepository } from "../students/students.repository.js";
+import { fakeAuth, fakeFees, fakeModelRepo, fakeNotifier, fakePrisma } from "../testing/fake-repo.js";
 import { as, rejectsWith } from "../testing/fakes.js";
-import { applicationRow, familyMemberRow, familyRow, notificationRow } from "../testing/rows.js";
+import { applicationRow, familyMemberRow, familyRow, notificationRow, studentRow } from "../testing/rows.js";
+import type { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { ApplicationReviewService } from "./application-review.service.js";
 import type { ApplicationsRepository } from "./applications.repository.js";
 
@@ -26,7 +29,7 @@ const pending = applicationRow({
   ]),
 });
 
-const build = (application = pending) => {
+const build = (application = pending, fee: { id: string; paymentStatus: string | null } | null = null, studentRows: ReturnType<typeof studentRow>[] = []) => {
   const applications = fakeModelRepo(applicationRow, [{ ...application }]);
   const families = fakeModelRepo(familyRow);
   families.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-FAM-000023"]);
@@ -39,6 +42,12 @@ const build = (application = pending) => {
   });
   const notifications = fakeModelRepo(notificationRow);
   const auth = fakeAuth();
+  const fees = fakeFees(fee);
+  const notifier = fakeNotifier();
+  const students = {
+    ...fakeModelRepo(studentRow, studentRows),
+    activeForUser: mock.fn(async (userId: string) => studentRows.find((row) => row.userId === userId && row.status !== "TRANSFERRED") ?? null),
+  };
   const service = new ApplicationReviewService(
     as<PrismaService>(fakePrisma()),
     as<ApplicationsRepository>(applications),
@@ -46,8 +55,11 @@ const build = (application = pending) => {
     as<FamilyMembersRepository>(familyMembers),
     as<NotificationsRepository>(notifications),
     as<AuthService>(auth),
+    as<TransactionsRepository>(fees),
+    as<ApplicantNotifier>(notifier),
+    as<StudentsRepository>(students),
   );
-  return { service, applications, families, familyMembers, notifications, auth };
+  return { service, applications, families, familyMembers, notifications, auth, fees, notifier, students };
 };
 
 describe("ApplicationReviewService", () => {
@@ -83,6 +95,35 @@ describe("ApplicationReviewService", () => {
     assert.match(notifications.stored[1].message, /Add photo/);
     assert.deepEqual([families.stored.length, auth.invite.mock.callCount()], [0, 0]);
   });
+  test("approval waits for a verified registration payment and then links it to the family", async () => {
+    await rejectsWith(
+      build(pending, { id: "t1", paymentStatus: "SUBMITTED" }).service.review("app-1", { decision: "APPROVED" }),
+      409,
+      "Verify the registration payment before approving this application.",
+    );
+    await rejectsWith(build(pending, { id: "t1", paymentStatus: "REJECTED" }).service.review("app-1", { decision: "APPROVED" }), 409, /Verify/);
+    const { service, fees } = build(pending, { id: "t1", paymentStatus: "VERIFIED" });
+    await service.review("app-1", { decision: "APPROVED" });
+    assert.deepEqual(fees.update.mock.calls[0].arguments.slice(0, 2), ["t1", { familyId: "NPSI-FAM-000024" }]);
+  });
+  test("an account-first applicant owns the family, is notified on their account and is not re-invited", async () => {
+    const { service, families, notifications, auth, notifier } = build(applicationRow({ ...pending, userId: "u-5", lang: "hi" }), {
+      id: "t1",
+      paymentStatus: "VERIFIED",
+    });
+    await service.review("app-1", { decision: "APPROVED", lang: "en" });
+    assert.equal(families.stored[0].ownerUserId, "u-5");
+    const own = notifications.stored.find((row) => row.recipientUserId === "u-5");
+    assert.equal(own?.title, "आवेदन स्वीकृत!");
+    assert.equal(auth.invite.mock.callCount(), 0);
+    assert.equal(notifier.deliver.mock.callCount(), 1);
+  });
+  test("rejection of an older application is emailed / messaged to the applicant too", async () => {
+    const { service, notifier } = build();
+    await service.review("app-1", { decision: "REJECTED", remarks: "Duplicate" });
+    const [message] = notifier.deliver.mock.calls[0].arguments[0] as { key: string; email: string }[];
+    assert.deepEqual([message.key, message.email], ["applicationRejected", "ram@example.com"]);
+  });
   test("404 when missing, 409 when already approved; an invite failure doesn't fail the approval", async () => {
     await rejectsWith(build().service.review("missing", { decision: "APPROVED" }), 404, "Application not found.");
     await rejectsWith(
@@ -101,5 +142,25 @@ describe("ApplicationReviewService", () => {
       console.error = original;
     }
     assert.equal(errors.length, 1);
+  });
+  test("a student who registers as a member moves into the new family: student kept for the admin, TRANSFERRED and linked", async () => {
+    const student = studentRow({ id: "s-1", studentId: "NPSI-STU-000004", userId: "u-5", status: "ACTIVE" });
+    const { service, familyMembers, students } = build(applicationRow({ ...pending, userId: "u-5" }), { id: "t1", paymentStatus: "VERIFIED" }, [student]);
+    const result = await service.review("app-1", { decision: "APPROVED" });
+    const head = result.members[0];
+    assert.equal(familyMembers.update.mock.calls[0].arguments[0], head.id);
+    assert.deepEqual(familyMembers.update.mock.calls[0].arguments[1], { linkedStudentId: "NPSI-STU-000004" });
+    assert.equal(students.stored.length, 1, "the student record is kept");
+    assert.deepEqual(
+      [students.stored[0].status, students.stored[0].linkedFamilyId, students.stored[0].linkedMembershipId],
+      ["TRANSFERRED", "NPSI-FAM-000024", head.membershipId],
+    );
+  });
+  test("an applicant without a student record is approved as before; other accounts' students are untouched", async () => {
+    const other = studentRow({ id: "s-2", studentId: "NPSI-STU-000009", userId: "u-other", status: "ACTIVE" });
+    const { service, familyMembers, students } = build(applicationRow({ ...pending, userId: "u-5" }), { id: "t1", paymentStatus: "VERIFIED" }, [other]);
+    await service.review("app-1", { decision: "APPROVED" });
+    assert.equal(familyMembers.update.mock.callCount(), 0);
+    assert.equal(students.stored[0].status, "ACTIVE");
   });
 });

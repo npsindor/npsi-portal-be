@@ -78,4 +78,11 @@ export const TX = { transaction: true };
 export const fakePrisma = () => ({ $transaction: mock.fn(async <T>(work: (tx: typeof TX) => Promise<T>) => work(TX)) });
 
 // AuthService stand-in: records invitations.
+// Registration-fee lookups for review services: `fee` is what feeFor returns (null = no fee recorded).
+export const fakeFees = (fee: { id: string; paymentStatus: string | null } | null = null) => ({
+  feeFor: mock.fn(async (..._args: unknown[]) => fee),
+  update: mock.fn(async (..._args: unknown[]) => fee),
+});
+export const fakeNotifier = () => ({ deliver: mock.fn(async (_messages: unknown[]) => undefined) });
+
 export const fakeAuth = () => ({ invite: mock.fn(async (_body: unknown) => ({ ok: true as const, username: "u", password: "p" })) });

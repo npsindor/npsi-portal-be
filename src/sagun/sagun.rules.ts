@@ -11,19 +11,32 @@ export const validDate = (value: string): boolean => {
   const d = new Date(`${value}T00:00:00Z`);
   return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === value;
 };
+// The file's own bytes decide its type. The browser's declared type and the file name are not trusted either way:
+// phones send "image/jpg" or "application/octet-stream", Windows saves JPEGs as ".jfif", and some apps drop the
+// extension, so rejecting those turned away genuine photographs. The stored file gets a server-chosen extension.
+export const sagunUploadMime = (buffer: Buffer, kind: string, _declaredMime?: string, _filename?: string): string | null => {
+  const png = buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  const jpg = buffer[0] === 255 && buffer[1] === 216 && buffer[2] === 255;
+  const webp = buffer.subarray(0, 4).toString() === "RIFF" && buffer.subarray(8, 12).toString() === "WEBP";
+  const pdf = buffer.subarray(0, 5).toString() === "%PDF-";
+  return png ? "image/png" : jpg ? "image/jpeg" : webp ? "image/webp" : pdf && kind !== "PHOTO" ? "application/pdf" : null;
+};
 export const effectiveFields = (overrides: unknown): SagunField[] =>
-  sagunFields.map((field) => {
-    const entry = Array.isArray(overrides) ? overrides.find((value) => value?.key === field.key) : null;
-    return entry
-      ? {
-          ...field,
-          en: entry.en || field.en,
-          hi: entry.hi || field.hi,
-          enabled: field.locked ? true : (entry.enabled ?? true),
-          required: field.locked || ["sagun", "documents"].includes(field.section) ? field.required : (entry.required ?? field.required),
-        }
-      : field;
-  });
+  sagunFields
+    .filter((field) => field.section !== "sagun" && !field.removed)
+    .map((field) => {
+      const entry = Array.isArray(overrides) ? overrides.find((value) => value?.key === field.key) : null;
+      return entry
+        ? {
+            ...field,
+            en: entry.en || field.en,
+            hi: entry.hi || field.hi,
+            enabled: field.locked ? true : (entry.enabled ?? true),
+            required:
+              field.locked || field.optionalOnly || ["sagun", "documents"].includes(field.section) ? field.required : (entry.required ?? field.required),
+          }
+        : field;
+    });
 export const sanitizeData = (raw: Record<string, unknown>, fields: SagunField[], submit: boolean): ProfileData => {
   const result: ProfileData = {};
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new ApiError(400, "SAGUN_INVALID_DATA");

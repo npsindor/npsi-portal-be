@@ -19,14 +19,15 @@ export class MeService {
   ) {}
 
   async family(user: UserRow): Promise<MyFamilyVo> {
-    if (!user.email) return { family: null, members: [], student: null };
-    let family = await this.repo.activeFamilyByEmail(user.email);
-    if (!family) {
+    // Account-first registrations own their family / student record; older ones are found by email.
+    let family = await this.repo.activeFamilyOwnedBy(user.id);
+    if (!family && user.email) family = await this.repo.activeFamilyByEmail(user.email);
+    if (!family && user.email) {
       const familyId = await this.repo.memberFamilyIdByEmail(user.email);
       if (familyId) family = await this.repo.familyByFamilyId(familyId);
     }
     const members = family?.familyId ? await this.repo.membersOfFamily(family.familyId) : [];
-    const student = await this.repo.studentByEmail(user.email);
+    const student = (await this.repo.studentOwnedBy(user.id)) ?? (user.email ? await this.repo.studentByEmail(user.email) : null);
     return { family: family ? toFamilyVo(family) : null, members: members.map(toFamilyMemberVo), student: student ? toStudentVo(student) : null };
   }
 

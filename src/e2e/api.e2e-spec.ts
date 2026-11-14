@@ -141,16 +141,19 @@ describe("me", () => {
 });
 
 describe("public lookups", () => {
-  test("GET /family-verifications/:familyId", async () => {
-    const res = await api("get", `${V1}/family-verifications/${FAMILY}`);
+  test("GET /family-verifications/:familyId needs a login (ids are sequential, so it would list every family)", async () => {
+    assert.deepEqual((await api("get", `${V1}/family-verifications/${FAMILY}`)).body, AUTH_REQUIRED);
+    const res = await api("get", `${V1}/family-verifications/${FAMILY}`, TOKENS.member);
     assert.equal(res.body.family.familyId, FAMILY);
-    assert.equal((await api("get", `${V1}/family-verifications/NPSI-FAM-999999`)).status, 404);
+    assert.equal(res.body.members, undefined, "no member list on the public verification");
+    assert.equal((await api("get", `${V1}/family-verifications/NPSI-FAM-999999`, TOKENS.member)).status, 404);
   });
   test("GET /application-status", async () => {
     assert.equal((await api("get", `${V1}/application-status`)).status, 400);
     assert.equal((await api("get", `${V1}/application-status?applicationId=NPSI-APP-2026-000001&mobile=1`)).status, 404);
     const res = await api("get", `${V1}/application-status?applicationId=NPSI-APP-2026-000001&mobile=9400000001`);
     assert.equal(res.body.applicationId, "NPSI-APP-2026-000001");
+    assert.equal(res.body.mobile, undefined, "the public status never returns the stored form");
   });
   test("GET /mobile-availability and /email-availability", async () => {
     assert.deepEqual((await api("get", `${V1}/mobile-availability?mobile=9300000001`)).body, { taken: true });
@@ -168,7 +171,8 @@ describe("public lookups", () => {
   });
   test("public lookups are rate limited per IP", async () => {
     const statuses: number[] = [];
-    for (let i = 0; i < 31; i += 1) statuses.push((await api("get", `${V1}/family-verifications/${FAMILY}`).set("X-Forwarded-For", "10.9.9.9")).status);
+    for (let i = 0; i < 31; i += 1)
+      statuses.push((await api("get", `${V1}/family-verifications/${FAMILY}`, TOKENS.member).set("X-Forwarded-For", "10.9.9.9")).status);
     assert.equal(statuses.at(-1), 429);
   });
 });

@@ -1,7 +1,7 @@
 import { applyDecorators } from "@nestjs/common";
 import { ApiProperty, ApiPropertyOptional, type ApiPropertyOptions } from "@nestjs/swagger";
 import { Transform, type TransformFnParams } from "class-transformer";
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateIf } from "class-validator";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateBy, ValidateIf } from "class-validator";
 
 // Property decorators for request DTOs: Swagger docs, the lenient input
 // conversions HTML forms need (numbers sent as text, "" for an empty optional
@@ -65,6 +65,26 @@ export const OptionalDate = (options: FieldOptions = {}): PropertyDecorator =>
     Transform(blankToNull),
     optional(options),
     IsDateString(),
+  );
+
+// Today's date in India (YYYY-MM-DD); birth dates and "today" rules use the portal's own timezone.
+export const indiaDate = (date = new Date()): string =>
+  new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(date);
+export const BIRTH_DATE_ERROR = "Date of birth must be a real date before today.";
+// A birth date is a calendar date (YYYY-MM-DD) strictly before today: today and future dates are never valid.
+export const isPastBirthDate = (value: unknown, today = indiaDate()): boolean => {
+  const text = String(value ?? "").slice(0, 10);
+  const date = new Date(`${text}T00:00:00Z`);
+  return (
+    /^\d{4}-\d{2}-\d{2}$/.test(text) && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === text && text < today && text >= "1900-01-01"
+  );
+};
+export const OptionalBirthDate = (options: FieldOptions = {}): PropertyDecorator =>
+  applyDecorators(
+    docs({ type: "string", format: "date", nullable: !options.notNull, description: "YYYY-MM-DD, before today" }, options),
+    Transform(blankToNull),
+    optional(options),
+    ValidateBy({ name: "isPastBirthDate", validator: { validate: (value) => isPastBirthDate(value), defaultMessage: () => BIRTH_DATE_ERROR } }),
   );
 
 export const RequiredDate = (message: string, options: FieldOptions = {}): PropertyDecorator =>

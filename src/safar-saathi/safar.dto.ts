@@ -1,4 +1,4 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Equals, IsEmail, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from "class-validator";
 import { OptionalText, RequiredChoice, RequiredText } from "../common/validation/fields.js";
 
@@ -21,4 +21,15 @@ export class CreateSafarDto {
 }
 export class SafarDecisionDto {
   @ApiProperty({ enum: ["ACCEPT", "DECLINE", "COMPLETE"] }) @IsIn(["ACCEPT", "DECLINE", "COMPLETE"]) decision!: string;
+}
+
+export const SAFAR_ADMIN_STATUSES = ["OPEN", "COMPLETED", "CANCELLED", "CLOSED", "ARCHIVED"] as const;
+export class SafarAdminQueryDto {
+  @ApiPropertyOptional({ enum: SAFAR_ADMIN_STATUSES }) @IsOptional() @IsIn(SAFAR_ADMIN_STATUSES) status?: string;
+  @ApiPropertyOptional({ enum: ["REQUEST", "OFFER"] }) @IsOptional() @IsIn(["REQUEST", "OFFER"]) kind?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(100) q?: string;
+}
+export class SafarAdminUpdateDto {
+  @ApiProperty({ enum: SAFAR_ADMIN_STATUSES }) @IsIn(SAFAR_ADMIN_STATUSES) status!: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) remarks?: string;
 }

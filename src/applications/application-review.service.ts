@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
+import { ApplicantNotifier, type Outbound } from "../common/messaging/applicant-notifier.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { createWithDisplayId, displayIdAt, nextDisplayId } from "../common/utils/display-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
@@ -10,8 +11,11 @@ import { toFamilyVo } from "../families/vo/families.vo.js";
 import { FamilyMembersRepository } from "../family-members/family-members.repository.js";
 import { toFamilyMemberVo } from "../family-members/vo/family-members.vo.js";
 import type { Application, Family, FamilyMember } from "../generated/prisma/client.js";
-import { workflowNotification } from "../notifications/notification-texts.js";
+import { asLang, type NotificationKey, userNotification, workflowNotification } from "../notifications/notification-texts.js";
 import { NotificationsRepository } from "../notifications/notifications.repository.js";
+import { assertFeeSettled } from "../registrations/registration.rules.js";
+import { StudentsRepository } from "../students/students.repository.js";
+import { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { ApplicationsRepository } from "./applications.repository.js";
 import { applicationMembers, dateOnly, text } from "./members-data.js";
 import type { ApplicationReviewVo } from "./vo/application-review.vo.js";
@@ -33,31 +37,49 @@ export class ApplicationReviewService {
     private readonly familyMembers: FamilyMembersRepository,
     private readonly notifications: NotificationsRepository,
     private readonly auth: AuthService,
+    private readonly transactions: TransactionsRepository,
+    private readonly notifier: ApplicantNotifier,
+    private readonly students: StudentsRepository,
   ) {}
 
   async review(id: string, dto: ReviewDto): Promise<ApplicationReviewVo> {
     const remarks = reviewRemarks(dto, (message) => new ApiError(400, message));
-    const lang = dto.lang ?? "en";
+    let outbound: Outbound | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const application = await this.applications.findById(id, tx);
       if (!application) throw new ApiError(404, "Application not found.");
       if (application.status === "APPROVED") throw new ApiError(409, "This application has already been approved.");
+      // The applicant's own language when they gave one (account-first registrations), else the admin's.
+      const lang = application.lang ? asLang(application.lang) : (dto.lang ?? "en");
+      const notify = (key: NotificationKey, vars: Record<string, string | null | undefined>) => {
+        outbound = { key, vars, lang, name: application.familyHeadName, email: application.email, mobile: application.mobile };
+        return application.userId ? this.notifications.create(userNotification(key, application.userId, vars, lang), tx) : null;
+      };
       if (dto.decision !== "APPROVED") {
         const updated = await this.applications.update(id, { status: dto.decision, adminRemarks: remarks, reviewedDate: new Date() }, tx);
         const key = dto.decision === "REJECTED" ? "applicationRejected" : "applicationCorrection";
-        await this.notifications.create(workflowNotification(key, application.applicationId, { remarks }, lang), tx);
+        if (!application.userId) await this.notifications.create(workflowNotification(key, application.applicationId, { remarks }, lang), tx);
+        await notify(key, { remarks });
         return { application: updated as Application, family: null, members: [] };
       }
+      const fee = await this.transactions.feeFor(application.applicationId, tx);
+      if (fee) assertFeeSettled(fee.paymentStatus);
       const { family, members } = await this.createFamily(application, tx);
+      await this.moveStudentIntoFamily(application, family, members, tx);
+      if (fee) await this.transactions.update(fee.id, { familyId: family.familyId }, tx);
       const updated = await this.applications.update(
         id,
         { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingFamilyId: family.familyId },
         tx,
       );
       await this.notifications.create(workflowNotification("applicationApproved", family.familyId as string, { familyId: family.familyId }, lang), tx);
+      await notify("applicationApproved", { familyId: family.familyId });
       return { application: updated as Application, family, members };
     });
-    if (result.family && result.application.email) {
+    // Account-first applicants already have a login: they get the status message, not an invitation.
+    const viaAccount = Boolean(result.application.userId);
+    if (outbound && (viaAccount || !result.family)) await this.notifier.deliver([outbound]);
+    if (result.family && !viaAccount && result.application.email) {
       await this.auth
         .invite({ email: result.application.email, role: "user", fullName: result.application.familyHeadName, phone: result.application.mobile ?? undefined })
         .catch((error: unknown) => console.error("[approval] invite failed:", error instanceof Error ? error.message : error));
@@ -67,6 +89,17 @@ export class ApplicationReviewService {
       family: result.family ? toFamilyVo(result.family) : null,
       members: result.members.map(toFamilyMemberVo),
     };
+  }
+
+  // A student who registers as a member (₹500) becomes the new family's head: the student record is kept for
+  // the admin but marked TRANSFERRED and linked to that member, so the account now uses the family portal only.
+  private async moveStudentIntoFamily(application: Application, family: Family, members: FamilyMember[], tx: Db): Promise<void> {
+    if (!application.userId) return;
+    const student = await this.students.activeForUser(application.userId, tx);
+    const head = members[0];
+    if (!student || !head) return;
+    await this.familyMembers.update(head.id, { linkedStudentId: student.studentId }, tx);
+    await this.students.update(student.id, { status: "TRANSFERRED", linkedFamilyId: family.familyId, linkedMembershipId: head.membershipId }, tx);
   }
 
   private async createFamily(application: Application, tx: Db): Promise<{ family: Family; members: FamilyMember[] }> {
@@ -95,6 +128,7 @@ export class ApplicationReviewService {
             registrationDate: new Date(),
             memberCount: listed.length,
             applicationId: application.applicationId,
+            ownerUserId: application.userId,
           },
           tx,
         ),

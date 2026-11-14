@@ -9,6 +9,8 @@ import type { MeRepository } from "./me.repository.js";
 import { MeService } from "./me.service.js";
 
 const fakeRepo = (activeFamily = true) => ({
+  activeFamilyOwnedBy: mock.fn(async (): Promise<Family | null> => null),
+  studentOwnedBy: mock.fn(async (): Promise<Student | null> => null),
   activeFamilyByEmail: mock.fn(async (): Promise<Family | null> => (activeFamily ? familyRow({ id: "f1", familyId: "FAM-1" }) : null)),
   memberFamilyIdByEmail: mock.fn(async (): Promise<string | null> => "FAM-2"),
   familyByFamilyId: mock.fn(async (familyId: string) => familyRow({ id: "f2", familyId })),

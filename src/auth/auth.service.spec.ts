@@ -3,6 +3,7 @@ import { beforeEach, describe, mock, test } from "node:test";
 import { hashOtp, hashPassword, sha256 } from "../common/utils/crypto.js";
 import { as, fakeConfig, fakeMail, fakeRecaptcha, flush, rejectsWith, user } from "../testing/fakes.js";
 import { AuthService } from "./auth.service.js";
+import type { MobileOtpService } from "./mobile-otp.service.js";
 import type { UsersRepository } from "./users.repository.js";
 
 const PASSWORD = "secret1";
@@ -28,7 +29,19 @@ const fakeUsers = () => ({
   ),
   clearSession: mock.fn(async (_token: string | undefined) => undefined),
   clearAllSessions: mock.fn(async (..._args: unknown[]) => undefined),
+  findByPhone: mock.fn(async (_phone: string): Promise<ReturnType<typeof user> | null> => null),
+  insertMobileRegistered: mock.fn(async (..._args: unknown[]) => undefined),
+  resetPasswordFor: mock.fn(async (..._args: unknown[]) => undefined),
+  markVerified: mock.fn(async (..._args: unknown[]) => undefined),
 });
+const fakeMobileOtp = () => ({
+  send: mock.fn(async (..._args: unknown[]) => ({ channel: "WHATSAPP", expiresInSeconds: 600 })),
+  verify: mock.fn(async (..._args: unknown[]) => "verification-token"),
+  consume: mock.fn(async (_mobile: string, _purpose: string, token: string | undefined) => {
+    if (token !== "verification-token") throw Object.assign(new Error("expired"), { getStatus: () => 400 });
+  }),
+});
+let mobileOtp: ReturnType<typeof fakeMobileOtp>;
 
 let users: ReturnType<typeof fakeUsers>;
 let mail: ReturnType<typeof fakeMail>;
@@ -38,7 +51,8 @@ const build = (recaptchaPasses = true) => {
   users = fakeUsers();
   mail = fakeMail();
   recaptcha = fakeRecaptcha(recaptchaPasses);
-  service = new AuthService(as<UsersRepository>(users), mail.service, recaptcha.service, fakeConfig());
+  mobileOtp = fakeMobileOtp();
+  service = new AuthService(as<UsersRepository>(users), mail.service, recaptcha.service, fakeConfig(), as<MobileOtpService>(mobileOtp));
 };
 beforeEach(() => build());
 
@@ -232,11 +246,11 @@ describe("AuthService.invite", () => {
     assert.equal(args[1], "invitee@example.com");
     assert.equal(args[5], "admin");
     assert.equal(result.username, "invitee@example.com");
-    assert.match(result.password, /^NPS@[A-Za-z0-9_-]{8}!$/);
+    assert.match(result.password as string, /^NPS@[A-Za-z0-9_-]{8}!$/);
     assert.equal(users.setInviteResetToken.mock.callCount(), 1);
     const email = mail.send.mock.calls[0].arguments[0] as { to: string; text: string };
     assert.equal(email.to, "invitee@example.com");
-    assert.match(email.text, new RegExp(result.password.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(email.text, new RegExp((result.password as string).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
   test("any role other than admin becomes user", async () => {
     await service.invite({ email: "a@example.com", role: "superuser" });
@@ -248,6 +262,21 @@ describe("AuthService.invite", () => {
     const result = await service.invite({ email: "member@example.com" });
     assert.deepEqual(users.updateInvited.mock.calls[0].arguments.slice(0, 3), ["u-9", "Old Name", "9000000000"]);
     assert.equal(result.username, "9000000000");
+  });
+  test("an account with its own password keeps it on approval and is told to use it", async () => {
+    users.findByEmail.mock.mockImplementation(async () => user({ id: "u-9", passwordHash: hashPassword(PASSWORD), status: "active" }));
+    const result = await service.invite({ email: "member@example.com", phone: "9876543210" }, "student");
+    assert.equal(result.password, null);
+    assert.equal(users.updateInvited.mock.callCount(), 0);
+    assert.equal(users.insertInvited.mock.callCount(), 0);
+    const email = mail.send.mock.calls[0].arguments[0] as { text: string; subject: string };
+    assert.doesNotMatch(email.text, /Temporary Password/);
+    assert.match(email.text, /स्टूडेंट पंजीकरण/);
+  });
+  test("a mobile that belongs to another account is not copied onto the invited one", async () => {
+    users.findIdByPhone.mock.mockImplementation(async () => ({ id: "someone-else" }));
+    await service.invite({ email: "new@example.com", phone: "9876543210" });
+    assert.equal(users.insertInvited.mock.calls[0].arguments[3], undefined);
   });
   test("mail failures don't fail the invite", async () => {
     mail.send.mock.mockImplementation(async () => {
@@ -328,5 +357,52 @@ describe("AuthService sessions across devices", () => {
   test("log out everywhere ends all of the user's sessions", async () => {
     await service.logoutEverywhere(user({ id: "u-9" }));
     assert.deepEqual(users.clearAllSessions.mock.calls[0].arguments, ["u-9"]);
+  });
+});
+
+describe("AuthService mobile registration and reset", () => {
+  test("registration OTP: rejects a taken mobile, sends otherwise", async () => {
+    users.findIdByPhone.mock.mockImplementationOnce(async () => ({ id: "u-1" }));
+    await rejectsWith(service.requestMobileOtp({ mobile: "9876543210" }), 409, "This mobile number is already registered.");
+    const result = await service.requestMobileOtp({ mobile: "+91 98765 43210", email: "A@Example.com" });
+    assert.deepEqual(result, { ok: true, channel: "WHATSAPP", expiresInSeconds: 600 });
+    assert.deepEqual(mobileOtp.send.mock.calls[0].arguments, ["9876543210", "REGISTER", "a@example.com"]);
+  });
+  test("registration OTP: invalid mobile and failed reCAPTCHA are rejected", async () => {
+    await rejectsWith(service.requestMobileOtp({ mobile: "12345" }), 400, "A valid 10-digit mobile number is required.");
+    build(false);
+    await assert.rejects(service.requestMobileOtp({ mobile: "9876543210" }));
+  });
+  test("reset OTP: same answer for unknown numbers and nothing is sent", async () => {
+    assert.equal((await service.requestMobileOtp({ mobile: "9876543210", purpose: "RESET" })).ok, true);
+    assert.equal(mobileOtp.send.mock.callCount(), 0);
+  });
+  test("mobile registration creates a verified account and starts a session", async () => {
+    await rejectsWith(
+      service.registerWithMobile({ phone: "9876543210", verificationToken: "verification-token", password: "123" }),
+      400,
+      "Password must be at least 6 characters.",
+    );
+    users.findById.mock.mockImplementation(async (id: string) => user({ id, email: null, phone: "9876543210" }));
+    const session = await service.registerWithMobile({ phone: "9876543210", verificationToken: "verification-token", password: PASSWORD });
+    assert.ok(session.accessToken);
+    const args = users.insertMobileRegistered.mock.calls[0].arguments;
+    assert.deepEqual(args.slice(1, 4), [null, null, "9876543210"]);
+    assert.equal(users.startSession.mock.callCount(), 1);
+  });
+  test("mobile registration needs a valid verification token", async () => {
+    await assert.rejects(service.registerWithMobile({ phone: "9876543210", verificationToken: "forged", password: PASSWORD }));
+    assert.equal(users.insertMobileRegistered.mock.callCount(), 0);
+  });
+  test("mobile password reset sets the password and logs out every device", async () => {
+    users.findByPhone.mock.mockImplementation(async () => user({ id: "u-7" }));
+    assert.deepEqual(await service.resetPassword({ phone: "9876543210", verificationToken: "verification-token", newPassword: "newpass1" }), { ok: true });
+    assert.equal(users.resetPasswordFor.mock.calls[0].arguments[0], "u-7");
+  });
+  test("login of an unverified account sends a new code and answers 403", async () => {
+    users.findForLogin.mock.mockImplementation(async () => user({ isVerified: false, passwordHash: hashPassword(PASSWORD) }));
+    await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD }), 403, "Please verify your account before logging in.");
+    await flush();
+    assert.equal(users.setOtp.mock.callCount(), 1);
   });
 });

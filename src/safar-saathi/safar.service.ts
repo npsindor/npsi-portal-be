@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { communityAccount } from "../common/eligibility/community-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { MailService } from "../common/mail/mail.service.js";
 import type { UserRow } from "../common/session/session.service.js";
@@ -6,7 +7,7 @@ import { randomId } from "../common/utils/crypto.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { SafarEntry } from "../generated/prisma/client.js";
-import type { CreateSafarDto } from "./safar.dto.js";
+import type { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto } from "./safar.dto.js";
 import { compatibleType, indiaToday, mobileDigits, routeKey, validTravelDate } from "./safar.rules.js";
 
 @Injectable()
@@ -20,15 +21,11 @@ export class SafarService {
     return { email: this.mail.isConfigured(), sms: false, inApp: true };
   }
 
+  // Approved family members and active registered students may use transportation (admins too).
   private async member(user: UserRow) {
-    if (user.status !== "active" || !user.isVerified || !user.email) throw new ApiError(403, "SAFAR_MEMBERSHIP_REQUIRED");
-    const family = await this.db.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { contactNumber: true } });
-    const member = await this.db.familyMember.findFirst({
-      where: { email: user.email, status: { in: ["ACTIVE", "Active", "APPROVED"] }, family: { status: "ACTIVE" } },
-      select: { mobile: true },
-    });
-    if (!family && !member && user.role !== "admin") throw new ApiError(403, "SAFAR_MEMBERSHIP_REQUIRED");
-    return [user.phone, family?.contactNumber, member?.mobile].map(mobileDigits).filter(Boolean);
+    const account = await communityAccount(this.db, user);
+    if (!account || !user.email) throw new ApiError(403, "SAFAR_MEMBERSHIP_REQUIRED");
+    return account.mobiles.map(mobileDigits).filter(Boolean);
   }
   // Serializable range reads avoid missing a pair when request and offer arrive concurrently.
   private async transaction<T>(work: (tx: Db) => Promise<T>): Promise<T> {
@@ -277,5 +274,67 @@ export class SafarService {
         await this.db.safarNotice.update({ where: { id: notice.id }, data: { emailStatus: "FAILED" } });
       }
     }
+  }
+
+  // ---- Admin: every request/offer with the poster's contact, status changes with remarks ----
+  async adminEntries(query: SafarAdminQueryDto) {
+    const q = query.q?.trim();
+    const rows = await this.db.safarEntry.findMany({
+      where: {
+        ...(query.status ? { status: query.status } : { status: { not: "ARCHIVED" } }),
+        ...(query.kind ? { kind: query.kind } : {}),
+        ...(q ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }, { origin: { contains: q } }, { destination: { contains: q } }] } : {}),
+      },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      include: { _count: { select: { requests: true, offers: true } } },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      requestType: row.requestType,
+      name: row.name,
+      phone: row.phone,
+      email: row.email,
+      origin: row.origin,
+      destination: row.destination,
+      travelDate: row.travelDate.toISOString().slice(0, 10),
+      preferredTime: row.preferredTime,
+      itemDetails: row.itemDetails,
+      instructions: row.instructions,
+      status: row.status,
+      adminRemarks: row.adminRemarks,
+      reviewedAt: row.reviewedAt,
+      createdAt: row.createdAt,
+      matchCount: row._count.requests + row._count.offers,
+    }));
+  }
+
+  async adminUpdate(id: string, dto: SafarAdminUpdateDto, admin: UserRow) {
+    const entry = await this.db.safarEntry.findUnique({ where: { id } });
+    if (!entry) throw new ApiError(404, "SAFAR_NOT_FOUND");
+    const remarks = dto.remarks?.trim() || null;
+    await this.db.$transaction(async (tx) => {
+      await tx.safarEntry.update({ where: { id }, data: { status: dto.status, adminRemarks: remarks, reviewedAt: new Date() } });
+      // Closing an entry withdraws its open matches, as when the member cancels it.
+      if (["CANCELLED", "CLOSED", "ARCHIVED"].includes(dto.status))
+        await tx.safarMatch.updateMany({
+          where: { OR: [{ requestId: id }, { offerId: id }], status: { in: ["PROPOSED", "CONFIRMED"] } },
+          data: { status: "CANCELLED" },
+        });
+      await tx.notification.create({
+        data: {
+          id: randomId(),
+          title: entry.lang === "hi" ? "सफ़र साथी अनुरोध अपडेट" : "Transportation request updated",
+          message: `${entry.origin} → ${entry.destination} (${entry.travelDate.toISOString().slice(0, 10)}): ${dto.status}${remarks ? ` — ${remarks}` : ""}`,
+          type: "safar",
+          recipientUserId: entry.userId,
+          date: new Date(),
+          deepLink: "/transportation",
+        },
+      });
+    });
+    console.info(`[safar] admin ${admin.id} set ${id} to ${dto.status}`);
+    return { id, status: dto.status, adminRemarks: remarks };
   }
 }

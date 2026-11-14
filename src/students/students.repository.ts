@@ -48,4 +48,9 @@ export class StudentsRepository {
   findByStudentId(studentId: string, db: Db = this.prisma): Promise<Student | null> {
     return db.student.findFirst({ where: { studentId } });
   }
+
+  // The account's current student record (a student who already moved into a family is TRANSFERRED).
+  activeForUser(userId: string, db: Db = this.prisma): Promise<Student | null> {
+    return db.student.findFirst({ where: { userId, AND: [{ status: { not: "TRANSFERRED" } }, { status: { not: null } }] }, orderBy: { createdAt: "asc" } });
+  }
 }

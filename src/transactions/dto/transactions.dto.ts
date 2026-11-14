@@ -3,8 +3,9 @@ import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalChoice, OptionalDate, OptionalText, RequiredChoice, RequiredNumber, RequiredText } from "../../common/validation/fields.js";
 
-export const PAYMENT_STATUSES = ["PENDING", "SUCCESS", "FAILED", "REFUNDED"] as const;
-export const TRANSACTION_TYPES = ["Family Registration", "Membership Payment", "Event Registration", "Donation", "Other"] as const;
+// SUBMITTED / VERIFIED / REJECTED: a registration fee paid by UPI QR, proof uploaded, checked by an admin.
+export const PAYMENT_STATUSES = ["PENDING", "SUBMITTED", "VERIFIED", "REJECTED", "SUCCESS", "FAILED", "REFUNDED"] as const;
+export const TRANSACTION_TYPES = ["Family Registration", "Student Registration", "Membership Payment", "Event Registration", "Donation", "Other"] as const;
 
 export class CreateTransactionDto {
   @RequiredText("Transaction id is required.", 255)

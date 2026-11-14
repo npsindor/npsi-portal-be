@@ -2,12 +2,13 @@
 const WIDTH = 6;
 const MAX_ATTEMPTS = 3;
 
-// Display-ID prefixes are ASCII tokens ending in '-'. The next ASCII character
-// is '.', so this range selects the same prefix without Prisma's LIKE expression
-// (which fails with a collation error on the hosted MariaDB server).
+// Ids that start with the prefix followed by a digit ('0' .. '9'; ':' is the next ASCII character),
+// without Prisma's LIKE expression (which fails with a collation error on the hosted MariaDB server).
+// Hand-made ids such as "TXN-MBX3K9F2" sort after the numbered ones and are left out, so they can't
+// crowd the numbered ids out of the "latest few" window and make the next id collide.
 export const displayIdPrefixRange = (prefix: string): { gte: string; lt: string } => {
   if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*-$/.test(prefix)) throw new Error("Invalid display-ID prefix");
-  return { gte: prefix, lt: `${prefix.slice(0, -1)}.` };
+  return { gte: `${prefix}0`, lt: `${prefix}:` };
 };
 
 // The next id after the highest numbered one among `existing` (ids sharing the

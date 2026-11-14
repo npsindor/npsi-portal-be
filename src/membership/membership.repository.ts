@@ -11,7 +11,11 @@ export class MembershipRepository {
   // The family (display id) a user belongs to: an ACTIVE family registered
   // with their email, else the family of a member with their email.
   async ownFamilyId(user: UserRow | null): Promise<string | null> {
-    if (!user?.email) return null;
+    if (!user) return null;
+    // Families approved from an account-first registration are owned by that account.
+    const owned = await this.prisma.family.findFirst({ where: { ownerUserId: user.id, status: "ACTIVE" }, select: { familyId: true } });
+    if (owned?.familyId) return owned.familyId;
+    if (!user.email) return null;
     const family = await this.prisma.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { familyId: true } });
     if (family?.familyId) return family.familyId;
     const member = await this.prisma.familyMember.findFirst({ where: { email: user.email }, select: { familyId: true } });

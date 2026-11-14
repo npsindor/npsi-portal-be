@@ -49,6 +49,7 @@ describe("plain CRUD services", () => {
   for (const [name, make, row, body, change] of CASES) {
     test(`${name}: create, list, update (404 when missing), remove`, async () => {
       const repo = fakeModelRepo(row as (data: Partial<{ id: string }>) => { id: string });
+      if (name === "events") Object.assign(repo, { hasRegistrations: async () => false, hasFinancialOrRosterRecords: async () => false });
       const service = make(repo);
       const created = await service.create(body);
       assert.equal(typeof created.id, "string");
@@ -77,10 +78,13 @@ describe("plain CRUD services", () => {
       await service.list({}, null);
       await service.list({}, user());
       await service.list({}, user({ role: "admin" }));
+      const wheres = repo.list.mock.calls.map((call) => call.arguments[0] as { status?: string; OR?: unknown });
       assert.deepEqual(
-        repo.list.mock.calls.map((call) => call.arguments[0]),
-        [{ status: visible }, { status: visible }, {}],
+        wheres.map((where) => where.status),
+        [visible, visible, undefined],
       );
+      // Scheduled Sandesh items stay hidden from visitors and members until their publication time.
+      if (visible === "Active") assert.ok(wheres.slice(0, 2).every((where) => Array.isArray(where.OR)) && !wheres[2].OR);
     }
   });
   test("an event with registrations can't be deleted", async () => {

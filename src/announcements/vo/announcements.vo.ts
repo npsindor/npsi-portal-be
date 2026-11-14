@@ -12,6 +12,11 @@ export class AnnouncementVo {
   @ApiProperty({ type: "string", format: "date-time" }) updatedAt!: Date;
   @ApiProperty({ type: "string", nullable: true }) titleHi!: string | null;
   @ApiProperty({ type: "string", nullable: true }) bodyHi!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) category!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) imageUrl!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) slug!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) author!: string | null;
+  @ApiProperty({ type: "string", format: "date-time", nullable: true }) publishAt!: Date | null;
 }
 
 export const toAnnouncementVo = (row: Announcement): AnnouncementVo => ({
@@ -25,4 +30,9 @@ export const toAnnouncementVo = (row: Announcement): AnnouncementVo => ({
   updatedAt: row.updatedAt,
   titleHi: row.titleHi,
   bodyHi: row.bodyHi,
+  category: row.category,
+  imageUrl: row.imageUrl,
+  slug: row.slug,
+  author: row.author,
+  publishAt: row.publishAt,
 });

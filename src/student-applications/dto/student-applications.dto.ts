@@ -1,7 +1,7 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalChoice, OptionalDate, OptionalText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalBirthDate, OptionalDate, OptionalText } from "../../common/validation/fields.js";
 import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
 export const STUDENT_APPLICATION_STATUSES = ["DRAFT", "SUBMITTED", "PENDING_VERIFICATION", "CORRECTION_REQUIRED", "APPROVED", "REJECTED"] as const;
@@ -19,7 +19,7 @@ export class CreateStudentApplicationDto {
   @OptionalText(255)
   email?: string | null;
 
-  @OptionalDate()
+  @OptionalBirthDate()
   dob?: string | null;
 
   @OptionalText(255)
@@ -73,6 +73,17 @@ export class CreateStudentApplicationDto {
   @OptionalText(255)
   fatherName?: string | null;
 
+  @OptionalText(255)
+  motherName?: string | null;
+
+  @OptionalText(255)
+  educationLevel?: string | null;
+
+  // A FamilyMember row id, never a client-supplied Family ID. The service
+  // verifies it belongs to the authenticated user's active family.
+  @OptionalText(64)
+  memberId?: string | null;
+
   @ApiPropertyOptional({ description: "Google reCAPTCHA v3 token (required when the server has a secret configured)" })
   @IsOptional()
   @IsString()
@@ -113,6 +124,10 @@ export const STUDENTAPPLICATION_ORDERS = orderValues([
   "createdAt",
   "updatedAt",
   "fatherName",
+  "motherName",
+  "educationLevel",
+  "linkedFamilyId",
+  "linkedMembershipId",
 ] as const);
 
 export class StudentApplicationListQueryDto extends ListQueryDto {

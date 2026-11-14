@@ -370,14 +370,20 @@ describe("me", () => {
 });
 
 describe("public lookups", () => {
+  test("verify family: 401 without a login", async () => {
+    assertError(await api("verifyFamily", [FAMILY1]), 401, "Authentication required.");
+  });
   test("verify family: 200 with limited columns", async () => {
-    const res = await api("verifyFamily", [FAMILY1]);
+    const res = await api("verifyFamily", [FAMILY1], { token: TOKENS.member });
     assert.equal(res.status, 200);
-    assert.deepEqual(keys(res.body.family), ["city", "familyId", "familyName", "headName", "registrationDate", "status"]);
-    assert.deepEqual(res.body.members, [{ name: "Member One", relationship: "Self", gender: "Male", status: "ACTIVE" }]);
+    // Public and enumerable by sequential id: no member list, contacts or address; the head's name is masked.
+    assert.deepEqual(keys(res.body), ["family"]);
+    assert.deepEqual(keys(res.body.family), ["familyId", "familyName", "headName", "memberCount", "registrationDate", "status"]);
+    assert.equal(res.body.family.memberCount, 1);
+    assert.match(res.body.family.headName ?? "", /^\S\**( \S\**)*$/);
   });
   test("verify family: 404 for an unknown id", async () => {
-    assertError(await api("verifyFamily", ["NPSI-FAM-999999"]), 404, "No family found for this ID.");
+    assertError(await api("verifyFamily", ["NPSI-FAM-999999"], { token: TOKENS.member }), 404, "No family found for this ID.");
   });
   test("track application: 400 without both params", async () => {
     assertError(await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001"]), 400, "Application ID and mobile number are required.");
@@ -389,11 +395,21 @@ describe("public lookups", () => {
       "No application found for this ID and mobile number.",
     );
   });
-  test("track application: 200 returns the record with parsed JSON", async () => {
+  test("track application: 200 returns only the decision, never the stored form", async () => {
     const res = await api("trackApplication", ["?applicationId=NPSI-APP-2026-000001&mobile=9400000001"]);
     assert.equal(res.status, 200);
-    assertRecord(res.body);
-    assert.deepEqual(res.body.membersData, [{ name: "A" }]);
+    assert.deepEqual(keys(res.body), [
+      "adminRemarks",
+      "applicationId",
+      "familyHeadName",
+      "familyName",
+      "resultingFamilyId",
+      "reviewedDate",
+      "status",
+      "submittedDate",
+    ]);
+    assert.equal(res.body.membersData, undefined);
+    assert.equal(res.body.mobile, undefined);
   });
   test("mobile availability", async () => {
     assert.deepEqual((await api("checkMobile", ["?mobile=%2B91%2093000%2000001"])).body, { taken: true });

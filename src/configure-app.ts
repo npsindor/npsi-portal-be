@@ -62,8 +62,9 @@ export const configureApp = (app: NestExpressApplication): void => {
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true, forbidUnknownValues: false, stopAtFirstError: true }));
   app.useGlobalFilters(new HttpErrorFilter());
 
-  // API docs everywhere except production (they map every endpoint and field for an attacker).
-  if (config.appEnv === "production") return;
+  // API docs only on a developer's machine (or when explicitly enabled): they map every endpoint and
+  // field for an attacker, so the public test and production servers don't serve them.
+  if (config.appEnv !== "development" && process.env.ENABLE_API_DOCS !== "true") return;
   SwaggerModule.setup(DOCS_PATH, app, buildOpenApiDocument(app));
 };
 

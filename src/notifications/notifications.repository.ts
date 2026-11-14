@@ -2,18 +2,28 @@ import { Injectable } from "@nestjs/common";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Notification, Prisma } from "../generated/prisma/client.js";
 
-// Notifications for everyone: no recipient. Before this module, the admin screen's
-// "everyone" was stored as an empty string, so that counts too.
-const BROADCAST: Prisma.NotificationWhereInput[] = [{ recipientFamilyId: null }, { recipientFamilyId: "" }];
+// Notifications for everyone: no recipient family and no recipient account. Before this module, the
+// admin screen's "everyone" was stored as an empty string, so that counts too.
+const BROADCAST: Prisma.NotificationWhereInput[] = [
+  { recipientFamilyId: null, recipientUserId: null },
+  { recipientFamilyId: "", recipientUserId: null },
+];
 
 @Injectable()
 export class NotificationsRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  // `recipientFamilyId` (members) narrows the list to that family plus broadcasts.
-  list(recipientFamilyId: string | null, orderBy: Prisma.NotificationOrderByWithRelationInput[], take: number, skip = 0): Promise<Notification[]> {
+  // `member` narrows the list to that member's family, their own account's notifications, and broadcasts;
+  // null (admins) lists everything.
+  list(
+    member: { familyId: string | null; userId: string } | null,
+    orderBy: Prisma.NotificationOrderByWithRelationInput[],
+    take: number,
+    skip = 0,
+  ): Promise<Notification[]> {
     return this.prisma.notification.findMany({
-      where: recipientFamilyId === null ? {} : { OR: [{ recipientFamilyId }, ...BROADCAST] },
+      where:
+        member === null ? {} : { OR: [...(member.familyId ? [{ recipientFamilyId: member.familyId }] : []), { recipientUserId: member.userId }, ...BROADCAST] },
       orderBy,
       take,
       skip,
@@ -24,8 +34,8 @@ export class NotificationsRepository {
     return this.prisma.notification.findUnique({ where: { id } });
   }
 
-  recipientOf(id: string): Promise<{ recipientFamilyId: string | null } | null> {
-    return this.prisma.notification.findUnique({ where: { id }, select: { recipientFamilyId: true } });
+  recipientOf(id: string): Promise<{ recipientFamilyId: string | null; recipientUserId: string | null } | null> {
+    return this.prisma.notification.findUnique({ where: { id }, select: { recipientFamilyId: true, recipientUserId: true } });
   }
 
   create(data: Prisma.NotificationUncheckedCreateInput, db: Db = this.prisma): Promise<Notification> {

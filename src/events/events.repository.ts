@@ -38,4 +38,13 @@ export class EventsRepository {
   async hasRegistrations(id: string): Promise<boolean> {
     return (await this.prisma.eventRegistration.count({ where: { eventId: id } })) > 0;
   }
+
+  async hasFinancialOrRosterRecords(id: string): Promise<boolean> {
+    const [contributions, expenses, roster] = await Promise.all([
+      this.prisma.eventContribution.count({ where: { eventId: id } }),
+      this.prisma.eventExpense.count({ where: { eventId: id } }),
+      this.prisma.eventRoster.count({ where: { eventId: id } }),
+    ]);
+    return contributions + expenses + roster > 0;
+  }
 }
