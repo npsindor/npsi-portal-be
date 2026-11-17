@@ -30,7 +30,7 @@ const pending = applicationRow({
 });
 
 const build = (application = pending, fee: { id: string; paymentStatus: string | null } | null = null, studentRows: ReturnType<typeof studentRow>[] = []) => {
-  const applications = fakeModelRepo(applicationRow, [{ ...application }]);
+  const applications = { ...fakeModelRepo(applicationRow, [{ ...application }]), linkToAccount: mock.fn(async (_id: string, _email: string) => {}) };
   const families = fakeModelRepo(familyRow);
   families.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-FAM-000023"]);
   const familyMembers = fakeModelRepo(familyMemberRow);
@@ -64,7 +64,7 @@ const build = (application = pending, fee: { id: string; paymentStatus: string |
 
 describe("ApplicationReviewService", () => {
   test("approve: ACTIVE family and members from the application, approved, notified, invited", async () => {
-    const { service, families, familyMembers, notifications, auth } = build();
+    const { service, applications, families, familyMembers, notifications, auth } = build();
     const result = await service.review("app-1", { decision: "APPROVED", lang: "en" });
     assert.deepEqual(
       [result.family?.familyId, result.family?.status, result.family?.headName, result.family?.memberCount, result.family?.applicationId],
@@ -83,6 +83,8 @@ describe("ApplicationReviewService", () => {
     assert.deepEqual([notifications.stored[0].recipientFamilyId, notifications.stored[0].type], ["NPSI-FAM-000024", "Approval"]);
     assert.match(notifications.stored[0].message, /NPSI-FAM-000024/);
     assert.deepEqual(auth.invite.mock.calls[0].arguments[0], { email: "ram@example.com", role: "user", fullName: "Ram", phone: "9876500001" });
+    // The new login owns the application, so it shows under the applicant's own registrations.
+    assert.deepEqual(applications.linkToAccount.mock.calls[0].arguments, ["app-1", "ram@example.com"]);
   });
   test("reject / correction: remarks required, recorded and sent to the applicant; nothing else created", async () => {
     const { service, families, notifications, auth } = build();

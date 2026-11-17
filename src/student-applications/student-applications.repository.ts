@@ -34,6 +34,13 @@ export class StudentApplicationsRepository {
     return count ? this.findById(id, db) : null;
   }
 
+  // A public application gets its login only when approved (the invite): link it to the login with its email so it
+  // shows under the applicant's own registrations. An application that already has an owner keeps it.
+  async linkToAccount(id: string, email: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({ where: { email: email.trim().toLowerCase() }, select: { id: true } });
+    if (user) await this.prisma.studentApplication.updateMany({ where: { id, userId: null }, data: { userId: user.id } });
+  }
+
   // Deleting an id that doesn't exist is not an error.
   async delete(id: string): Promise<void> {
     await this.prisma.studentApplication.deleteMany({ where: { id } });

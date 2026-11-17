@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import type { AuthService } from "../auth/auth.service.js";
 import type { ApplicantNotifier } from "../common/messaging/applicant-notifier.service.js";
 import type { PrismaService } from "../database/prisma.service.js";
@@ -24,7 +24,7 @@ const pending = studentApplicationRow({
 });
 
 const build = (application = pending, accounts?: FakeAccountRecords) => {
-  const applications = fakeModelRepo(studentApplicationRow, [{ ...application }]);
+  const applications = { ...fakeModelRepo(studentApplicationRow, [{ ...application }]), linkToAccount: mock.fn(async (_id: string, _email: string) => {}) };
   const students = fakeModelRepo(studentRow);
   students.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-STU-000011"]);
   const notifications = fakeModelRepo(notificationRow);
@@ -38,7 +38,7 @@ const build = (application = pending, accounts?: FakeAccountRecords) => {
     as<TransactionsRepository>(fakeFees()),
     as<ApplicantNotifier>(fakeNotifier()),
   );
-  return { service, students, notifications, auth };
+  return { service, applications, students, notifications, auth };
 };
 
 describe("StudentApplicationReviewService", () => {
@@ -58,7 +58,7 @@ describe("StudentApplicationReviewService", () => {
   });
 
   test("approve: ACTIVE student from the application, approved, notified, invited with the guardian's mobile", async () => {
-    const { service, notifications, auth } = build();
+    const { service, applications, notifications, auth } = build();
     const result = await service.review("sa-1", { decision: "APPROVED" });
     assert.deepEqual(
       [result.student?.studentId, result.student?.status, result.student?.studentName, result.student?.dob, result.student?.applicationId],
@@ -67,6 +67,7 @@ describe("StudentApplicationReviewService", () => {
     assert.deepEqual([result.application.status, result.application.resultingStudentId], ["APPROVED", "NPSI-STU-000012"]);
     assert.deepEqual([notifications.stored[0].recipientFamilyId, notifications.stored[0].type], ["NPSI-STU-000012", "Approval"]);
     assert.deepEqual(auth.invite.mock.calls[0].arguments[0], { email: "asha@example.com", role: "user", fullName: "Asha", phone: "9876500009" });
+    assert.deepEqual(applications.linkToAccount.mock.calls[0].arguments, ["sa-1", "asha@example.com"]);
   });
   test("reject / correction need remarks and notify the applicant", async () => {
     const { service, students, notifications } = build();
