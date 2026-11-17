@@ -9,6 +9,7 @@ import { AppConfigModule } from "./config/config.module.js";
 import { ContactInfoModule } from "./contact-info/contact-info.module.js";
 import { DatabaseModule } from "./database/database.module.js";
 import { EventFinanceModule } from "./event-finance/event-finance.module.js";
+import { EventMembersModule } from "./event-members/event-members.controller.js";
 import { EventRegistrationsModule } from "./event-registrations/event-registrations.module.js";
 import { EventsModule } from "./events/events.module.js";
 import { FamiliesModule } from "./families/families.module.js";
@@ -26,6 +27,7 @@ import { RoomHuntingModule } from "./room-hunting/room-hunting.controller.js";
 import { RulesModule } from "./rules/rules.module.js";
 import { SafarModule } from "./safar-saathi/safar.controller.js";
 import { SagunModule } from "./sagun/sagun.controller.js";
+import { SagunCardsModule } from "./sagun-cards/sagun-cards.controller.js";
 import { SamitiMembersModule } from "./samiti-members/samiti-members.module.js";
 import { SamitisModule } from "./samitis/samitis.module.js";
 import { SearchModule } from "./search/search.controller.js";
@@ -49,6 +51,8 @@ import { UploadsModule } from "./uploads/uploads.module.js";
     SehatModule,
     SafarModule,
     RoomHuntingModule,
+    SagunCardsModule,
+    EventMembersModule,
     SearchModule,
     DatabaseModule,
     CommonModule,

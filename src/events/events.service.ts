@@ -62,6 +62,7 @@ const toCreateData = (input: CreateEventDto): Omit<Prisma.EventUncheckedCreateIn
   titleHi: input.titleHi,
   descriptionHi: input.descriptionHi,
   category: input.category,
+  teamJoiningOpen: input.teamJoiningOpen,
 });
 
 const toUpdateData = (input: UpdateEventDto): Prisma.EventUncheckedUpdateInput => ({
@@ -86,4 +87,5 @@ const toUpdateData = (input: UpdateEventDto): Prisma.EventUncheckedUpdateInput =
   titleHi: input.titleHi,
   descriptionHi: input.descriptionHi,
   category: input.category,
+  teamJoiningOpen: input.teamJoiningOpen,
 });

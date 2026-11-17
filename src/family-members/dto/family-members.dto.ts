@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { Type } from "class-transformer";
 import { IsArray, IsIn, IsOptional, IsString, ValidateNested } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalChoice, OptionalBirthDate, OptionalText, RequiredText } from "../../common/validation/fields.js";
+import { OptionalBirthDate, OptionalChoice, OptionalText, RequiredText } from "../../common/validation/fields.js";
 
 export const FAMILY_MEMBER_STATUSES = ["PENDING", "ACTIVE", "INACTIVE"] as const;
 

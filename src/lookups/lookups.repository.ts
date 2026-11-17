@@ -54,12 +54,17 @@ export class LookupsRepository {
     ]);
   }
 
-  async activeCounts(): Promise<{ families: number; members: number }> {
-    const [families, members] = await Promise.all([
+  // Only what an admin has approved: approving an application makes the family / student ACTIVE and
+  // approving a Sagun Bandhan profile makes it APPROVED, so each count rises at that moment (and falls
+  // when a record is deactivated, rejected or deleted).
+  async activeCounts(): Promise<{ families: number; members: number; students: number; sagunProfiles: number }> {
+    const [families, members, students, sagunProfiles] = await Promise.all([
       this.prisma.family.count({ where: { status: "ACTIVE" } }),
       this.prisma.familyMember.count({ where: { status: "ACTIVE" } }),
+      this.prisma.student.count({ where: { status: "ACTIVE" } }),
+      this.prisma.sagunProfile.count({ where: { status: "APPROVED" } }),
     ]);
-    return { families, members };
+    return { families, members, students, sagunProfiles };
   }
 
   // Duplicate-contact checks on the stored digits (last 10 of the mobile, kept

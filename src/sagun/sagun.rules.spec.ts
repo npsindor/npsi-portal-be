@@ -100,7 +100,7 @@ test("eligibility uses completed years and blocks underage profiles and invalid 
   assert.throws(() => sanitizeData({ ...complete(), dob: "2020-01-01" }, sagunFields, true));
   assert.throws(() => sanitizeData({ ...complete(), dob: "1995-02-30" }, sagunFields, true));
 });
-test("private Sagun uploads are typed by their bytes, not the browser's MIME or file name", () => {
+test("private Shagun uploads are typed by their bytes, not the browser's MIME or file name", () => {
   const webp = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x04, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
   const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16]);
   assert.equal(sagunUploadMime(webp, "PHOTO", "image/webp", "portrait.webp"), "image/webp");
@@ -113,7 +113,7 @@ test("private Sagun uploads are typed by their bytes, not the browser's MIME or 
   assert.equal(sagunUploadMime(Buffer.from("%PDF-1.4"), "PHOTO", "application/pdf", "portrait.pdf"), null);
   assert.equal(sagunUploadMime(Buffer.from("%PDF-1.4"), "IDENTITY", "application/pdf", "aadhaar.pdf"), "application/pdf");
 });
-test("optional Sagun is never mandatory; amounts cannot be negative and must be voluntary", () => {
+test("optional Shagun is never mandatory; amounts cannot be negative and must be voluntary", () => {
   assert.ok(sanitizeData(complete(), sagunFields, true));
   assert.throws(() => sanitizeData({ ...complete(), cashSagun: 100 }, sagunFields, true));
   assert.ok(
@@ -150,7 +150,7 @@ test("configuration cannot remove consent/eligibility protection or require cust
   assert.equal(fields.find((field) => field.key === "identityFileId")?.required, true);
   assert.equal(fields.find((field) => field.key === "college")?.required, true);
 });
-test("member-facing fields exclude full birth date, contact, income, addresses, identity and Sagun", () => {
+test("member-facing fields exclude full birth date, contact, income, addresses, identity and Shagun", () => {
   for (const key of [
     "dob",
     "birthTime",

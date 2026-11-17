@@ -52,6 +52,11 @@ export class CreateContactInfoDto {
   @ApiPropertyOptional({ enum: ["en", "hi"], default: "en" })
   @IsIn(["en", "hi"])
   lang: "en" | "hi" = "en";
+
+  @ApiPropertyOptional({ description: "reCAPTCHA v3 token (required when reCAPTCHA is configured)" })
+  @IsOptional()
+  @IsString()
+  recaptchaToken?: string;
 }
 
 export class ContactInfoThanksVo {

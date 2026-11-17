@@ -1,7 +1,7 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalChoice, OptionalBirthDate, OptionalDate, OptionalText } from "../../common/validation/fields.js";
+import { OptionalBirthDate, OptionalChoice, OptionalDate, OptionalText } from "../../common/validation/fields.js";
 import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 
 export const STUDENT_APPLICATION_STATUSES = ["DRAFT", "SUBMITTED", "PENDING_VERIFICATION", "CORRECTION_REQUIRED", "APPROVED", "REJECTED"] as const;

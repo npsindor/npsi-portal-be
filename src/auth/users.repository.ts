@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { type LoginAccount, loginAccount } from "../common/eligibility/login-account.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { PrismaService } from "../database/prisma.service.js";
 
@@ -7,6 +8,7 @@ const DAY = 24 * 60 * MINUTE;
 export const OTP_TTL = 10 * MINUTE;
 export const SESSION_TTL = 30 * DAY;
 export const RESET_TTL = 30 * MINUTE;
+export const RESET_COOLDOWN = 5 * MINUTE;
 export const INVITE_TTL = 7 * DAY;
 const fromNow = (ms: number): Date => new Date(Date.now() + ms);
 
@@ -55,6 +57,11 @@ export class UsersRepository {
     return this.prisma.user.findFirst({ where: { email }, select: { id: true } });
   }
 
+  // Family Member / Student / admin / no registration yet, from the registration records.
+  loginAccount(user: UserRow): Promise<LoginAccount> {
+    return loginAccount(this.prisma, user);
+  }
+
   findForLogin(identifier: string, phone: string): Promise<UserRow | null> {
     return this.prisma.user.findFirst({ where: { OR: [{ email: identifier }, { phone }] }, orderBy: { createdAt: "asc" } });
   }
@@ -84,11 +91,14 @@ export class UsersRepository {
     ]);
   }
 
-  async setResetTokenByEmail(email: string, tokenHash: string): Promise<void> {
-    await this.prisma.user.updateMany({
-      where: { email },
+  // Stores a new reset token unless one was issued in the last RESET_COOLDOWN, so nobody can flood a
+  // member's inbox with reset emails (the earlier link stays valid). True when a new token was stored.
+  async setResetTokenByEmail(email: string, tokenHash: string): Promise<boolean> {
+    const { count } = await this.prisma.user.updateMany({
+      where: { email, OR: [{ resetTokenExpiresAt: null }, { resetTokenExpiresAt: { lt: fromNow(RESET_TTL - RESET_COOLDOWN) } }] },
       data: { resetTokenHash: tokenHash, resetTokenExpiresAt: fromNow(RESET_TTL) },
     });
+    return count > 0;
   }
 
   // Sets the new password for the holder of a valid reset token and logs out

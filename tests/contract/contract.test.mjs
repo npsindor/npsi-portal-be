@@ -27,6 +27,9 @@ const assertRecord = (record) => {
 before(setup, { timeout: 120000 });
 after(teardown);
 
+// The session token from the httpOnly cookie a login sets (it is never in the response body).
+const sessionToken = (res) => /npsi_session=([0-9a-f]{64})/.exec([res.headers["set-cookie"]].flat().join(";"))?.[1];
+
 describe("health", () => {
   test("reports ok, database and environment", async () => {
     const res = await api("health");
@@ -37,14 +40,27 @@ describe("health", () => {
 
 describe("cross-cutting", () => {
   test("allowed CORS origin is reflected with credentials", async () => {
-    const res = await api("health").set("Origin", "https://test.npsindore.org");
-    assert.equal(res.headers["access-control-allow-origin"], "https://test.npsindore.org");
-    assert.equal(res.headers["access-control-allow-credentials"], "true");
+    // FRONTEND_URL is http://localhost:5173 here; localhost is also allowed outside the test and production servers.
+    for (const origin of ["http://localhost:5173", "http://localhost:3000"]) {
+      const res = await api("health").set("Origin", origin);
+      assert.equal(res.headers["access-control-allow-origin"], origin);
+      assert.equal(res.headers["access-control-allow-credentials"], "true");
+    }
   });
-  test("disallowed CORS origin is rejected with the error format", async () => {
-    const res = await api("health").set("Origin", "https://evil.example.com");
-    assertError(res, 500, "Not allowed by CORS");
-    assertError(await api("health").set("Origin", "https://someone-else.hostingersite.com"), 500, "Not allowed by CORS");
+  test("any other origin, including sibling npsindore.org subdomains, is refused with the error format", async () => {
+    for (const origin of [
+      "https://evil.example.com",
+      "https://someone-else.hostingersite.com",
+      "https://anything.npsindore.org",
+      "https://evilnpsindore.org",
+    ]) {
+      const res = await api("health").set("Origin", origin);
+      assertError(res, 403, "Not allowed by CORS");
+      assert.equal(res.headers["access-control-allow-origin"], undefined);
+    }
+  });
+  test("API responses are not cacheable", async () => {
+    assert.equal((await api("health")).headers["cache-control"], "no-store");
   });
   test("JSON bodies over 2 MB are rejected", async () => {
     const res = await api("login").send({ email: "x".repeat(2.2 * 1024 * 1024), password: "x" });
@@ -58,10 +74,10 @@ describe("cross-cutting", () => {
 });
 
 describe("stats (before any writes)", () => {
-  test("counts active families and members", async () => {
+  test("counts approved families, members, students and Shagun Bandhan profiles", async () => {
     const res = await api("stats");
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { families: 2, members: 2 });
+    assert.deepEqual(res.body, { families: 2, members: 2, students: 1, sagunProfiles: 0 });
   });
 });
 
@@ -70,31 +86,31 @@ describe("auth: register", () => {
     assertError(
       await api("register").send({ email: "new@test.local", phone: "9811111111" }),
       400,
-      "Email and password are required; password must be at least 6 characters.",
+      "Email and password are required; password must be at least 8 characters.",
     );
     assertError(
       await api("register").send({ email: "new@test.local", password: "12345", phone: "9811111111" }),
       400,
-      "Email and password are required; password must be at least 6 characters.",
+      "Email and password are required; password must be at least 8 characters.",
     );
   });
   test("400 when phone is invalid", async () => {
     assertError(
-      await api("register").send({ email: "new@test.local", password: "secret1", phone: "12345" }),
+      await api("register").send({ email: "new@test.local", password: "secret12", phone: "12345" }),
       400,
       "A valid 10-digit mobile number is required.",
     );
   });
   test("409 when phone is already registered", async () => {
     assertError(
-      await api("register").send({ email: "new@test.local", password: "secret1", phone: "9100000002" }),
+      await api("register").send({ email: "new@test.local", password: "secret12", phone: "9100000002" }),
       409,
       "This mobile number is already registered.",
     );
   });
   test("409 when email is already registered", async () => {
     assertError(
-      await api("register").send({ email: "member@test.local", password: "secret1", phone: "9811111110" }),
+      await api("register").send({ email: "member@test.local", password: "secret12", phone: "9811111110" }),
       409,
       "An account with this email already exists.",
     );
@@ -102,7 +118,7 @@ describe("auth: register", () => {
   test("201 creates an unverified account and returns the public user", async () => {
     const res = await api("register").send({
       email: "  New.User@Test.Local ",
-      password: "secret1",
+      password: "secret12",
       fullName: " New User ",
       phone: "9811111111",
       recaptchaToken: "ignored",
@@ -133,10 +149,10 @@ describe("auth: OTP", () => {
   test("200 verifies the account and returns a session", async () => {
     const res = await api("verifyOtp").send({ email: "OTP@test.local", otpCode: OTP_CODE });
     assert.equal(res.status, 200);
-    assert.deepEqual(keys(res.body), ["accessToken", "user"]);
-    assert.match(res.body.accessToken, /^[0-9a-f]{64}$/);
+    assert.deepEqual(keys(res.body), ["user"], "the token travels only in the httpOnly cookie");
+    assert.match(sessionToken(res), /^[0-9a-f]{64}$/);
     assert.equal(res.body.user.email, "otp@test.local");
-    const me = await api("me", [], { token: res.body.accessToken });
+    const me = await api("me", [], { token: sessionToken(res) });
     assert.equal(me.status, 200);
   });
   test("resend: 400 without email", async () => {
@@ -169,7 +185,7 @@ describe("auth: login", () => {
     for (const body of [{ email: "LOGIN@test.local" }, { phone: "+91 91000 00006" }, { username: "login@test.local" }]) {
       const res = await api("login").send({ ...body, password: PASSWORDS.login });
       assert.equal(res.status, 200, JSON.stringify(body));
-      assert.deepEqual(keys(res.body), ["accessToken", "user"]);
+      assert.deepEqual(keys(res.body), ["user"]);
       assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
       assert.equal(res.body.user.id, IDS.loginUser);
     }
@@ -203,6 +219,15 @@ describe("auth: me and logout", () => {
   test("401 without a token", async () => {
     assertError(await api("me"), 401, "Authentication required.");
   });
+  test("GET /auth/sessions/current: 200 with user null when not logged in or expired, the user when logged in", async () => {
+    const anonymous = await api("currentSession");
+    assert.deepEqual([anonymous.status, anonymous.body], [200, { user: null }]);
+    const expired = await api("currentSession", [], { token: TOKENS.expired });
+    assert.deepEqual([expired.status, expired.body], [200, { user: null }]);
+    const member = await api("currentSession", [], { token: TOKENS.member });
+    assert.deepEqual([member.status, member.body.user.email], [200, "member@test.local"]);
+    assert.equal(member.body.user.passwordHash, undefined);
+  });
   test("401 with an expired session", async () => {
     assertError(await api("me", [], { token: TOKENS.expired }), 401, "Authentication required.");
   });
@@ -213,10 +238,10 @@ describe("auth: me and logout", () => {
   });
   test("logout returns 204 and ends the session", async () => {
     const login = await api("login").send({ email: "login@test.local", password: PASSWORDS.login });
-    const res = await api("logout", [], { token: login.body.accessToken });
+    const res = await api("logout", [], { token: sessionToken(login) });
     assert.equal(res.status, 204);
     assert.equal(res.text, "");
-    assertError(await api("me", [], { token: login.body.accessToken }), 401, "Authentication required.");
+    assertError(await api("me", [], { token: sessionToken(login) }), 401, "Authentication required.");
   });
   // Without a token there is no session to end: still a 204, nothing changes.
   test("logout without a token is a no-op 204", async () => {
@@ -243,7 +268,7 @@ describe("auth: password reset", () => {
     assertError(
       await api("resetPassword").send({ resetToken: "abc", newPassword: "123" }),
       400,
-      "A valid reset token and password of at least 6 characters are required.",
+      "A valid reset token and password of at least 8 characters are required.",
     );
   });
   test("confirm: 400 for an invalid token", async () => {
@@ -270,7 +295,7 @@ describe("auth: change password", () => {
     assertError(
       await api("changePassword", [], { token: TOKENS.other }).send({ currentPassword: PASSWORDS.member, newPassword: "123" }),
       400,
-      "New password must be at least 6 characters.",
+      "New password must be at least 8 characters.",
     );
   });
   test("401 when the current password is wrong", async () => {
@@ -315,8 +340,8 @@ describe("auth: profile", () => {
   test("PATCH /auth/me: name, mobile and an uploaded photo; outside images and taken mobiles refused", async () => {
     assertError(await api("updateMe").send({ fullName: "X" }), 401, "Authentication required.");
     const png = Buffer.from(
-      "89504e470d0a1a0a0000000d4948445200000001000000010806000000" + "1f15c4890000000d49444154789c63f8cfc0f01f0005000201" + "5f8f9d2a0000000049454e44ae426082",
-      "hex",
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC",
+      "base64",
     );
     const upload = await api("upload").attach("file", png, { filename: "me.png", contentType: "image/png" });
     assert.equal(upload.status, 201);
@@ -332,6 +357,11 @@ describe("auth: profile", () => {
     );
     assertError(await api("updateMe", [], { token: TOKENS.noFamily }).send({ phone: "123" }), 400, "A valid 10-digit mobile number is required.");
     assertError(await api("updateMe", [], { token: TOKENS.noFamily }).send({ phone: "9100000002" }), 409, "This mobile number is already registered.");
+    assertError(
+      await api("updateMe", [], { token: TOKENS.noFamily }).send({ phone: "9000000077" }),
+      400,
+      "Verify the new mobile number with the code sent to it.",
+    );
   });
 });
 
@@ -424,7 +454,7 @@ describe("public lookups", () => {
 });
 
 describe("uploads", () => {
-  const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64");
   test("400 without a file", async () => {
     assertError(await api("upload"), 400, "No file uploaded.");
   });
@@ -706,15 +736,29 @@ describe("entities: create", () => {
       400,
       'The "message" field cannot contain < or > characters.',
     );
+    assertError(
+      await api("create", ["Feedback"], { token: TOKENS.member }).send({ memberName: "M", message: "Hi", attachmentUrl: "javascript:alert(1)" }),
+      400,
+      "The attachment must be an image uploaded to the portal.",
+    );
+    assertError(await api("create", ["Feedback"], { token: TOKENS.member }).send({ memberName: "M", rating: 99999 }), 400, "Rating must be between 1 and 5.");
+    // Who sent it and its workflow state come from the session and the server, not the request.
     const res = await api("create", ["Feedback"], { token: TOKENS.member }).send({
       memberName: "M",
       message: "Hi",
-      email: "member@test.local",
+      email: "other@test.local",
+      familyId: FAMILY2,
+      status: "Resolved",
+      submittedDate: "2020-01-01T00:00:00.000Z",
       internalNote: "stripped",
     });
     assert.equal(res.status, 201);
     assert.equal(res.body.feedbackId, "FB-000002");
     assert.equal(res.body.internalNote, null);
+    assert.equal(res.body.email, "member@test.local");
+    assert.equal(res.body.familyId, FAMILY1);
+    assert.equal(res.body.status, "Submitted");
+    assert.notEqual(res.body.submittedDate, "2020-01-01T00:00:00.000Z");
   });
   test("event registration: ownership, event lookup and server-side fees", async () => {
     const base = { registrationId: "REG-1", eventId: IDS.event, familyId: FAMILY1, memberIds: [IDS.member1], totalFee: 0, paymentStatus: "SUCCESS" };
@@ -1207,7 +1251,7 @@ describe("me: event registrations", () => {
 });
 
 describe("sessions: several devices", () => {
-  const login = async () => (await api("login").send({ email: "devices@test.local", password: PASSWORDS.member })).body.accessToken;
+  const login = async () => sessionToken(await api("login").send({ email: "devices@test.local", password: PASSWORDS.member }));
   const me = async (token) => (await api("me", [], { token })).status;
 
   test("two devices stay logged in; logging out one leaves the other", async () => {

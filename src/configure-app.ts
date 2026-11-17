@@ -5,6 +5,7 @@ import { DocumentBuilder, type OpenAPIObject, SwaggerModule } from "@nestjs/swag
 import cors from "cors";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
+import { ApiError } from "./common/filters/api-error.js";
 import { HttpErrorFilter, toErrorResponse } from "./common/filters/http-error.filter.js";
 import { logServerError, type RequestWithId, requestLogger } from "./common/logging/request-logger.js";
 import { AppConfigService } from "./config/app-config.service.js";
@@ -12,11 +13,52 @@ import { AppConfigService } from "./config/app-config.service.js";
 export const API_PREFIX = "api/v1";
 export const DOCS_PATH = "api/docs";
 
-// Only this project's own frontends: the live domain and its subdomains, the
-// Hostinger preview domains, and local dev.
-// The portal's own sites (npsindore.org and its subdomains) and local development.
-// Not the shared *.hostingersite.com domain: any Hostinger customer's site lives there.
-const ALLOWED_ORIGIN_PATTERN = /^https:\/\/([a-z0-9-]+\.)*npsindore\.org$|^http:\/\/localhost(:\d+)?$/i;
+// Sites whose scripts may call the API with the member's cookie: exactly this environment's frontend
+// (FRONTEND_URL, with and without "www."), any extra origins listed in CORS_ORIGINS, and localhost on
+// developer machines only. Never a wildcard: sibling subdomains are "same-site", so SameSite=Strict
+// would not protect members from a script on a forgotten or third-party-hosted *.npsindore.org page.
+const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+export const CORS_REJECTED = "Not allowed by CORS";
+
+const originOf = (url: string): string | null => {
+  try {
+    return new URL(url).origin.toLowerCase();
+  } catch {
+    return null;
+  }
+};
+
+export const allowedOrigins = (frontendUrl: string, extra: string | undefined): Set<string> => {
+  const origins = new Set<string>();
+  for (const url of [frontendUrl, ...(extra ?? "").split(",")]) {
+    const origin = originOf(url.trim());
+    if (!origin) continue;
+    origins.add(origin);
+    const { protocol, host } = new URL(origin);
+    origins.add(host.startsWith("www.") ? `${protocol}//${host.slice(4)}` : `${protocol}//www.${host}`);
+  }
+  return origins;
+};
+
+export const isAllowedOrigin = (origin: string, allowed: Set<string>, appEnv: string): boolean =>
+  allowed.has(origin.toLowerCase()) || (!["production", "test"].includes(appEnv) && LOCAL_ORIGIN.test(origin));
+
+// Deeply nested JSON (thousands of levels) overflows the stack in validation and serialisation.
+// No request of this API nests anywhere near this deep; checked without recursion.
+export const MAX_JSON_DEPTH = 64;
+export const jsonDepthExceeds = (value: unknown, max = MAX_JSON_DEPTH): boolean => {
+  const stack: Array<[unknown, number]> = [[value, 1]];
+  while (stack.length > 0) {
+    const [current, depth] = stack.pop() as [unknown, number];
+    if (current === null || typeof current !== "object") continue;
+    if (depth > max) return true;
+    for (const child of Object.values(current)) if (child !== null && typeof child === "object") stack.push([child, depth + 1]);
+  }
+  return false;
+};
+const limitJsonDepth = (request: Request, _response: Response, next: NextFunction): void => {
+  next(jsonDepthExceeds(request.body) ? new ApiError(400, "The request body is nested too deeply.") : undefined);
+};
 
 // Errors raised by Express middleware before Nest's router (CORS rejection,
 // invalid or oversized JSON) get the same `{ error }` body as everything else.
@@ -36,19 +78,26 @@ export const configureApp = (app: NestExpressApplication): void => {
   // https upload URLs correct without letting clients spoof X-Forwarded-For.
   app.set("trust proxy", config.trustProxy);
   app.use(requestLogger);
+  // API responses carry member data and must not be kept by browsers or shared proxies; uploads are cacheable.
+  app.use(`/${API_PREFIX}`, (_request: Request, response: Response, next: NextFunction) => {
+    response.setHeader("Cache-Control", "no-store");
+    next();
+  });
   // Security headers. Uploaded images are served to the frontend's own origin
   // (npsindore.org loads them from the API domain), so they must be embeddable cross-origin.
   app.use(helmet({ crossOriginResourcePolicy: { policy: "cross-origin" } }));
+  const origins = allowedOrigins(config.frontendUrl, process.env.CORS_ORIGINS);
   app.use(
     cors({
       origin: (origin, callback) => {
-        if (!origin || ALLOWED_ORIGIN_PATTERN.test(origin)) return callback(null, true);
-        callback(new Error("Not allowed by CORS"));
+        if (!origin || isAllowedOrigin(origin, origins, config.appEnv)) return callback(null, true);
+        callback(new ApiError(403, CORS_REJECTED));
       },
       credentials: true,
     }),
   );
   app.use(express.json({ limit: "2mb" }));
+  app.use(limitJsonDepth);
   app.use(expressErrorHandler);
   // Each Hostinger deploy is a new version folder; uploads stored inside it vanish on the next deploy.
   if (["production", "test"].includes(config.appEnv) && !process.env.UPLOADS_DIR) {

@@ -1,11 +1,12 @@
 import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
+import { APPROVAL_EMAIL_IS_FAMILY_LOGIN, bindsToFamily, loginAccount, loginAccountForEmail } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { ApplicantNotifier, type Outbound } from "../common/messaging/applicant-notifier.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { createWithDisplayId } from "../common/utils/display-ids.js";
-import { PrismaService } from "../database/prisma.service.js";
+import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Student, StudentApplication } from "../generated/prisma/client.js";
 import { asLang, type NotificationKey, userNotification, workflowNotification } from "../notifications/notification-texts.js";
 import { NotificationsRepository } from "../notifications/notifications.repository.js";
@@ -55,6 +56,7 @@ export class StudentApplicationReviewService {
       }
       const fee = await this.transactions.feeFor(application.applicationId, tx);
       if (fee) assertFeeSettled(fee.paymentStatus);
+      if (await this.attachesToFamilyLogin(application, tx)) throw new ApiError(409, APPROVAL_EMAIL_IS_FAMILY_LOGIN);
       let linkedMembershipId = application.linkedMembershipId;
       if (application.linkedMemberId) {
         const linkedMember = await tx.familyMember.findFirst({
@@ -127,5 +129,22 @@ export class StudentApplicationReviewService {
         .catch((error: unknown) => console.error("[approval] invite failed:", error instanceof Error ? error.message : error));
     }
     return { application: toStudentApplicationVo(application), student: student ? toStudentVo(student) : null };
+  }
+
+  // Approving links the new student to a login: the applicant's own account, or the account the invitation finds by
+  // email. If that login is a Family Member account the student would be attached to it (role crossover), so the admin
+  // must ask for the student's own email instead. A student linked to a family member may use that member's own email.
+  private async attachesToFamilyLogin(application: StudentApplication, tx: Db): Promise<boolean> {
+    if (application.userId) {
+      const owner = await tx.user.findUnique({ where: { id: application.userId } });
+      return owner ? bindsToFamily(await loginAccount(tx, owner)) : false;
+    }
+    const email = application.email?.trim().toLowerCase();
+    if (!email) return false;
+    if (application.linkedMemberId) {
+      const member = await tx.familyMember.findFirst({ where: { id: application.linkedMemberId }, select: { email: true } });
+      if (member?.email?.trim().toLowerCase() === email) return false;
+    }
+    return bindsToFamily(await loginAccountForEmail(tx, email));
   }
 }

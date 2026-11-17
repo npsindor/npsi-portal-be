@@ -29,11 +29,16 @@ export class SehatProviders {
     const link = new URL("/medical", this.config.frontendUrl).href;
     // Notifications contain no medicine name, medical information, or member contact.
     const text = hi
-      ? `सेहत साथी में आपके लिए नई सूचना है। निजी विवरण देखने के लिए लॉगिन करें: ${link}`
-      : `You have a Sehat Saathi update. Sign in to view private details: ${link}`;
+      ? `स्वास्थ्य सहयोग में आपके लिए नई सूचना है। निजी विवरण देखने के लिए लॉगिन करें: ${link}`
+      : `You have a Health Support update. Sign in to view private details: ${link}`;
     if (channel === "EMAIL") {
       if (!this.capabilities().email || !recipient.email) return { status: "UNAVAILABLE", providerId: null };
-      const result = await this.mail.send({ to: recipient.email, subject: hi ? "सेहत साथी — सूचना" : "Sehat Saathi — update", text, html: `<p>${text}</p>` });
+      const result = await this.mail.send({
+        to: recipient.email,
+        subject: hi ? "स्वास्थ्य सहयोग — सूचना" : "Health Support — update",
+        text,
+        html: `<p>${text}</p>`,
+      });
       return { status: (result as { skipped?: boolean })?.skipped ? "UNAVAILABLE" : "ACCEPTED", providerId: null };
     }
     if (!this.capabilities().whatsapp || !recipient.phone) return { status: "UNAVAILABLE", providerId: null };

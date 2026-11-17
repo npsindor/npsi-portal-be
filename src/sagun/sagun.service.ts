@@ -8,6 +8,7 @@ import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, SagunProfile } from "../generated/prisma/client.js";
 import { indiaToday } from "../safar-saathi/safar.rules.js";
+import { ensureDigitalCard } from "../sagun-cards/sagun-card.records.js";
 import type {
   SagunAdminEditDto,
   SagunAdminListDto,
@@ -35,6 +36,15 @@ import {
 } from "./sagun.eligibility.js";
 import { SAGUN_CITIES, sagunFields } from "./sagun.fields.js";
 import { ageOf, contactKeys, effectiveFields, fileKinds, type ProfileData, pick, publicKeys, sagunUploadMime, sanitizeData } from "./sagun.rules.js";
+
+// Private Sagun storage (photos, documents, generated booklets): never inside the public uploads folder or a web root.
+export function sagunPrivateRoot(uploadsDir: string) {
+  const root = path.resolve(process.env.SAGUN_PRIVATE_DIR || path.join(path.dirname(uploadsDir), `${path.basename(uploadsDir)}-sagun-private`));
+  if (root.split(path.sep).some((part) => ["public_html", "htdocs", "wwwroot"].includes(part))) throw new ApiError(500, "SAGUN_PRIVATE_STORAGE");
+  const relative = path.relative(path.resolve(uploadsDir), root);
+  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) throw new ApiError(500, "SAGUN_PRIVATE_STORAGE");
+  return root;
+}
 
 @Injectable()
 export class SagunService {
@@ -337,15 +347,23 @@ export class SagunService {
     const actualOwner = existing?.userId || owner.id;
     if (
       actualOwner !== user.id &&
-      ["candidateConsent", "displayConsent", "shareContact", "termsConsent", "matrimonialConsent", "accuracyConsent", "voluntaryConsent"].some(
-        (key) => data[key] === true && old[key] !== true,
-      )
+      [
+        "candidateConsent",
+        "displayConsent",
+        "shareContact",
+        "bookletContactConsent",
+        "termsConsent",
+        "matrimonialConsent",
+        "accuracyConsent",
+        "voluntaryConsent",
+      ].some((key) => data[key] === true && old[key] !== true)
     )
       throw new ApiError(400, "SAGUN_OWNER_CONSENT");
     const status = submit ? (settings.approvalRequired ? "SUBMITTED" : "APPROVED") : "DRAFT";
     const now = new Date();
+    let saved: SagunProfile;
     try {
-      return await this.tx(async (tx) => {
+      saved = await this.tx(async (tx) => {
         if (!existing && (await tx.sagunProfile.count({ where: { userId: owner.id } })) >= 10) throw new ApiError(429, "SAGUN_LIMIT");
         const values = {
           ...this.columns(data),
@@ -371,7 +389,9 @@ export class SagunService {
             });
         if (
           existing &&
-          ["candidateConsent", "displayConsent", "shareContact", "termsConsent", "matrimonialConsent", "accuracyConsent"].some((key) => old[key] !== data[key])
+          ["candidateConsent", "displayConsent", "shareContact", "bookletContactConsent", "termsConsent", "matrimonialConsent", "accuracyConsent"].some(
+            (key) => old[key] !== data[key],
+          )
         )
           await this.audit(tx, user, "CONSENT_CHANGED", row.id);
         if (existing && sagunFields.some((field) => field.section === "sagun" && JSON.stringify(old[field.key]) !== JSON.stringify(data[field.key])))
@@ -404,6 +424,13 @@ export class SagunService {
       if ((error as { code?: string }).code === "P2002") throw new ApiError(409, "SAGUN_DUPLICATE");
       throw error;
     }
+    // A submitted profile appears in Admin → Sagun Digital Cards. Done after the commit so a card problem never blocks
+    // the member's submission; the admin list creates any card that is still missing.
+    if (submit)
+      await ensureDigitalCard(this.db, saved.id).catch((error: unknown) =>
+        console.error(JSON.stringify({ event: "sagun_card_create_failed", profileId: saved.id, error: String(error) })),
+      );
+    return saved;
   }
   async review(id: string, input: SagunReviewDto, user: UserRow) {
     this.admin(user);
@@ -813,13 +840,7 @@ export class SagunService {
     return this.settings();
   }
   private privateDir() {
-    const root = path.resolve(
-      process.env.SAGUN_PRIVATE_DIR || path.join(path.dirname(this.config.uploadsDir), `${path.basename(this.config.uploadsDir)}-sagun-private`),
-    );
-    if (root.split(path.sep).some((part) => ["public_html", "htdocs", "wwwroot"].includes(part))) throw new ApiError(500, "SAGUN_PRIVATE_STORAGE");
-    const relative = path.relative(path.resolve(this.config.uploadsDir), root);
-    if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) throw new ApiError(500, "SAGUN_PRIVATE_STORAGE");
-    return root;
+    return sagunPrivateRoot(this.config.uploadsDir);
   }
   // Changing a file sends a submitted/approved profile back to DRAFT, so it needs the same permission as editing.
   private async assertEditable(profile: SagunProfile, user: UserRow) {

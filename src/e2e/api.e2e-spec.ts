@@ -9,10 +9,14 @@ import { api, FAMILY, OTP, PASSWORD, startApp, stopApp, TOKENS } from "../testin
 const V1 = "/api/v1";
 const AUTH_REQUIRED = { error: "Authentication required." };
 const ADMIN_REQUIRED = { error: "Admin access required." };
-const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000001000000010806000000", "hex");
+const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64");
 
 before(startApp, { timeout: 120_000 });
 after(stopApp);
+
+// The session token from the httpOnly cookie a login sets (it is never in the response body).
+const sessionToken = (res: { headers: Record<string, unknown> }): string =>
+  /npsi_session=([0-9a-f]{64})/.exec([res.headers["set-cookie"]].flat().join(";"))?.[1] ?? "";
 
 describe("platform", () => {
   test("GET /health", async () => {
@@ -53,12 +57,12 @@ describe("platform", () => {
 describe("auth", () => {
   test("POST /auth/registrations", async () => {
     assert.deepEqual((await api("post", `${V1}/auth/registrations`).send({ email: "x@e2e.local", phone: "9811111111" })).body, {
-      error: "Email and password are required; password must be at least 6 characters.",
+      error: "Email and password are required; password must be at least 8 characters.",
     });
-    assert.equal((await api("post", `${V1}/auth/registrations`).send({ email: "x@e2e.local", password: "secret1", phone: "9100000002" })).status, 409);
+    assert.equal((await api("post", `${V1}/auth/registrations`).send({ email: "x@e2e.local", password: "secret12", phone: "9100000002" })).status, 409);
     const res = await api("post", `${V1}/auth/registrations`).send({
       email: "New@E2E.local",
-      password: "secret1",
+      password: "secret12",
       phone: "9811111111",
       unknownField: "dropped",
     });
@@ -73,7 +77,8 @@ describe("auth", () => {
     });
     const res = await api("post", `${V1}/auth/otp-verifications`).send({ email: "otp@e2e.local", otpCode: OTP });
     assert.equal(res.status, 200);
-    assert.match(res.body.accessToken, /^[0-9a-f]{64}$/);
+    assert.equal(res.body.accessToken, undefined, "the token travels only in the httpOnly cookie");
+    assert.match(sessionToken(res), /^[0-9a-f]{64}$/);
   });
   test("POST /auth/otps", async () => {
     assert.equal((await api("post", `${V1}/auth/otps`).send({})).status, 400);
@@ -86,7 +91,7 @@ describe("auth", () => {
     });
     const login = await api("post", `${V1}/auth/sessions`).send({ email: "otp@e2e.local", password: PASSWORD });
     assert.equal(login.status, 200);
-    const token = login.body.accessToken as string;
+    const token = sessionToken(login);
     assert.equal((await api("get", `${V1}/auth/me`, token)).status, 200);
     const logout = await api("delete", `${V1}/auth/sessions/current`, token);
     assert.equal(logout.status, 204);
@@ -96,7 +101,7 @@ describe("auth", () => {
   test("POST /auth/password-resets and /confirmations", async () => {
     assert.equal((await api("post", `${V1}/auth/password-resets`).send({})).status, 400);
     assert.deepEqual((await api("post", `${V1}/auth/password-resets`).send({ email: "member@e2e.local" })).body, { ok: true });
-    assert.deepEqual((await api("post", `${V1}/auth/password-resets/confirmations`).send({ resetToken: "nope", newPassword: "123456" })).body, {
+    assert.deepEqual((await api("post", `${V1}/auth/password-resets/confirmations`).send({ resetToken: "nope", newPassword: "12345678" })).body, {
       error: "This reset link is invalid or expired.",
     });
   });
@@ -111,8 +116,12 @@ describe("auth", () => {
   test("PUT /auth/password", async () => {
     assert.deepEqual((await api("put", `${V1}/auth/password`).send({})).body, AUTH_REQUIRED);
     assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: "1" })).status, 400);
-    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: "x", newPassword: "123456" })).status, 401);
-    assert.deepEqual((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: PASSWORD })).body, { ok: true });
+    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: "x", newPassword: "12345678" })).status, 401);
+    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: PASSWORD })).status, 400);
+    assert.deepEqual((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: "Changed@123" })).body, {
+      ok: true,
+    });
+    await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: "Changed@123", newPassword: PASSWORD });
   });
   test("GET /auth/me", async () => {
     assert.deepEqual((await api("get", `${V1}/auth/me`)).body, AUTH_REQUIRED);
@@ -162,7 +171,7 @@ describe("public lookups", () => {
     assert.deepEqual((await api("get", `${V1}/email-availability?email=free@e2e.local`)).body, { taken: false });
   });
   test("GET /stats", async () => {
-    assert.deepEqual((await api("get", `${V1}/stats`)).body, { families: 1, members: 1 });
+    assert.deepEqual((await api("get", `${V1}/stats`)).body, { families: 1, members: 1, students: 0, sagunProfiles: 0 });
   });
   test("availability checks are rate limited per IP", async () => {
     let last = 0;

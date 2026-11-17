@@ -64,7 +64,7 @@ export class LookupsController {
   }
 
   @Get(R.stats)
-  @ApiOperation({ summary: "Counts of active families and members" })
+  @ApiOperation({ summary: "Homepage counts: approved families, members, students and Shagun Bandhan profiles" })
   @ApiOkResponse({ type: StatsVo })
   @ApiInternalServerErrorResponse({ type: ErrorVo, description: "Unexpected server or database error" })
   stats(): Promise<StatsVo> {

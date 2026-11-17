@@ -16,7 +16,7 @@ import {
 } from "./sehat.dto.js";
 import { SehatProviders } from "./sehat.providers.js";
 import { SehatService } from "./sehat.service.js";
-@ApiTags("Sehat Saathi")
+@ApiTags("Health Support")
 @Controller("sehat-saathi")
 export class SehatController {
   constructor(private readonly service: SehatService) {}

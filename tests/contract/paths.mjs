@@ -31,6 +31,7 @@ const v1 = {
   changePassword: () => ["PUT", "/api/v1/auth/password"],
   me: () => ["GET", "/api/v1/auth/me"],
   updateMe: () => ["PATCH", "/api/v1/auth/me"],
+  currentSession: () => ["GET", "/api/v1/auth/sessions/current"],
   logout: () => ["DELETE", "/api/v1/auth/sessions/current"],
   logoutEverywhere: () => ["DELETE", "/api/v1/auth/sessions"],
   myFamily: () => ["GET", "/api/v1/me/family"],

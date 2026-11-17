@@ -3,23 +3,28 @@ import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
+import { guardianNameOf } from "../common/utils/family-relations.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { Prisma } from "../generated/prisma/client.js";
-import type {
-  EventContributionDto,
-  EventExpenseDto,
-  EventResponsibilityDto,
-  EventRosterDto,
-  EventTeamDto,
-  ExpenseCategoryDto,
-  RosterImportDto,
-  RosterImportRowDto,
+import {
+  CONTRIBUTION_GROUPS,
+  type EventContributionDto,
+  type EventExpenseDto,
+  type EventResponsibilityDto,
+  type EventRosterDto,
+  type EventTeamDto,
+  EXPENSE_GROUPS,
+  type ExpenseCategoryDto,
+  type RosterImportDto,
+  type RosterImportRowDto,
 } from "./event-finance.dto.js";
 
 const number = (value: Prisma.Decimal | number | null | undefined) => (value == null ? 0 : typeof value === "number" ? value : value.toNumber());
 const clean = (value: string | null | undefined) => value?.trim() || null;
 const mobileDigits = (value: string | null | undefined) => value?.replace(/\D/g, "") || "";
 const validMobile = (value: string | null | undefined) => !value || /^[6-9]\d{9}$/.test(mobileDigits(value));
+// Optional statement fields: left out of an update means "keep"; an empty string clears.
+const optionalText = (value: string | null | undefined) => (value === undefined ? undefined : clean(value));
 
 @Injectable()
 export class EventFinanceService {
@@ -59,7 +64,7 @@ export class EventFinanceService {
   }
 
   private async summary(eventId: string) {
-    const [contributions, pendingContributions, expenses, pendingExpenses, approvedRows] = await Promise.all([
+    const [contributions, pendingContributions, expenses, pendingExpenses, approvedRows, contributionGroups, expenseGroups] = await Promise.all([
       this.prisma.eventContribution.aggregate({ where: { eventId, status: "APPROVED", deletedAt: null }, _sum: { amount: true }, _count: { id: true } }),
       this.prisma.eventContribution.aggregate({ where: { eventId, status: "PENDING", deletedAt: null }, _sum: { amount: true }, _count: { id: true } }),
       this.prisma.eventExpense.aggregate({ where: { eventId, status: "APPROVED", deletedAt: null }, _sum: { amount: true }, _count: { id: true } }),
@@ -68,7 +73,11 @@ export class EventFinanceService {
         where: { eventId, status: "APPROVED", deletedAt: null },
         select: { id: true, memberId: true, familyId: true, memberName: true, mobile: true, village: true },
       }),
+      this.prisma.eventContribution.groupBy({ by: ["contributionGroup"], where: { eventId, status: "APPROVED", deletedAt: null }, _sum: { amount: true } }),
+      this.prisma.eventExpense.groupBy({ by: ["expenseGroup"], where: { eventId, status: "APPROVED", deletedAt: null }, _sum: { amount: true } }),
     ]);
+    const byGroup = <T extends string>(rows: { _sum: { amount: Prisma.Decimal | null } }[], key: (row: never) => T, groups: readonly T[]) =>
+      Object.fromEntries(groups.map((group) => [group, number(rows.find((row) => key(row as never) === group)?._sum.amount)])) as Record<T, number>;
     const totalCollection = number(contributions._sum.amount);
     const totalExpenses = number(expenses._sum.amount);
     return {
@@ -91,6 +100,9 @@ export class EventFinanceService {
         ),
       ).size,
       villageCount: new Set(approvedRows.map((row) => row.village?.trim()).filter(Boolean)).size,
+      // Approved totals per section: Sahyog Rashi / Mataji Bhog & Prasad, and the event's own / Sangathan programme expenses.
+      contributionGroups: byGroup(contributionGroups, (row: { contributionGroup: string }) => row.contributionGroup, CONTRIBUTION_GROUPS),
+      expenseGroups: byGroup(expenseGroups, (row: { expenseGroup: string }) => row.expenseGroup, EXPENSE_GROUPS),
     };
   }
 
@@ -102,9 +114,13 @@ export class EventFinanceService {
       this.summary(eventId),
       this.prisma.eventContribution.findMany({
         where: { eventId, deletedAt: null, ...(user.role === "admin" ? {} : { status: "APPROVED" }) },
-        orderBy: { contributedAt: "desc" },
+        orderBy: [{ contributionGroup: "asc" }, { serialNo: "asc" }, { contributedAt: "desc" }],
         select: {
           id: true,
+          serialNo: true,
+          contributionGroup: true,
+          notes: true,
+          reviewNote: true,
           memberId: true,
           memberName: true,
           familyId: true,
@@ -119,8 +135,8 @@ export class EventFinanceService {
       }),
       this.prisma.eventExpense.findMany({
         where: { eventId, deletedAt: null, ...(user.role === "admin" ? {} : { status: { in: ["APPROVED", "PENDING"] } }) },
-        include: { category: { select: { id: true, name: true } } },
-        orderBy: { expenseDate: "desc" },
+        include: { category: { select: { id: true, name: true, nameHi: true } } },
+        orderBy: [{ expenseGroup: "asc" }, { serialNo: "asc" }, { expenseDate: "desc" }],
       }),
       this.prisma.eventExpense.groupBy({ by: ["categoryId"], where: { eventId, status: "APPROVED", deletedAt: null }, _sum: { amount: true } }),
       this.prisma.eventContribution.groupBy({
@@ -132,15 +148,18 @@ export class EventFinanceService {
     ]);
     const categories = await this.prisma.expenseCategory.findMany({
       where: { id: { in: categoryGroups.map((row) => row.categoryId) } },
-      select: { id: true, name: true },
+      select: { id: true, name: true, nameHi: true },
     });
-    const categoryById = new Map(categories.map((row) => [row.id, row.name]));
+    const categoryById = new Map(categories.map((row) => [row.id, row]));
     // Members see who gave how much, never another family's ids, payment reference (UPI/transaction id) or full mobile.
     const contributions = contributionRows.map((row) =>
       user.role === "admin"
         ? { ...row, amount: number(row.amount) }
         : {
             id: row.id,
+            serialNo: row.serialNo,
+            contributionGroup: row.contributionGroup,
+            notes: row.notes,
             memberName: row.memberName,
             village: row.village,
             mobile: row.mobile ? `******${row.mobile.slice(-4)}` : null,
@@ -150,7 +169,12 @@ export class EventFinanceService {
             contributedAt: row.contributedAt,
           },
     );
-    const expenses = expenseRows.map((row) => ({ ...row, amount: number(row.amount) }));
+    // Members see the expense lines, not who entered or approved them, nor the import bookkeeping.
+    const expenses = expenseRows.map(({ importKey, createdById, updatedById, approvedById, ...row }) => ({
+      ...row,
+      amount: number(row.amount),
+      ...(user.role === "admin" ? { importKey, createdById, updatedById, approvedById } : {}),
+    }));
     const villages = villageGroups.map((row) => ({
       village: row.village || "—",
       contributors: row._count.id,
@@ -164,12 +188,29 @@ export class EventFinanceService {
       expenses,
       categoryTotals: categoryGroups.map((row) => ({
         categoryId: row.categoryId,
-        category: categoryById.get(row.categoryId) || "Other",
+        category: categoryById.get(row.categoryId)?.name || "Other",
+        categoryHi: categoryById.get(row.categoryId)?.nameHi || null,
         amount: number(row._sum.amount),
       })),
       villages,
       canManage: user.role === "admin",
     };
+  }
+
+  // Who created or changed a financial record and when (admins). `entityId` narrows it to one record.
+  async history(eventId: string, entityId?: string) {
+    await this.assertEvent(eventId);
+    const rows = await this.prisma.eventFinancialAuditLog.findMany({
+      where: { eventId, ...(entityId ? { entityId } : {}) },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+    });
+    const actors = await this.prisma.user.findMany({
+      where: { id: { in: [...new Set(rows.map((row) => row.actorId))] } },
+      select: { id: true, fullName: true, email: true },
+    });
+    const actorById = new Map(actors.map((actor) => [actor.id, actor.fullName || actor.email]));
+    return rows.map((row) => ({ ...row, actorName: actorById.get(row.actorId) || null }));
   }
 
   async categories() {
@@ -181,11 +222,16 @@ export class EventFinanceService {
     if (!name) throw new ApiError(400, "Category name is required.");
     try {
       if (id) {
-        const result = await this.prisma.expenseCategory.updateMany({ where: { id }, data: { name, active: dto.active, sortOrder: dto.sortOrder } });
+        const result = await this.prisma.expenseCategory.updateMany({
+          where: { id },
+          data: { name, nameHi: optionalText(dto.nameHi), active: dto.active, sortOrder: dto.sortOrder },
+        });
         if (!result.count) throw new ApiError(404, "Expense category not found.");
         return this.prisma.expenseCategory.findUnique({ where: { id } });
       }
-      return this.prisma.expenseCategory.create({ data: { id: randomId(), name, active: dto.active ?? true, sortOrder: dto.sortOrder ?? 0 } });
+      return this.prisma.expenseCategory.create({
+        data: { id: randomId(), name, nameHi: clean(dto.nameHi), active: dto.active ?? true, sortOrder: dto.sortOrder ?? 0 },
+      });
     } catch (error) {
       if (error instanceof ApiError) throw error;
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002")
@@ -240,6 +286,10 @@ export class EventFinanceService {
       paymentReference: clean(dto.paymentReference),
       status: dto.status ?? "PENDING",
       contributedAt: parseDate(dto.contributedAt) || new Date(),
+      serialNo: dto.serialNo === undefined ? undefined : dto.serialNo,
+      contributionGroup: dto.contributionGroup,
+      notes: optionalText(dto.notes),
+      reviewNote: optionalText(dto.reviewNote),
       createdById: actor.id,
       updatedById: actor.id,
     };
@@ -295,6 +345,10 @@ export class EventFinanceService {
       receiptUrl: clean(dto.receiptUrl),
       notes: clean(dto.notes),
       paymentStatus: dto.paymentStatus,
+      titleHi: optionalText(dto.titleHi),
+      descriptionHi: optionalText(dto.descriptionHi),
+      expenseGroup: dto.expenseGroup,
+      serialNo: dto.serialNo === undefined ? undefined : dto.serialNo,
       status: dto.status ?? "PENDING",
       approvedById: dto.status === "APPROVED" ? actor.id : null,
       approvedAt: dto.status === "APPROVED" ? new Date() : null,
@@ -348,7 +402,10 @@ export class EventFinanceService {
       | { name: string; familyId: string; membershipId: string | null; mobile: string | null; village: string | null; fatherName: string | null }
       | undefined;
     if (dto.memberId) {
-      const member = await this.prisma.familyMember.findUnique({ where: { id: dto.memberId }, include: { family: true } });
+      const member = await this.prisma.familyMember.findUnique({
+        where: { id: dto.memberId },
+        include: { family: { include: { members: { where: { relationship: "Father" }, select: { name: true }, take: 1 } } } },
+      });
       if (!member || member.status !== "ACTIVE" || !["ACTIVE", "APPROVED"].includes(member.family.status || ""))
         throw new ApiError(400, "Selected family member is not active.");
       source = {
@@ -357,7 +414,7 @@ export class EventFinanceService {
         membershipId: member.membershipId,
         mobile: member.mobile,
         village: member.family.village,
-        fatherName: member.family.headName,
+        fatherName: guardianNameOf(member, member.family, member.family.members[0]?.name),
       };
     }
     const memberName = (source?.name || dto.memberName || "").trim();
@@ -376,7 +433,7 @@ export class EventFinanceService {
       membershipId: source?.membershipId || clean(dto.membershipId),
       committee: clean(dto.committee),
       responsibility: clean(dto.responsibility),
-      status: "ACTIVE",
+      status: ("status" in dto && dto.status) || "ACTIVE",
       createdById: actor.id,
       updatedById: actor.id,
     } satisfies Omit<Prisma.EventRosterUncheckedCreateInput, "id">;
@@ -580,14 +637,16 @@ export class EventFinanceService {
         family: { status: { in: ["ACTIVE", "APPROVED"] } },
         OR: [{ name: { contains: search } }, { membershipId: { contains: search } }, { family: { village: { contains: search } } }],
       },
-      include: { family: { select: { familyId: true, headName: true, village: true } } },
+      include: {
+        family: { select: { familyId: true, headName: true, village: true, members: { where: { relationship: "Father" }, select: { name: true }, take: 1 } } },
+      },
       take: 30,
       orderBy: { name: "asc" },
     });
     return members.map((member) => ({
       id: member.id,
       name: member.name,
-      fatherName: member.family.headName,
+      fatherName: guardianNameOf(member, member.family, member.family.members[0]?.name),
       village: member.family.village,
       mobile: member.mobile,
       familyId: member.family.familyId || member.familyId,

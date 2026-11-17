@@ -15,7 +15,7 @@ const fakeRepo = () => ({
   application: mock.fn(async (id: string, mobile: string) =>
     id === "APP-1" && mobile === "9876543210" ? applicationRow({ id: "a1", applicationId: id, membersData: [{ n: 1 }] }) : null,
   ),
-  activeCounts: mock.fn(async () => ({ families: 3, members: 9 })),
+  activeCounts: mock.fn(async () => ({ families: 3, members: 9, students: 4, sagunProfiles: 2 })),
   // Matching rules run in SQL (covered by the contract tests); here: which value is asked for.
   mobileUsedAnywhere: mock.fn(async (target: string) => target === "9000000002"),
   mobileTaken: mock.fn(async (target: string, exclude?: string) => target === "9000000001" && exclude !== "a1"),
@@ -71,7 +71,7 @@ describe("LookupsService", () => {
     assert.deepEqual(await service.mobileAvailability({}), { taken: false });
     assert.deepEqual(await service.emailAvailability({ email: " user@X.com " }), { taken: true });
     assert.deepEqual(await service.emailAvailability({}), { taken: false });
-    assert.deepEqual(await service.stats(), { families: 3, members: 9 });
+    assert.deepEqual(await service.stats(), { families: 3, members: 9, students: 4, sagunProfiles: 2 });
   });
 });
 

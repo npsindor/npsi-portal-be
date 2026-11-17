@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { asPortal, assertLoginPortal } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { OkVo } from "../common/filters/error.vo.js";
 import { adminNewRegistrationEmail, memberInviteEmail, memberWelcomeEmail } from "../common/mail/email-templates.js";
@@ -8,6 +9,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { createToken, generateOtp, hashOtp, hashPassword, randomId, randomInvitePassword, safeEqual, sha256, verifyPassword } from "../common/utils/crypto.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
 import { EMAIL_PATTERN, normalizeMobile } from "../common/utils/text.js";
+import { OWN_UPLOAD_URL } from "../common/utils/uploads.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import type {
   ChangePasswordDto,
@@ -24,17 +26,31 @@ import type {
 } from "./dto/auth.dto.js";
 import { MobileOtpService, type OtpPurpose, validMobile } from "./mobile-otp.service.js";
 import { UsersRepository } from "./users.repository.js";
-import { type InvitationVo, type MobileOtpVo, type MobileVerificationVo, PublicUserVo, type RegistrationVo, type SessionVo } from "./vo/auth.vo.js";
+import {
+  AccountVo,
+  type CurrentSessionVo,
+  type InvitationVo,
+  type IssuedSession,
+  type MeVo,
+  type MobileOtpVo,
+  type MobileVerificationVo,
+  PublicUserVo,
+  type RegistrationVo,
+} from "./vo/auth.vo.js";
 
 export const MOBILE_TAKEN = "This mobile number is already registered.";
 export const NOT_VERIFIED = "Please verify your account before logging in.";
-const PASSWORD_RULE = "Password must be at least 6 characters.";
+const PASSWORD_RULE = "Password must be at least 8 characters.";
 
 const OK: OkVo = { ok: true };
 const logMailError = (label: string) => (error: unknown) => console.error(`[mailer] ${label} failed:`, error instanceof Error ? error.message : error);
 
 // A file served from this API's /uploads (see UploadsService): uuid name, image extension.
-const OWN_UPLOAD = /^https?:\/\/[^/\s]+\/uploads\/[0-9a-f-]{36}\.(?:jpe?g|png|webp|gif)$/i;
+
+export const PHONE_NOT_VERIFIED = "Verify the new mobile number with the code sent to it.";
+
+// A request's password field: a string of at least 8 characters (anything else, e.g. a number, is refused).
+const isPassword = (value: unknown): value is string => typeof value === "string" && value.length >= 8;
 
 // Business rules for registration, OTP, sessions and passwords, ported
 // unchanged from the legacy Express handlers (same checks, order and messages).
@@ -52,13 +68,13 @@ export class AuthService {
   async requestMobileOtp(body: MobileOtpDto): Promise<MobileOtpVo> {
     const mobile = validMobile(body?.mobile);
     const purpose: OtpPurpose = body?.purpose === "RESET" ? "RESET" : "REGISTER";
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     if (purpose === "RESET") {
       // Same answer whether or not the number is registered, so this can't be used to probe accounts.
       const user = await this.users.findByPhone(mobile);
       if (!user) return { ok: true, channel: "WHATSAPP", expiresInSeconds: 600 };
       return { ok: true, ...(await this.mobileOtp.send(mobile, purpose, user.email)) };
     }
-    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     const email = body?.email?.trim().toLowerCase() || null;
     if (email && !EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
     if (await this.users.findIdByPhone(mobile)) throw new ApiError(409, MOBILE_TAKEN);
@@ -73,9 +89,9 @@ export class AuthService {
   }
 
   // Step 3 of mobile registration: the verified mobile + a password create an active account and log it in.
-  async registerWithMobile(body: MobileRegisterDto): Promise<SessionVo> {
+  async registerWithMobile(body: MobileRegisterDto): Promise<IssuedSession> {
     const mobile = validMobile(body?.phone);
-    if (!body?.password || body.password.length < 6) throw new ApiError(400, PASSWORD_RULE);
+    if (!isPassword(body?.password)) throw new ApiError(400, PASSWORD_RULE);
     const email = body.email?.trim().toLowerCase() || null;
     if (email && !EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
     if (await this.users.findIdByPhone(mobile)) throw new ApiError(409, MOBILE_TAKEN);
@@ -97,7 +113,7 @@ export class AuthService {
   async register(body: RegisterDto): Promise<RegistrationVo> {
     const { email, password, fullName, phone, recaptchaToken } = body || {};
     if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
-    if (!email || !password || password.length < 6) throw new ApiError(400, "Email and password are required; password must be at least 6 characters.");
+    if (!email || !isPassword(password)) throw new ApiError(400, "Email and password are required; password must be at least 8 characters.");
     if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (await this.users.findIdByPhone(phone.trim())) throw new ApiError(409, "This mobile number is already registered.");
     const id = randomId();
@@ -113,7 +129,7 @@ export class AuthService {
     return { user: PublicUserVo.from(user), requiresOtp: true };
   }
 
-  async verifyOtp(body: VerifyOtpDto): Promise<SessionVo> {
+  async verifyOtp(body: VerifyOtpDto): Promise<IssuedSession> {
     const email = String(body?.email || "")
       .trim()
       .toLowerCase();
@@ -124,12 +140,15 @@ export class AuthService {
     const notExpired = existing.otpExpiresAt && existing.otpExpiresAt > new Date();
     const matches = existing.otpHash && safeEqual(hashOtp(code), existing.otpHash);
     if (!notExpired || !matches) throw new ApiError(400, "Invalid or expired verification code.");
+    // Same portal rules as the password login: the code proves the email, not which portal the account may use.
+    const account = await this.users.loginAccount(existing);
+    assertLoginPortal(existing, account, asPortal(body?.portal));
     const isFirstVerification = !existing.isVerified;
     const token = createToken();
     await this.users.verifyAndStartSession(existing.id, sha256(token));
     const user = (await this.users.findById(existing.id)) as UserRow;
     if (isFirstVerification) this.sendRegistrationEmails(user).catch(logMailError("registration email"));
-    return { user: PublicUserVo.from(user), accessToken: token };
+    return { user: PublicUserVo.from(user), accessToken: token, account: AccountVo.from(account) };
   }
 
   // Same response whether or not the account exists, so this can't be used to
@@ -139,37 +158,45 @@ export class AuthService {
       .trim()
       .toLowerCase();
     if (!email) throw new ApiError(400, "Email is required.");
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     const user = await this.users.findByEmail(email);
     if (user && !user.isVerified) await this.issueOtp(user).catch(logMailError("otp email"));
     return OK;
   }
 
-  async login(body: LoginDto): Promise<SessionVo> {
+  async login(body: LoginDto): Promise<IssuedSession> {
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     const rawIdentifier = body?.email || body?.phone || body?.username || "";
     const identifier = String(rawIdentifier).trim();
     const phone = normalizeMobile(identifier);
     const user = await this.users.findForLogin(identifier, phone || identifier);
-    if (!user || !verifyPassword(body?.password || "", user.passwordHash)) throw new ApiError(401, "Invalid email/phone or password.");
+    // Checked even when there is no such user (same time and the same 401 either way).
+    if (!verifyPassword(body?.password, user?.passwordHash) || !user) throw new ApiError(401, "Invalid email/phone or password.");
     if (!user.isVerified) {
       // Send a fresh code so the login screen can go straight to the code entry.
       if (user.email) this.issueOtp(user).catch(logMailError("otp email"));
       throw new ApiError(403, NOT_VERIFIED);
     }
+    // The password is right; now the account type, decided from its registration records, must match the portal.
+    const account = await this.users.loginAccount(user);
+    assertLoginPortal(user, account, asPortal(body?.portal));
     const token = createToken();
     await this.users.startSession(user.id, sha256(token));
-    return { user: PublicUserVo.from(user), accessToken: token };
+    return { user: PublicUserVo.from(user), accessToken: token, account: AccountVo.from(account) };
   }
 
   // Always the same response, and the reset token only ever travels by email.
   async requestPasswordReset(body: EmailDto): Promise<OkVo> {
     const email = body?.email?.trim().toLowerCase();
     if (!email) throw new ApiError(400, "Email is required.");
-    if (await this.users.findIdByEmail(email)) {
-      const token = createToken();
-      await this.users.setResetTokenByEmail(email, sha256(token));
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
+    const token = createToken();
+    // At most one email per account per few minutes (an earlier link stays valid); see setResetTokenByEmail.
+    if ((await this.users.findIdByEmail(email)) && (await this.users.setResetTokenByEmail(email, sha256(token)))) {
       const resetUrl = `${this.config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+      // Not awaited: the reply must not take longer for a real account (that would reveal which emails exist).
       // Best effort: SMTP errors must never reach this unauthenticated caller.
-      await this.mail
+      void this.mail
         .send({
           to: email,
           subject: "Reset your password",
@@ -185,15 +212,15 @@ export class AuthService {
     const { resetToken, newPassword } = body || {};
     if (body?.verificationToken) {
       const mobile = validMobile(body.phone);
-      if (!newPassword || newPassword.length < 6) throw new ApiError(400, PASSWORD_RULE);
+      if (!isPassword(newPassword)) throw new ApiError(400, PASSWORD_RULE);
       const user = await this.users.findByPhone(mobile);
       await this.mobileOtp.consume(mobile, "RESET", body.verificationToken);
       if (!user) throw new ApiError(400, "This reset link is invalid or expired.");
       await this.users.resetPasswordFor(user.id, hashPassword(newPassword));
       return OK;
     }
-    if (!resetToken || !newPassword || newPassword.length < 6)
-      throw new ApiError(400, "A valid reset token and password of at least 6 characters are required.");
+    if (!resetToken || typeof resetToken !== "string" || !isPassword(newPassword))
+      throw new ApiError(400, "A valid reset token and password of at least 8 characters are required.");
     const changed = await this.users.resetPassword(hashPassword(newPassword), sha256(resetToken)); // also logs out every device
     if (!changed) throw new ApiError(400, "This reset link is invalid or expired.");
     return OK;
@@ -246,14 +273,19 @@ export class AuthService {
   // The device making the change stays logged in; the user's other devices are logged out.
   async changePassword(user: UserRow, body: ChangePasswordDto, currentToken?: string): Promise<OkVo> {
     const { currentPassword, newPassword } = body || {};
-    if (!newPassword || newPassword.length < 6) throw new ApiError(400, "New password must be at least 6 characters.");
-    if (!verifyPassword(currentPassword || "", user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
+    if (!isPassword(newPassword)) throw new ApiError(400, "New password must be at least 8 characters.");
+    if (!verifyPassword(currentPassword, user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
+    if (newPassword === currentPassword) throw new ApiError(400, "The new password must be different from the current one.");
     await this.users.updatePassword(user.id, hashPassword(newPassword), currentToken ? sha256(currentToken) : undefined);
     return OK;
   }
 
-  me(user: UserRow): PublicUserVo {
-    return PublicUserVo.from(user);
+  async me(user: UserRow): Promise<MeVo> {
+    return { ...PublicUserVo.from(user), account: AccountVo.from(await this.users.loginAccount(user)) };
+  }
+
+  async currentSession(user: UserRow | null): Promise<CurrentSessionVo> {
+    return { user: user ? await this.me(user) : null };
   }
 
   // Name, mobile (unique, same rule as registration) and profile photo, which
@@ -267,11 +299,17 @@ export class AuthService {
       if (phone && !/^[6-9]\d{9}$/.test(phone)) throw new ApiError(400, "A valid 10-digit mobile number is required.");
       const owner = phone ? await this.users.findIdByPhone(phone) : null;
       if (owner && owner.id !== user.id) throw new ApiError(409, "This mobile number is already registered.");
+      // The mobile is a login identifier: a new number must be proven with the code sent to it
+      // (POST /auth/mobile-otps and /verifications, purpose REGISTER), so nobody can claim someone else's.
+      if (phone && phone !== normalizeMobile(user.phone ?? "")) {
+        if (!body.phoneVerificationToken) throw new ApiError(400, PHONE_NOT_VERIFIED);
+        await this.mobileOtp.consume(phone, "REGISTER", body.phoneVerificationToken);
+      }
     }
     let photoUrl: string | null | undefined;
     if (body.photoUrl !== undefined) {
       photoUrl = body.photoUrl?.trim() || null;
-      if (photoUrl && !OWN_UPLOAD.test(photoUrl)) throw new ApiError(400, "The photo must be an image uploaded to the portal.");
+      if (photoUrl && !OWN_UPLOAD_URL.test(photoUrl)) throw new ApiError(400, "The photo must be an image uploaded to the portal.");
     }
     return PublicUserVo.from(await this.users.updateProfile(user.id, { fullName, phone, photoUrl }));
   }

@@ -15,9 +15,9 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import type { Request, Response } from "express";
-import { CurrentUser } from "../common/decorators/current-user.decorator.js";
+import { CurrentUser, OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo, OkVo } from "../common/filters/error.vo.js";
-import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, OptionalUserGuard, UserGuard } from "../common/guards/auth.guards.js";
 import { bearerToken, type UserRow } from "../common/session/session.service.js";
 import { clearSessionCookie, setSessionCookie } from "../common/session/session-cookie.js";
 import { AppConfigService } from "../config/app-config.service.js";
@@ -36,7 +36,7 @@ import {
   VerifyMobileOtpDto,
   VerifyOtpDto,
 } from "./dto/auth.dto.js";
-import { InvitationVo, MobileOtpVo, MobileVerificationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
+import { CurrentSessionVo, InvitationVo, MeVo, MobileOtpVo, MobileVerificationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
 
 @ApiTags("auth")
 @ApiTooManyRequestsResponse({ description: "Rate limit exceeded (auth and OTP routes)" })
@@ -66,10 +66,11 @@ export class AuthController {
   @ApiOperation({ summary: "Verify an emailed OTP and start a session" })
   @ApiOkResponse({ type: SessionVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Malformed, wrong or expired code" })
+  @ApiForbiddenResponse({ type: ErrorVo, description: "Wrong login portal for this account, or account/membership inactive" })
   @ApiNotFoundResponse({ type: ErrorVo, description: "Account not found" })
   async verifyOtp(@Body() body: VerifyOtpDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
-    const session = await this.auth.verifyOtp(body);
-    setSessionCookie(response, session.accessToken, this.secureCookies);
+    const { accessToken, ...session } = await this.auth.verifyOtp(body);
+    setSessionCookie(response, accessToken, this.secureCookies);
     return session;
   }
 
@@ -99,8 +100,8 @@ export class AuthController {
   @ApiBadRequestResponse({ type: ErrorVo, description: "Short password, invalid email or expired mobile verification" })
   @ApiConflictResponse({ type: ErrorVo, description: "Mobile or email already registered" })
   async registerWithMobile(@Body() body: MobileRegisterDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
-    const session = await this.auth.registerWithMobile(body);
-    setSessionCookie(response, session.accessToken, this.secureCookies);
+    const { accessToken, ...session } = await this.auth.registerWithMobile(body);
+    setSessionCookie(response, accessToken, this.secureCookies);
     return session;
   }
 
@@ -115,13 +116,16 @@ export class AuthController {
 
   @Post(R.login)
   @HttpCode(200)
-  @ApiOperation({ summary: "Log in with email or mobile and password" })
+  @ApiOperation({
+    summary: "Log in with email or mobile and password",
+    description: "`portal` FAMILY (default) or STUDENT must match the account's own registration; the server decides the account type from its records.",
+  })
   @ApiOkResponse({ type: SessionVo })
   @ApiUnauthorizedResponse({ type: ErrorVo, description: "Invalid credentials" })
-  @ApiForbiddenResponse({ type: ErrorVo, description: "Account not verified yet" })
+  @ApiForbiddenResponse({ type: ErrorVo, description: "Account not verified yet, wrong login portal for this account, or account/membership inactive" })
   async login(@Body() body: LoginDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
-    const session = await this.auth.login(body);
-    setSessionCookie(response, session.accessToken, this.secureCookies);
+    const { accessToken, ...session } = await this.auth.login(body);
+    setSessionCookie(response, accessToken, this.secureCookies);
     return session;
   }
 
@@ -170,11 +174,20 @@ export class AuthController {
   @Get(R.me)
   @UseGuards(UserGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "The logged-in user" })
-  @ApiOkResponse({ type: PublicUserVo })
+  @ApiOperation({ summary: "The logged-in user, with the portal their account belongs to (from its registration records)" })
+  @ApiOkResponse({ type: MeVo })
   @ApiUnauthorizedResponse({ type: ErrorVo })
-  me(@CurrentUser() user: UserRow): PublicUserVo {
+  me(@CurrentUser() user: UserRow): Promise<MeVo> {
     return this.auth.me(user);
+  }
+
+  @Get(R.logout)
+  @UseGuards(OptionalUserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "The current session: the logged-in user, or null (200 either way, so the website can check without an error)" })
+  @ApiOkResponse({ type: CurrentSessionVo })
+  currentSession(@OptionalUser() user: UserRow | null): Promise<CurrentSessionVo> {
+    return this.auth.currentSession(user);
   }
 
   @Patch(R.me)

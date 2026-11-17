@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { APPROVE_THROUGH_REVIEW } from "../applications/applications.service.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
+import { bindsToFamily, loginAccountForEmail, STUDENT_EMAIL_IS_FAMILY_LOGIN } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { RECAPTCHA_FAILED, RecaptchaService } from "../common/recaptcha/recaptcha.service.js";
 import type { UserRow } from "../common/session/session.service.js";
@@ -65,11 +66,25 @@ export class StudentApplicationsService {
     // Admins entering an application from the admin panel have no reCAPTCHA token.
     if (isPublic && !(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     await this.validate(input, Boolean(familyLink));
+    // The student gets their own Student Login from this email; it must not be a Family Member login (a parent's own
+    // email, say). A student linked to a family member may use that member's own email.
+    const linkedEmail = familyLink
+      ? (await this.prisma.familyMember.findFirst({ where: { id: familyLink.linkedMemberId }, select: { email: true } }))?.email
+      : null;
+    const sameAsMember = Boolean(linkedEmail && linkedEmail.trim().toLowerCase() === input.email?.trim().toLowerCase());
+    if (isPublic && !sameAsMember && bindsToFamily(await loginAccountForEmail(this.prisma, input.email)))
+      throw new ApiError(409, STUDENT_EMAIL_IS_FAMILY_LOGIN);
+    // A signed-in person registering themselves (same email as the account) is linked to that account, so approval
+    // reuses it instead of inviting a second login. A parent registering a child (another email) is not linked.
+    const ownAccount = Boolean(
+      user && user.role === "user" && user.email && input.email && user.email.trim().toLowerCase() === input.email.trim().toLowerCase(),
+    );
     const row = await this.prisma.$transaction(async (tx) => {
       const application = await createWithDisplayId(
         `NPSI-STU-APP-${new Date().getFullYear()}-`,
         (prefix) => this.repo.latestDisplayIds(prefix, tx),
-        (applicationId) => this.repo.create({ id: randomId(), applicationId, ...toCreateData(input), ...(familyLink ?? {}) }, tx),
+        (applicationId) =>
+          this.repo.create({ id: randomId(), applicationId, ...toCreateData(input), ...(familyLink ?? {}), ...(ownAccount ? { userId: user?.id } : {}) }, tx),
       );
       if (isPublic) {
         const { applicationId } = application;

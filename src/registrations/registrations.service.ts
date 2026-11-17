@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { ApplicationsRepository } from "../applications/applications.repository.js";
 import { DEFAULT_LIMIT } from "../common/dto/list-query.dto.js";
+import { bindsToFamily, FAMILY_ACCOUNT_STUDENT_REGISTRATION, loginAccount } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { adminNewApplicationEmail } from "../common/mail/email-templates.js";
 import { MailService } from "../common/mail/mail.service.js";
@@ -74,6 +75,9 @@ export class RegistrationsService {
     const type = dto.type as RegistrationType;
     const mobile = this.mobileOf(user);
     const dob = this.birthDate(dto.dob, dto.type as RegistrationType);
+    // A Family Member account can't also become a student: the student needs their own Student Login. (A student who
+    // registers as a family member is the supported upgrade: approval moves them into the family.)
+    if (type === "STUDENT" && bindsToFamily(await loginAccount(this.prisma, user))) throw new ApiError(409, FAMILY_ACCOUNT_STUDENT_REGISTRATION);
     const own = await this.ownApplications(user.id);
     if (own.some((app) => app.type === type && app.row.status !== "REJECTED"))
       throw new ApiError(
