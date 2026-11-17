@@ -1,7 +1,7 @@
 import { applyDecorators } from "@nestjs/common";
 import { ApiProperty, ApiPropertyOptional, type ApiPropertyOptions } from "@nestjs/swagger";
 import { Transform, type TransformFnParams } from "class-transformer";
-import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, Matches, MaxLength, ValidateBy, ValidateIf } from "class-validator";
+import { IsBoolean, IsDateString, IsIn, IsInt, IsNumber, IsOptional, IsString, isEmail, Matches, MaxLength, ValidateBy, ValidateIf } from "class-validator";
 
 // Property decorators for request DTOs: Swagger docs, the lenient input
 // conversions HTML forms need (numbers sent as text, "" for an empty optional
@@ -44,6 +44,22 @@ export const OptionalText = (max?: number, options: FieldOptions = {}): Property
     optional(options),
     IsString(),
     ...(max ? [MaxLength(max)] : []),
+  );
+
+export const EMAIL_ERROR = "Enter a valid email address.";
+// Blank is allowed (no email); anything else must be a real address once trimmed. "name@gmail com" is refused:
+// that account could never receive its password-reset or notification emails.
+export const OptionalEmail = (options: FieldOptions = {}): PropertyDecorator =>
+  applyDecorators(
+    docs({ type: "string", format: "email", nullable: !options.notNull }, options),
+    Transform(toText),
+    optional(options),
+    IsString(),
+    MaxLength(255),
+    ValidateBy({
+      name: "isEmailOrBlank",
+      validator: { validate: (value) => typeof value === "string" && (value.trim() === "" || isEmail(value.trim())), defaultMessage: () => EMAIL_ERROR },
+    }),
   );
 
 export const OptionalInt = (options: FieldOptions = {}): PropertyDecorator =>
