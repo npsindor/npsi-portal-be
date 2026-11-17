@@ -80,8 +80,10 @@ export class ApplicationReviewService {
     const viaAccount = Boolean(result.application.userId);
     if (outbound && (viaAccount || !result.family)) await this.notifier.deliver([outbound]);
     if (result.family && !viaAccount && result.application.email) {
+      const email = result.application.email;
       await this.auth
-        .invite({ email: result.application.email, role: "user", fullName: result.application.familyHeadName, phone: result.application.mobile ?? undefined })
+        .invite({ email, role: "user", fullName: result.application.familyHeadName, phone: result.application.mobile ?? undefined })
+        .then(() => this.applications.linkToAccount(result.application.id, email))
         .catch((error: unknown) => console.error("[approval] invite failed:", error instanceof Error ? error.message : error));
     }
     return {

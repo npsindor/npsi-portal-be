@@ -116,16 +116,10 @@ export class StudentApplicationReviewService {
     const viaAccount = Boolean(application.userId);
     if (outbound && (viaAccount || !student)) await this.notifier.deliver([outbound]);
     if (student && !viaAccount && application.email) {
+      const email = application.email;
       await this.auth
-        .invite(
-          {
-            email: application.email,
-            role: "user",
-            fullName: application.studentName,
-            phone: application.mobile || application.guardianMobile || undefined,
-          },
-          "student",
-        )
+        .invite({ email, role: "user", fullName: application.studentName, phone: application.mobile || application.guardianMobile || undefined }, "student")
+        .then(() => this.applications.linkToAccount(application.id, email))
         .catch((error: unknown) => console.error("[approval] invite failed:", error instanceof Error ? error.message : error));
     }
     return { application: toStudentApplicationVo(application), student: student ? toStudentVo(student) : null };
