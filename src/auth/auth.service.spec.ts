@@ -6,9 +6,12 @@ import { AuthService } from "./auth.service.js";
 import type { MobileOtpService } from "./mobile-otp.service.js";
 import type { UsersRepository } from "./users.repository.js";
 
-const PASSWORD = "secret1";
+const PASSWORD = "secret12";
 
+type Account = { type: string; status: string; familyId: string | null; studentId: string | null; dual: boolean };
+const NO_REGISTRATION: Account = { type: "NONE", status: "NONE", familyId: null, studentId: null, dual: false };
 const fakeUsers = () => ({
+  loginAccount: mock.fn(async (_user: unknown): Promise<Account> => NO_REGISTRATION),
   findById: mock.fn(async (id: string) => user({ id, email: "new@example.com", fullName: "New", isVerified: false })),
   findIdByPhone: mock.fn(async (_phone: string): Promise<{ id: string } | undefined> => undefined),
   findByEmail: mock.fn(async (_email: string): Promise<ReturnType<typeof user> | undefined> => undefined),
@@ -18,7 +21,7 @@ const fakeUsers = () => ({
   setOtp: mock.fn(async (..._args: unknown[]) => undefined),
   verifyAndStartSession: mock.fn(async (..._args: unknown[]) => undefined),
   startSession: mock.fn(async (..._args: unknown[]) => undefined),
-  setResetTokenByEmail: mock.fn(async (..._args: unknown[]) => undefined),
+  setResetTokenByEmail: mock.fn(async (..._args: unknown[]) => true),
   resetPassword: mock.fn(async (..._args: unknown[]) => 1),
   insertInvited: mock.fn(async (..._args: unknown[]) => undefined),
   updateInvited: mock.fn(async (..._args: unknown[]) => undefined),
@@ -65,7 +68,7 @@ describe("AuthService.register", () => {
     assert.equal(recaptcha.verify.mock.calls[0].arguments[0], "t");
   });
   test("requires email and a 6+ character password", async () => {
-    const message = "Email and password are required; password must be at least 6 characters.";
+    const message = "Email and password are required; password must be at least 8 characters.";
     await rejectsWith(service.register({ ...valid, email: "" }), 400, message);
     await rejectsWith(service.register({ ...valid, password: "12345" }), 400, message);
     await rejectsWith(service.register(undefined as never), 400, message);
@@ -185,6 +188,12 @@ describe("AuthService.login", () => {
     await rejectsWith(service.login({ email: "member@example.com", password: "wrong" }), 401, "Invalid email/phone or password.");
     await rejectsWith(service.login({ email: "member@example.com" }), 401, "Invalid email/phone or password.");
   });
+  test("a non-string password is a plain 401 for existing and unknown accounts (no 500 that reveals the account)", async () => {
+    const odd = { email: "member@example.com", password: true } as unknown as Parameters<typeof service.login>[0];
+    await rejectsWith(service.login(odd), 401, "Invalid email/phone or password.");
+    users.findForLogin.mock.mockImplementation(async () => account());
+    await rejectsWith(service.login(odd), 401, "Invalid email/phone or password.");
+  });
   test("403 for unverified accounts", async () => {
     users.findForLogin.mock.mockImplementation(async () => user({ passwordHash: hashPassword(PASSWORD), isVerified: false }));
     await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD }), 403, "Please verify your account before logging in.");
@@ -197,6 +206,81 @@ describe("AuthService.login", () => {
     assert.equal(users.startSession.mock.calls[0].arguments[1], sha256(result.accessToken), "only the hash is stored");
     await service.login({ username: "member@example.com", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[1].arguments, ["member@example.com", "member@example.com"]);
+    assert.deepEqual(result.account, { type: "NONE", status: "NONE" });
+  });
+
+  const as_ = (type: string, status = "ACTIVE") => {
+    users.findForLogin.mock.mockImplementation(async () => account());
+    users.loginAccount.mock.mockImplementation(async () => ({ ...NO_REGISTRATION, type, status }));
+  };
+  const FAMILY_MSG = "Your account is registered as an NPS Family Member. Please use Family Member Login to access your account.";
+  const STUDENT_MSG = "Your account is registered as an NPS Student. Please use Student Login to access your account.";
+
+  test("a Family Member account logs in through Family Member Login only", async () => {
+    as_("FAMILY");
+    assert.deepEqual((await service.login({ email: "member@example.com", password: PASSWORD, portal: "FAMILY" })).account, {
+      type: "FAMILY",
+      status: "ACTIVE",
+    });
+    await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD, portal: "STUDENT" }), 403, FAMILY_MSG);
+    assert.equal(users.startSession.mock.callCount(), 1, "no session for the refused portal");
+  });
+  test("a Student account logs in through Student Login only; no portal means Family Member Login", async () => {
+    as_("STUDENT");
+    assert.equal((await service.login({ email: "member@example.com", password: PASSWORD, portal: "student" })).account?.type, "STUDENT");
+    await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD, portal: "FAMILY" }), 403, STUDENT_MSG);
+    await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD }), 403, STUDENT_MSG);
+  });
+  test("a wrong password stays a generic 401 whatever the account is", async () => {
+    as_("FAMILY");
+    await rejectsWith(service.login({ email: "member@example.com", password: "wrong", portal: "STUDENT" }), 401, "Invalid email/phone or password.");
+    assert.equal(users.loginAccount.mock.callCount(), 0, "the account type is not even looked up");
+  });
+  test("an account without any registration may use either portal; pending and rejected may sign in to see their status", async () => {
+    as_("NONE", "NONE");
+    await service.login({ email: "member@example.com", password: PASSWORD, portal: "STUDENT" });
+    await service.login({ email: "member@example.com", password: PASSWORD, portal: "FAMILY" });
+    as_("STUDENT", "PENDING");
+    assert.equal((await service.login({ email: "member@example.com", password: PASSWORD, portal: "STUDENT" })).account?.status, "PENDING");
+    as_("FAMILY", "REJECTED");
+    assert.equal((await service.login({ email: "member@example.com", password: PASSWORD, portal: "FAMILY" })).account?.status, "REJECTED");
+  });
+  test("suspended or inactive memberships and disabled accounts are refused", async () => {
+    as_("FAMILY", "SUSPENDED");
+    await rejectsWith(
+      service.login({ email: "member@example.com", password: PASSWORD }),
+      403,
+      "Your NPS family membership is suspended. Please contact the NPS Indore office.",
+    );
+    as_("STUDENT", "INACTIVE");
+    await rejectsWith(
+      service.login({ email: "member@example.com", password: PASSWORD, portal: "STUDENT" }),
+      403,
+      "Your NPS student registration is inactive. Please contact the NPS Indore office.",
+    );
+    as_("NONE", "NONE");
+    users.findForLogin.mock.mockImplementation(async () => user({ passwordHash: hashPassword(PASSWORD), status: "suspended" }));
+    await rejectsWith(
+      service.login({ email: "member@example.com", password: PASSWORD }),
+      403,
+      "This account is not active. Please contact the NPS Indore office.",
+    );
+  });
+  test("administrators sign in through Family Member Login", async () => {
+    as_("ADMIN");
+    await service.login({ email: "member@example.com", password: PASSWORD });
+    await rejectsWith(
+      service.login({ email: "member@example.com", password: PASSWORD, portal: "STUDENT" }),
+      403,
+      "Administrator accounts sign in through Family Member Login.",
+    );
+  });
+  test("the emailed-code sign-in applies the same portal rule", async () => {
+    users.findByEmail.mock.mockImplementation(async () => user({ otpHash: hashOtp("123456"), otpExpiresAt: new Date(Date.now() + 60_000) }));
+    users.loginAccount.mock.mockImplementation(async () => ({ ...NO_REGISTRATION, type: "FAMILY", status: "ACTIVE" }));
+    await rejectsWith(service.verifyOtp({ email: "member@example.com", otpCode: "123456", portal: "STUDENT" }), 403, FAMILY_MSG);
+    assert.equal(users.verifyAndStartSession.mock.callCount(), 0);
+    assert.equal((await service.verifyOtp({ email: "member@example.com", otpCode: "123456", portal: "FAMILY" })).account?.type, "FAMILY");
   });
 });
 
@@ -222,15 +306,21 @@ describe("AuthService password reset", () => {
     const token = decodeURIComponent(sent.html.match(/token=([^"]+)/)?.[1] ?? "");
     assert.equal(sha256(token), tokenHash);
   });
+  test("request: no second email while a recent link is still fresh", async () => {
+    users.findIdByEmail.mock.mockImplementation(async () => ({ id: "u-1" }));
+    users.setResetTokenByEmail.mock.mockImplementation(async () => false);
+    assert.deepEqual(await service.requestPasswordReset({ email: "member@example.com" }), { ok: true });
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
   test("confirm: validates input and the token", async () => {
-    const message = "A valid reset token and password of at least 6 characters are required.";
+    const message = "A valid reset token and password of at least 8 characters are required.";
     await rejectsWith(service.resetPassword({ resetToken: "t", newPassword: "123" }), 400, message);
     await rejectsWith(service.resetPassword({}), 400, message);
     users.resetPassword.mock.mockImplementation(async () => 0);
-    await rejectsWith(service.resetPassword({ resetToken: "t", newPassword: "123456" }), 400, "This reset link is invalid or expired.");
+    await rejectsWith(service.resetPassword({ resetToken: "t", newPassword: "12345678" }), 400, "This reset link is invalid or expired.");
   });
   test("confirm: sets the password for a valid token", async () => {
-    assert.deepEqual(await service.resetPassword({ resetToken: "token", newPassword: "123456" }), { ok: true });
+    assert.deepEqual(await service.resetPassword({ resetToken: "token", newPassword: "12345678" }), { ok: true });
     assert.equal(users.resetPassword.mock.calls[0].arguments[1], sha256("token"));
   });
 });
@@ -292,16 +382,24 @@ describe("AuthService password change, me and logout", () => {
   const me = () => user({ passwordHash: hashPassword(PASSWORD) });
 
   test("change: validates the new and current passwords", async () => {
-    await rejectsWith(service.changePassword(me(), { currentPassword: PASSWORD, newPassword: "123" }), 400, "New password must be at least 6 characters.");
-    await rejectsWith(service.changePassword(me(), { currentPassword: "wrong", newPassword: "123456" }), 401, "Current password is incorrect.");
-    await rejectsWith(service.changePassword(me(), { newPassword: "123456" }), 401, "Current password is incorrect.");
+    await rejectsWith(service.changePassword(me(), { currentPassword: PASSWORD, newPassword: "123" }), 400, "New password must be at least 8 characters.");
+    await rejectsWith(service.changePassword(me(), { currentPassword: "wrong", newPassword: "12345678" }), 401, "Current password is incorrect.");
+    await rejectsWith(service.changePassword(me(), { newPassword: "12345678" }), 401, "Current password is incorrect.");
+    await rejectsWith(
+      service.changePassword(me(), { currentPassword: PASSWORD, newPassword: PASSWORD }),
+      400,
+      "The new password must be different from the current one.",
+    );
+    const numeric = { currentPassword: PASSWORD, newPassword: 12345678 } as unknown as Parameters<typeof service.changePassword>[1];
+    await rejectsWith(service.changePassword(me(), numeric), 400, "New password must be at least 8 characters.");
   });
   test("change: stores a new hash", async () => {
-    assert.deepEqual(await service.changePassword(me(), { currentPassword: PASSWORD, newPassword: "123456" }), { ok: true });
+    assert.deepEqual(await service.changePassword(me(), { currentPassword: PASSWORD, newPassword: "12345678" }), { ok: true });
     assert.equal(users.updatePassword.mock.calls[0].arguments[0], "u-1");
   });
-  test("me returns only public fields", () => {
-    assert.deepEqual(service.me(user({ passwordHash: "x", sessionToken: "y" })), {
+  test("me returns only public fields, plus the account's portal", async () => {
+    assert.deepEqual(await service.me(user({ passwordHash: "x", sessionToken: "y" })), {
+      account: { type: "NONE", status: "NONE" },
       id: "u-1",
       email: "member@example.com",
       fullName: "Member",
@@ -324,7 +422,12 @@ describe("AuthService password change, me and logout", () => {
 describe("AuthService.updateMe", () => {
   const photo = "https://api.npsindore.org/uploads/0b6e2f1a-1111-4c2b-9c3d-123456789abc.png";
   test("updates name, mobile and photo; returns the public user with the photo", async () => {
-    const me = await service.updateMe(user({ id: "u-1" }), { fullName: " Ram Patidar ", phone: "9876500001", photoUrl: photo });
+    const me = await service.updateMe(user({ id: "u-1" }), {
+      fullName: " Ram Patidar ",
+      phone: "9876500001",
+      phoneVerificationToken: "verification-token",
+      photoUrl: photo,
+    });
     assert.deepEqual([me.fullName, me.phone, me.photoUrl], ["Ram Patidar", "9876500001", photo]);
     assert.deepEqual(users.updateProfile.mock.calls[0].arguments, ["u-1", { fullName: "Ram Patidar", phone: "9876500001", photoUrl: photo }]);
   });
@@ -332,12 +435,21 @@ describe("AuthService.updateMe", () => {
     await service.updateMe(user({ id: "u-1" }), { photoUrl: "" });
     assert.deepEqual(users.updateProfile.mock.calls[0].arguments[1], { fullName: undefined, phone: undefined, photoUrl: null });
   });
+  test("a new mobile must be verified with its code; keeping the current one needs nothing", async () => {
+    await rejectsWith(service.updateMe(user({ id: "u-1" }), { phone: "9000000077" }), 400, "Verify the new mobile number with the code sent to it.");
+    await rejectsWith(service.updateMe(user({ id: "u-1" }), { phone: "9000000077", phoneVerificationToken: "stolen" }), 400, /(?:)/);
+    assert.equal(users.updateProfile.mock.callCount(), 0);
+    await service.updateMe(user({ id: "u-1" }), { phone: "9000000077", phoneVerificationToken: "verification-token" });
+    assert.deepEqual(mobileOtp.consume.mock.calls.at(-1)?.arguments, ["9000000077", "REGISTER", "verification-token"]);
+    await service.updateMe(user({ id: "u-1", phone: "+91 98765 43210" }), { phone: "9876543210", fullName: "Same" });
+    assert.equal(mobileOtp.consume.mock.callCount(), 2);
+  });
   test("rejects a bad mobile, someone else's mobile, outside images and markup", async () => {
     await rejectsWith(service.updateMe(user(), { phone: "12345" }), 400, "A valid 10-digit mobile number is required.");
     users.findIdByPhone.mock.mockImplementation(async () => ({ id: "someone-else" }));
     await rejectsWith(service.updateMe(user({ id: "u-1" }), { phone: "9876500001" }), 409, "This mobile number is already registered.");
     users.findIdByPhone.mock.mockImplementation(async () => ({ id: "u-1" }));
-    await service.updateMe(user({ id: "u-1" }), { phone: "9876500001" });
+    await service.updateMe(user({ id: "u-1", phone: "9876500001" }), { phone: "9876500001" });
     await rejectsWith(service.updateMe(user(), { photoUrl: "https://evil.example/track.png" }), 400, "The photo must be an image uploaded to the portal.");
     await rejectsWith(
       service.updateMe(user(), { photoUrl: "https://api.npsindore.org/uploads/../etc/passwd" }),
@@ -381,7 +493,7 @@ describe("AuthService mobile registration and reset", () => {
     await rejectsWith(
       service.registerWithMobile({ phone: "9876543210", verificationToken: "verification-token", password: "123" }),
       400,
-      "Password must be at least 6 characters.",
+      "Password must be at least 8 characters.",
     );
     users.findById.mock.mockImplementation(async (id: string) => user({ id, email: null, phone: "9876543210" }));
     const session = await service.registerWithMobile({ phone: "9876543210", verificationToken: "verification-token", password: PASSWORD });
@@ -404,5 +516,26 @@ describe("AuthService mobile registration and reset", () => {
     await rejectsWith(service.login({ email: "member@example.com", password: PASSWORD }), 403, "Please verify your account before logging in.");
     await flush();
     assert.equal(users.setOtp.mock.callCount(), 1);
+  });
+});
+
+describe("AuthService reCAPTCHA on the public forms", () => {
+  test("login, resend code, password reset by email and by mobile all need a passing token", async () => {
+    const FAILED = "reCAPTCHA verification failed. Please try again.";
+    build(false);
+    await rejectsWith(service.login({ email: "a@example.com", password: PASSWORD }), 400, FAILED);
+    await rejectsWith(service.resendOtp({ email: "a@example.com" }), 400, FAILED);
+    await rejectsWith(service.requestPasswordReset({ email: "a@example.com" }), 400, FAILED);
+    await rejectsWith(service.requestMobileOtp({ mobile: "9876543210", purpose: "RESET" }), 400, FAILED);
+    assert.equal(users.findForLogin.mock.callCount(), 0, "credentials are not checked before the token");
+  });
+});
+
+describe("AuthService.currentSession", () => {
+  test("null without a user; the same view as me() with one", async () => {
+    build();
+    assert.deepEqual(await service.currentSession(null), { user: null });
+    const current = await service.currentSession(user());
+    assert.deepEqual(current.user, await service.me(user()));
   });
 });

@@ -108,6 +108,12 @@ export class EventFinanceController {
     return this.finance.deleteExpense(eventId, id, user);
   }
 
+  @Get("admin/events/:eventId/history")
+  @UseGuards(AdminGuard)
+  history(@Param("eventId") eventId: string, @Query("entityId") entityId?: string) {
+    return this.finance.history(eventId, entityId || undefined);
+  }
+
   @Get("admin/events/:eventId/roster")
   @UseGuards(AdminGuard)
   roster(@Param("eventId") eventId: string) {

@@ -18,7 +18,7 @@ export class MembershipRepository {
     if (!user.email) return null;
     const family = await this.prisma.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { familyId: true } });
     if (family?.familyId) return family.familyId;
-    const member = await this.prisma.familyMember.findFirst({ where: { email: user.email }, select: { familyId: true } });
+    const member = await this.prisma.familyMember.findFirst({ where: { email: user.email, family: { status: "ACTIVE" } }, select: { familyId: true } });
     return member ? member.familyId : null;
   }
 

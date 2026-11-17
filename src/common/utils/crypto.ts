@@ -9,10 +9,19 @@ export const hashPassword = (password: string): string => {
   return `${salt}:${passwordKey(password, salt)}`;
 };
 
-export const verifyPassword = (password: string, stored: unknown): boolean => {
-  if (typeof stored !== "string" || !stored.includes(":")) return false;
+// Used when there is no stored hash (unknown account), so a miss costs the same scrypt time as a
+// wrong password and response times don't reveal which accounts exist.
+const DUMMY_SALT = crypto.randomBytes(16).toString("hex");
+
+// A non-string password (e.g. `true` or a number from a crafted request) is simply wrong, never an error.
+export const verifyPassword = (password: unknown, stored: unknown): boolean => {
+  const text = typeof password === "string" ? password : "";
+  if (typeof stored !== "string" || !stored.includes(":")) {
+    passwordKey(text, DUMMY_SALT);
+    return false;
+  }
   const [salt, hash] = stored.split(":");
-  const expected = Buffer.from(passwordKey(password, salt), "hex");
+  const expected = Buffer.from(passwordKey(text, salt), "hex");
   const actual = Buffer.from(hash, "hex");
   return expected.length === actual.length && crypto.timingSafeEqual(expected, actual);
 };

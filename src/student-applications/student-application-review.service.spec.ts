@@ -5,7 +5,7 @@ import type { ApplicantNotifier } from "../common/messaging/applicant-notifier.s
 import type { PrismaService } from "../database/prisma.service.js";
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
 import type { StudentsRepository } from "../students/students.repository.js";
-import { fakeAuth, fakeFees, fakeModelRepo, fakeNotifier, fakePrisma } from "../testing/fake-repo.js";
+import { type FakeAccountRecords, fakeAuth, fakeFees, fakeModelRepo, fakeNotifier, fakePrisma } from "../testing/fake-repo.js";
 import { as, rejectsWith } from "../testing/fakes.js";
 import { notificationRow, studentApplicationRow, studentRow } from "../testing/rows.js";
 import type { TransactionsRepository } from "../transactions/transactions.repository.js";
@@ -23,14 +23,14 @@ const pending = studentApplicationRow({
   dob: new Date("2010-04-05T00:00:00Z"),
 });
 
-const build = (application = pending) => {
+const build = (application = pending, accounts?: FakeAccountRecords) => {
   const applications = fakeModelRepo(studentApplicationRow, [{ ...application }]);
   const students = fakeModelRepo(studentRow);
   students.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-STU-000011"]);
   const notifications = fakeModelRepo(notificationRow);
   const auth = fakeAuth();
   const service = new StudentApplicationReviewService(
-    as<PrismaService>(fakePrisma()),
+    as<PrismaService>(fakePrisma(accounts)),
     as<StudentApplicationsRepository>(applications),
     as<StudentsRepository>(students),
     as<NotificationsRepository>(notifications),
@@ -42,6 +42,21 @@ const build = (application = pending) => {
 };
 
 describe("StudentApplicationReviewService", () => {
+  test("approval is refused when the student's email is a Family Member login (no role crossover)", async () => {
+    const accounts = {
+      users: [{ id: "u-parent", email: "asha@example.com", role: "user", status: "active" }],
+      members: [{ email: "asha@example.com", familyId: "F1", status: "ACTIVE", family: { status: "ACTIVE" } }],
+    };
+    const { service, students, auth } = build(pending, accounts);
+    await rejectsWith(
+      service.review("sa-1", { decision: "APPROVED" }),
+      409,
+      "This student's email is the login of an existing Family Member account, so approving would attach the student to that login. Ask for a correction with the student's own email.",
+    );
+    assert.equal(students.create.mock.callCount(), 0);
+    assert.equal(auth.invite.mock.callCount(), 0);
+  });
+
   test("approve: ACTIVE student from the application, approved, notified, invited with the guardian's mobile", async () => {
     const { service, notifications, auth } = build();
     const result = await service.review("sa-1", { decision: "APPROVED" });

@@ -36,4 +36,6 @@ export class AvailabilityVo {
 export class StatsVo {
   @ApiProperty({ example: 120, description: "Active families" }) families!: number;
   @ApiProperty({ example: 480, description: "Active family members" }) members!: number;
+  @ApiProperty({ example: 75, description: "Approved (active) students" }) students!: number;
+  @ApiProperty({ example: 30, description: "Approved Shagun Bandhan profiles" }) sagunProfiles!: number;
 }

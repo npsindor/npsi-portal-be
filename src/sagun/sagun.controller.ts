@@ -37,7 +37,7 @@ import {
   SagunSettingsDto,
 } from "./sagun.dto.js";
 import { SagunService } from "./sagun.service.js";
-@ApiTags("Sagun")
+@ApiTags("Shagun")
 @Controller("sagun")
 export class SagunController {
   constructor(private readonly service: SagunService) {}
@@ -47,7 +47,7 @@ export class SagunController {
   @Get("eligible-members")
   @UseGuards(UserGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Members of the caller's registered family, with Sagun eligibility computed from the family record" })
+  @ApiOperation({ summary: "Members of the caller's registered family, with Shagun eligibility computed from the family record" })
   @ApiResponse({ status: 200, description: "Family and members" })
   @ApiResponse({ status: 403, description: "SAGUN_MEMBER_REQUIRED: the caller has no ACTIVE registered family" })
   eligibleMembers(@CurrentUser() user: UserRow) {
@@ -96,7 +96,7 @@ export class SagunController {
   @Get("admin/stats")
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Sagun dashboard counts (applications exclude drafts)" })
+  @ApiOperation({ summary: "Shagun dashboard counts (applications exclude drafts)" })
   @ApiResponse({ status: 200, description: "Counts by status and gender" })
   stats(@CurrentUser() user: UserRow) {
     return this.service.stats(user);
@@ -104,7 +104,7 @@ export class SagunController {
   @Get("admin/profiles")
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Search and filter Sagun applications" })
+  @ApiOperation({ summary: "Search and filter Shagun applications" })
   @ApiResponse({ status: 200, description: "{ total, records }" })
   adminList(@Query() query: SagunAdminListDto, @CurrentUser() user: UserRow) {
     return this.service.adminList(query, user);
@@ -129,7 +129,7 @@ export class SagunController {
   @Get("admin/settings")
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Sagun registration settings" })
+  @ApiOperation({ summary: "Shagun registration settings" })
   @ApiResponse({ status: 200, description: "Settings" })
   settings(@CurrentUser() user: UserRow) {
     return this.service.adminSettings(user);
@@ -137,7 +137,7 @@ export class SagunController {
   @Put("admin/settings")
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: "Update Sagun registration settings (minimum ages cannot go below 18 / 21)" })
+  @ApiOperation({ summary: "Update Shagun registration settings (minimum ages cannot go below 18 / 21)" })
   @ApiResponse({ status: 200, description: "Settings" })
   @ApiResponse({ status: 400, description: "Validation error" })
   updateSettings(@Body() dto: SagunSettingsDto, @CurrentUser() user: UserRow) {

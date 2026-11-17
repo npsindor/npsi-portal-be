@@ -6,7 +6,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto, SafarDecisionDto } from "./safar.dto.js";
 import { SafarService } from "./safar.service.js";
 
-@ApiTags("Safar Saathi")
+@ApiTags("Transportation")
 @Controller("safar-saathi")
 export class SafarController {
   constructor(private readonly service: SafarService) {}

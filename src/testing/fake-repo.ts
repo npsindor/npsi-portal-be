@@ -74,8 +74,47 @@ export const fakeEvents = () => ({
 
 // PrismaService stand-in for services that open a transaction: runs the work
 // with a marker client (the fake repositories ignore which client they get).
-export const TX = { transaction: true };
-export const fakePrisma = () => ({ $transaction: mock.fn(async <T>(work: (tx: typeof TX) => Promise<T>) => work(TX)) });
+// It also answers the login-account lookups (login-account.ts) with "no such records" unless `accounts` lists some.
+export interface FakeAccountRecords {
+  users?: Record<string, unknown>[];
+  families?: Record<string, unknown>[];
+  members?: Record<string, unknown>[];
+  applications?: Record<string, unknown>[];
+  students?: Record<string, unknown>[];
+  studentApplications?: Record<string, unknown>[];
+}
+type Where = { OR?: Where[]; NOT?: Where; [key: string]: unknown };
+const matches = (row: Record<string, unknown>, where: Where | undefined): boolean => {
+  if (!where) return true;
+  return Object.entries(where).every(([key, value]) => {
+    if (key === "OR") return (value as Where[]).some((part) => matches(row, part));
+    if (key === "NOT") return !matches(row, value as Where);
+    if (value && typeof value === "object" && !(value instanceof Date))
+      return row[key] && typeof row[key] === "object" ? matches(row[key] as Record<string, unknown>, value as Where) : false;
+    return String(row[key] ?? "").toLowerCase() === String(value ?? "").toLowerCase();
+  });
+};
+export const fakeAccountDb = (records: FakeAccountRecords = {}) => {
+  const model = (rows: Record<string, unknown>[] = []) => ({
+    findMany: mock.fn(async (args: { where?: Where } = {}) => rows.filter((row) => matches(row, args.where))),
+    findFirst: mock.fn(async (args: { where?: Where } = {}) => rows.find((row) => matches(row, args.where)) ?? null),
+    findUnique: mock.fn(async (args: { where?: Where } = {}) => rows.find((row) => matches(row, args.where)) ?? null),
+  });
+  return {
+    user: model(records.users),
+    family: model(records.families),
+    familyMember: model(records.members),
+    application: model(records.applications),
+    student: model(records.students),
+    studentApplication: model(records.studentApplications),
+  };
+};
+export const TX = { transaction: true, ...fakeAccountDb() };
+export const fakePrisma = (accounts?: FakeAccountRecords) => {
+  const db = accounts ? fakeAccountDb(accounts) : fakeAccountDb();
+  const tx = accounts ? { transaction: true, ...db } : TX;
+  return { ...db, $transaction: mock.fn(async <T>(work: (tx: typeof TX) => Promise<T>) => work(tx as typeof TX)) };
+};
 
 // AuthService stand-in: records invitations.
 // Registration-fee lookups for review services: `fee` is what feeFor returns (null = no fee recorded).

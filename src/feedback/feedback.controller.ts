@@ -17,6 +17,7 @@ import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { CreateFeedbackDto, FeedbackListQueryDto, UpdateFeedbackDto } from "./dto/feedback.dto.js";
+import { PublicMessageDto } from "./dto/public-message.dto.js";
 import { FeedbackService } from "./feedback.service.js";
 import { FeedbackVo } from "./vo/feedback.vo.js";
 
@@ -35,6 +36,14 @@ export class FeedbackController {
   @ApiForbiddenResponse({ type: ErrorVo })
   list(@Query() query: FeedbackListQueryDto): Promise<FeedbackVo[]> {
     return this.feedback.list(query);
+  }
+
+  @Post("public")
+  @ApiOperation({ summary: "Public Contact Us / Feedback message", description: "No login; reCAPTCHA and rate limit. Reaches Admin → Feedback." })
+  @ApiCreatedResponse({ description: "{ reference: 'FB-…' }" })
+  @ApiBadRequestResponse({ type: ErrorVo })
+  createPublic(@Body() body: PublicMessageDto): Promise<{ reference: string }> {
+    return this.feedback.createPublic(body);
   }
 
   @Post()

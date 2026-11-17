@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
-import { IsIn, IsOptional } from "class-validator";
+import { IsIn, IsOptional, Max, Min } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalBoolean, OptionalChoice, OptionalDate, OptionalInt, OptionalJson, OptionalText, RequiredText } from "../../common/validation/fields.js";
 
@@ -22,7 +22,7 @@ export class CreateFeedbackDto {
   @OptionalText(255)
   subject?: string | null;
 
-  @OptionalText()
+  @OptionalText(10000)
   message?: string | null;
 
   @OptionalText()
@@ -32,6 +32,8 @@ export class CreateFeedbackDto {
   questions?: unknown | null;
 
   @OptionalInt()
+  @Min(1, { message: "Rating must be between 1 and 5." })
+  @Max(5, { message: "Rating must be between 1 and 5." })
   rating?: number | null;
 
   @OptionalChoice(FEEDBACK_STATUSES)

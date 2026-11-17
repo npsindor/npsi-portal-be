@@ -17,8 +17,12 @@ import {
 
 const text = (max = 255) => [IsString(), MaxLength(max)];
 
+export const CONTRIBUTION_GROUPS = ["GENERAL", "BHOG_PRASAD"] as const;
+export const EXPENSE_GROUPS = ["EVENT", "ORGANIZATION"] as const;
+
 export class ExpenseCategoryDto {
   @IsString() @MaxLength(160) name!: string;
+  @IsOptional() @IsString() @MaxLength(160) nameHi?: string | null;
   @IsOptional() @IsBoolean() active?: boolean;
   @IsOptional() @IsInt() @Min(0) sortOrder?: number;
 }
@@ -34,6 +38,10 @@ export class EventContributionDto {
   @IsOptional() @IsString() @MaxLength(128) paymentReference?: string | null;
   @IsOptional() @IsIn(["PENDING", "APPROVED", "REJECTED"]) status?: string;
   @IsOptional() @IsDateString() contributedAt?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100000) serialNo?: number | null;
+  @IsOptional() @IsIn(CONTRIBUTION_GROUPS) contributionGroup?: string;
+  @IsOptional() @IsString() @MaxLength(5000) notes?: string | null;
+  @IsOptional() @IsString() @MaxLength(2000) reviewNote?: string | null;
 }
 
 export class EventExpenseDto {
@@ -51,6 +59,10 @@ export class EventExpenseDto {
   @IsOptional() @IsString() @MaxLength(5000) notes?: string | null;
   @IsIn(["PAID", "PENDING", "PARTIALLY_PAID"]) paymentStatus!: string;
   @IsOptional() @IsIn(["PENDING", "APPROVED", "REJECTED"]) status?: string;
+  @IsOptional() @IsString() @MaxLength(255) titleHi?: string | null;
+  @IsOptional() @IsString() @MaxLength(5000) descriptionHi?: string | null;
+  @IsOptional() @IsIn(EXPENSE_GROUPS) expenseGroup?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100000) serialNo?: number | null;
 }
 
 export class EventTeamDto {

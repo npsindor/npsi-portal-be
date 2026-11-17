@@ -14,6 +14,7 @@ export class EnvironmentVariables {
   @IsOptional() @IsString() MYSQL_PASSWORD?: string;
   @IsOptional() @Matches(NUMERIC, { message: "API_PORT must be a number" }) API_PORT?: string;
   @IsOptional() @IsString() FRONTEND_URL?: string;
+  @IsOptional() @IsString() CORS_ORIGINS?: string;
   @IsOptional() @IsString() UPLOADS_DIR?: string;
   @IsOptional() @IsString() TRUST_PROXY?: string;
   @IsOptional() @IsString() APP_ENV?: string;

@@ -28,7 +28,7 @@ test("email notices contain no medicine or member contact and provider acceptanc
     { frontendUrl: "https://example.invalid" } as AppConfigService,
   );
   assert.equal((await provider.send("EMAIL", { email: "test@example.invalid", phone: null, lang: "hi" })).status, "ACCEPTED");
-  assert.ok(message.text.includes("सेहत साथी"));
+  assert.ok(message.text.includes("स्वास्थ्य सहयोग"));
   assert.ok(message.text.includes("https://example.invalid/medical"));
   assert.equal(message.text.includes("test@example.invalid"), false);
 });

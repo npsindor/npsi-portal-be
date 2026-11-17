@@ -101,6 +101,7 @@ export const eventRow = (overrides: Partial<Models.Event> = {}): Models.Event =>
   titleHi: null,
   descriptionHi: null,
   category: "GENERAL",
+  teamJoiningOpen: false,
   ...overrides,
 });
 

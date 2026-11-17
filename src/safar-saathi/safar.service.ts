@@ -260,11 +260,11 @@ export class SafarService {
         }
         const text =
           own.lang === "hi"
-            ? `सफ़र साथी: आपकी यात्रा के समन्वय में नई सूचना है। स्थिति: ${state}। निजी विवरण और समन्वय के लिए अपने खाते में लॉगिन करें: ${url}`
-            : `Safar Saathi: there is an update to your travel coordination. Status: ${state}. Sign in to see private details and coordinate: ${url}`;
+            ? `यातायात सहयोग: आपकी यात्रा के समन्वय में नई सूचना है। स्थिति: ${state}। निजी विवरण और समन्वय के लिए अपने खाते में लॉगिन करें: ${url}`
+            : `Transportation: there is an update to your travel coordination. Status: ${state}. Sign in to see private details and coordinate: ${url}`;
         const result = await this.mail.send({
           to: notice.user.email,
-          subject: own.lang === "hi" ? "सफ़र साथी — यात्रा सूचना" : "Safar Saathi — travel update",
+          subject: own.lang === "hi" ? "यातायात सहयोग — यात्रा सूचना" : "Transportation — travel update",
           text,
           html: `<p>${text}</p>`,
         });
@@ -325,7 +325,7 @@ export class SafarService {
       await tx.notification.create({
         data: {
           id: randomId(),
-          title: entry.lang === "hi" ? "सफ़र साथी अनुरोध अपडेट" : "Transportation request updated",
+          title: entry.lang === "hi" ? "यातायात सहयोग अनुरोध अपडेट" : "Transportation request updated",
           message: `${entry.origin} → ${entry.destination} (${entry.travelDate.toISOString().slice(0, 10)}): ${dto.status}${remarks ? ` — ${remarks}` : ""}`,
           type: "safar",
           recipientUserId: entry.userId,

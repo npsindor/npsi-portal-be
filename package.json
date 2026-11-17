@@ -22,7 +22,8 @@
     "start:debug": "SKIP_DB_MIGRATIONS=true nest start --debug --watch",
     "start:prod": "node dist/main.js",
     "openapi": "npm run build && node dist/openapi.js",
-    "test:build": "npm run build && node --test tests/build/prisma-package.test.mjs"
+    "test:build": "npm run build && node --test tests/build/prisma-package.test.mjs",
+    "finance:import": "node scripts/import-event-finance.mjs"
   },
   "dependencies": {
     "@nestjs/cli": "^12.0.8",
@@ -49,14 +50,19 @@
     "multer": "^2.4.0",
     "mysql2": "^3.24.4",
     "nodemailer": "^10.0.10",
+    "pdfkit": "^0.17.2",
     "prisma": "~7.10.0",
+    "qrcode": "^1.5.4",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
+    "sharp": "^0.34.5",
     "typescript": "~5.9"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.15",
     "@nestjs/testing": "^12.1.2",
+    "@types/pdfkit": "^0.17.7",
+    "@types/qrcode": "^1.5.6",
     "@types/supertest": "^7.2.1",
     "supertest": "^7.3.1"
   },

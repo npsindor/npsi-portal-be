@@ -28,3 +28,5 @@ export const roomBrowseLimiter = limiter(15 * 60 * 1000, 150);
 export const roomSubmitLimiter = limiter(15 * 60 * 1000, 15);
 // Global search runs as the visitor types (debounced), so it gets its own, more generous counter.
 export const searchLimiter = limiter(15 * 60 * 1000, 300);
+// Logged-in members' feedback lands in the admin queue; this stops one account flooding it.
+export const feedbackLimiter = limiter(15 * 60 * 1000, 10);

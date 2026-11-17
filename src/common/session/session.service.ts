@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import type { Request } from "express";
 import { PrismaService } from "../../database/prisma.service.js";
 import type { User } from "../../generated/prisma/client.js";
+import { LOGIN_USER_STATUSES } from "../eligibility/login-account.js";
 import { ApiError } from "../filters/api-error.js";
 import { sha256 } from "../utils/crypto.js";
 import { cookieToken } from "./session-cookie.js";
@@ -24,7 +25,9 @@ export class SessionService {
     if (!token) return null;
     // Only a SHA-256 of each session token is stored, so a database copy can't be used to log in.
     const session = await this.prisma.session.findFirst({ where: { id: sha256(token), expiresAt: { gt: new Date() } }, include: { user: true } });
-    return session?.user ?? null;
+    // A suspended/disabled account is logged out everywhere at once, not only refused at the next login.
+    if (!session?.user || !LOGIN_USER_STATUSES.includes(session.user.status)) return null;
+    return session.user;
   }
 
   async requireUser(request: Request): Promise<UserRow> {

@@ -1,7 +1,16 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalChoice, OptionalDate, OptionalInt, OptionalNumber, OptionalText, RequiredDate, RequiredText } from "../../common/validation/fields.js";
+import {
+  OptionalBoolean,
+  OptionalChoice,
+  OptionalDate,
+  OptionalInt,
+  OptionalNumber,
+  OptionalText,
+  RequiredDate,
+  RequiredText,
+} from "../../common/validation/fields.js";
 
 export const EVENT_STATUSES = ["DRAFT", "PUBLISHED", "ARCHIVED"] as const;
 // Events & Programs page sections.
@@ -67,6 +76,9 @@ export class CreateEventDto {
 
   @OptionalText()
   descriptionHi?: string | null;
+
+  @OptionalBoolean({ notNull: true, description: "Members and students may ask to join this event's team (shown on /events/:slug)" })
+  teamJoiningOpen?: boolean;
 
   @OptionalChoice(EVENT_CATEGORIES, { notNull: true, description: "Events page section: GARBA (Maa Na Garba), CULTURAL or GENERAL (default)" })
   category?: string;

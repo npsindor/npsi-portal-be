@@ -4,14 +4,14 @@ import type { PrismaService } from "../database/prisma.service.js";
 import type { AvailabilityService } from "../lookups/availability.service.js";
 import type { MembershipRepository } from "../membership/membership.repository.js";
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
-import { fakeMembership, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
+import { type FakeAccountRecords, fakeMembership, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
 import { admin, as, fakeRecaptcha, rejectsWith } from "../testing/fakes.js";
 import { notificationRow, studentApplicationRow } from "../testing/rows.js";
 import type { CreateStudentApplicationDto } from "./dto/student-applications.dto.js";
 import type { StudentApplicationsRepository } from "./student-applications.repository.js";
 import { StudentApplicationsService } from "./student-applications.service.js";
 
-const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false } = {}) => {
+const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false, accounts = undefined as FakeAccountRecords | undefined } = {}) => {
   const repo = fakeModelRepo(studentApplicationRow);
   const availability = {
     isMobileTaken: mock.fn(async () => mobileTaken),
@@ -20,7 +20,7 @@ const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false } = {
   };
   const notifications = fakeModelRepo(notificationRow);
   const service = new StudentApplicationsService(
-    as<PrismaService>(fakePrisma()),
+    as<PrismaService>(fakePrisma(accounts)),
     as<StudentApplicationsRepository>(repo),
     as<NotificationsRepository>(notifications),
     as<AvailabilityService>(availability),
@@ -41,6 +41,23 @@ const student = (overrides: Partial<CreateStudentApplicationDto> = {}): CreateSt
 });
 
 describe("StudentApplicationsService", () => {
+  test("a student can't register with the email of a Family Member login (it would become that login's student)", async () => {
+    const accounts = {
+      users: [{ id: "u-parent", email: "s@example.com", role: "user", status: "active" }],
+      families: [{ ownerUserId: "u-parent", familyId: "F1", status: "ACTIVE" }],
+    };
+    const { service, repo } = build({ accounts });
+    await rejectsWith(
+      service.create(student({ recaptchaToken: "t" }), null),
+      409,
+      "This email is already the login of an NPS Family Member account. Enter the student's own email so they get a separate Student Login.",
+    );
+    assert.equal(repo.create.mock.callCount(), 0);
+    const studentLogin = build({ accounts: { users: [{ id: "u-s", email: "s@example.com", role: "user", status: "active" }] } });
+    await studentLogin.service.create(student({ recaptchaToken: "t" }), null);
+    assert.equal(studentLogin.repo.create.mock.callCount(), 1, "an account without a family registration is fine");
+  });
+
   test("public submission: first display id of the year, PENDING_VERIFICATION, DATE as YYYY-MM-DD", async () => {
     const created = await build().service.create(student({ status: "APPROVED", resultingStudentId: "X" }), null);
     assert.equal(created.applicationId, `NPSI-STU-APP-${new Date().getFullYear()}-000001`);

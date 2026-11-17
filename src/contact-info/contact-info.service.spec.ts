@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { ValidationPipe } from "@nestjs/common";
+import { Global, Module, ValidationPipe } from "@nestjs/common";
 import type { PrismaService } from "../database/prisma.service.js";
+import { fakeRecaptcha, rejectsWith } from "../testing/fakes.js";
 import { CreateContactInfoDto } from "./contact-info.dto.js";
 import { ContactInfoService } from "./contact-info.service.js";
 
@@ -20,7 +21,7 @@ test("normalizes contact details and persists optional email/student defaults", 
       },
     },
   };
-  const service = new ContactInfoService(prisma as unknown as PrismaService);
+  const service = new ContactInfoService(prisma as unknown as PrismaService, fakeRecaptcha(true).service);
   assert.deepEqual(await service.create(dto), { success: true, message: "Thank you! Your details have been saved." });
   const { data } = stored as { data: Record<string, unknown> };
   assert.equal(data.fullName, "नमिता पाटीदार");
@@ -34,15 +35,18 @@ test("normalizes contact details and persists optional email/student defaults", 
 test("accepts custom locations and returns Hindi thanks only after saving", async () => {
   const dto = await validate({ ...valid, indoreArea: "Custom area", nativeVillage: "Custom village", email: " A@EXAMPLE.COM ", isStudent: true, lang: "hi" });
   assert.equal(dto.email, "a@example.com");
-  const service = new ContactInfoService({ contactInfo: { create: async () => ({ id: "saved" }) } } as unknown as PrismaService);
+  const service = new ContactInfoService({ contactInfo: { create: async () => ({ id: "saved" }) } } as unknown as PrismaService, fakeRecaptcha(true).service);
   assert.match((await service.create(dto)).message, /धन्यवाद/);
-  const failure = new ContactInfoService({
-    contactInfo: {
-      create: async () => {
-        throw new Error("DB unavailable");
+  const failure = new ContactInfoService(
+    {
+      contactInfo: {
+        create: async () => {
+          throw new Error("DB unavailable");
+        },
       },
-    },
-  } as unknown as PrismaService);
+    } as unknown as PrismaService,
+    fakeRecaptcha(true).service,
+  );
   await assert.rejects(failure.create(dto), /DB unavailable/);
 });
 
@@ -79,7 +83,7 @@ test("lists one page newest first with the total and ISO dates", async () => {
     },
     $transaction: (queries: Promise<unknown>[]) => Promise.all(queries),
   };
-  const service = new ContactInfoService(prisma as unknown as PrismaService);
+  const service = new ContactInfoService(prisma as unknown as PrismaService, fakeRecaptcha(true).service);
   assert.deepEqual(await service.list({ limit: 1, offset: 3 }), { items: [{ ...row, createdAt: "2026-10-11T10:00:00.000Z" }], total: 7, limit: 1, offset: 3 });
   assert.deepEqual((findArgs as { orderBy: unknown }).orderBy, [{ createdAt: "desc" }, { id: "desc" }]);
   assert.deepEqual(await service.list({}).then(({ limit, offset }) => [limit, offset]), [100, 0]);
@@ -92,8 +96,13 @@ test("public HTTP endpoint validates input, inserts once and rate limits submiss
   const { PrismaService: PrismaToken } = await import("../database/prisma.service.js");
   const { ContactInfoModule } = await import("./contact-info.module.js");
   const { AdminGuard } = await import("../common/guards/auth.guards.js");
+  const { RecaptchaService } = await import("../common/recaptcha/recaptcha.service.js");
+  // In the app RecaptchaService comes from the global CommonModule.
+  @Global()
+  @Module({ providers: [{ provide: RecaptchaService, useValue: fakeRecaptcha(true).service }], exports: [RecaptchaService] })
+  class FakeRecaptchaModule {}
   let inserts = 0;
-  const module = await Test.createTestingModule({ imports: [DatabaseModule, ContactInfoModule] })
+  const module = await Test.createTestingModule({ imports: [FakeRecaptchaModule, DatabaseModule, ContactInfoModule] })
     .overrideProvider(PrismaToken)
     .useValue({
       contactInfo: {
@@ -121,4 +130,16 @@ test("public HTTP endpoint validates input, inserts once and rate limits submiss
   } finally {
     await app.close();
   }
+});
+
+test("a failed reCAPTCHA saves nothing", async () => {
+  let saved = false;
+  const create = async () => {
+    saved = true;
+    return { id: "x" };
+  };
+  const prisma = { contactInfo: { create } };
+  const service = new ContactInfoService(prisma as unknown as PrismaService, fakeRecaptcha(false).service);
+  await rejectsWith(service.create(await validate(valid)), 400, /reCAPTCHA/i);
+  assert.equal(saved, false);
 });

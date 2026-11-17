@@ -119,6 +119,7 @@ model Event {
   titleHi           String?                  @map("title_hi") @db.Text
   descriptionHi     String?                  @map("description_hi") @db.Text
   /// Events & Programs page section: GARBA (Maa Na Garba), CULTURAL (Cultural Programs) or GENERAL.
+  teamJoiningOpen   Boolean                  @default(false) @map("team_joining_open")
   category          String                   @default("GENERAL") @db.VarChar(16)
   contributions     EventContribution[]
   expenses          EventExpense[]
@@ -127,6 +128,7 @@ model Event {
   responsibilities  EventResponsibility[]
   rosterImports     RosterImportHistory[]
   financialAudits   EventFinancialAuditLog[]
+  memberSections    EventMemberSection[]
 
   @@index([status, date])
   @@map("events")
@@ -187,6 +189,9 @@ model FamilyMember {
   eventContributions EventContribution[]
   eventRoster        EventRoster[]
 
+  coreTeam                CoreTeamMember?
+  eventMemberApplications EventMemberApplication[]
+
   @@index([familyId], map: "family_members_family_idx")
   @@index([email], map: "family_members_email_idx")
   @@index([membershipId], map: "family_members_membership_idx")
@@ -197,6 +202,7 @@ model FamilyMember {
 model ExpenseCategory {
   id        String         @id @db.VarChar(64)
   name      String         @unique(map: "event_expense_categories_name_key") @db.VarChar(160)
+  nameHi    String?        @map("name_hi") @db.VarChar(160)
   active    Boolean        @default(true)
   sortOrder Int            @default(0) @map("sort_order")
   createdAt DateTime       @default(now()) @map("created_at") @db.DateTime(0)
@@ -208,25 +214,34 @@ model ExpenseCategory {
 }
 
 model EventContribution {
-  id               String        @id @db.VarChar(64)
-  eventId          String        @map("event_id") @db.VarChar(64)
-  memberId         String?       @map("member_id") @db.VarChar(64)
-  memberName       String        @map("member_name") @db.VarChar(255)
-  familyId         String?       @map("family_id") @db.VarChar(255)
-  village          String?       @db.VarChar(255)
-  mobile           String?       @db.VarChar(20)
-  amount           Decimal       @db.Decimal(12, 2)
-  paymentMode      String        @map("payment_mode") @db.VarChar(32)
-  paymentReference String?       @unique(map: "event_contributions_payment_reference_key") @map("payment_reference") @db.VarChar(128)
-  status           String        @default("PENDING") @db.VarChar(24)
-  contributedAt    DateTime      @default(now()) @map("contributed_at") @db.DateTime(0)
-  createdById      String        @map("created_by_id") @db.VarChar(64)
-  updatedById      String?       @map("updated_by_id") @db.VarChar(64)
-  deletedAt        DateTime?     @map("deleted_at") @db.DateTime(0)
-  createdAt        DateTime      @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt        DateTime      @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
-  event            Event         @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "event_contributions_event_fkey")
-  member           FamilyMember? @relation(fields: [memberId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_contributions_member_fkey")
+  id                String        @id @db.VarChar(64)
+  eventId           String        @map("event_id") @db.VarChar(64)
+  memberId          String?       @map("member_id") @db.VarChar(64)
+  memberName        String        @map("member_name") @db.VarChar(255)
+  familyId          String?       @map("family_id") @db.VarChar(255)
+  village           String?       @db.VarChar(255)
+  mobile            String?       @db.VarChar(20)
+  amount            Decimal       @db.Decimal(12, 2)
+  paymentMode       String        @map("payment_mode") @db.VarChar(32)
+  paymentReference  String?       @unique(map: "event_contributions_payment_reference_key") @map("payment_reference") @db.VarChar(128)
+  status            String        @default("PENDING") @db.VarChar(24)
+  contributedAt     DateTime      @default(now()) @map("contributed_at") @db.DateTime(0)
+  /// Line number in the source statement (e.g. the printed donor list).
+  serialNo          Int?          @map("serial_no")
+  /// GENERAL (Sahyog Rashi) or BHOG_PRASAD (Mataji Bhog & Prasad).
+  contributionGroup String        @default("GENERAL") @map("contribution_group") @db.VarChar(24)
+  notes             String?       @db.Text
+  /// Set when an entry needs a Super Admin check (e.g. an unclear amount in the source statement).
+  reviewNote        String?       @map("review_note") @db.Text
+  /// Stable key of an imported statement line, so a re-run never creates a duplicate.
+  importKey         String?       @unique(map: "event_contributions_import_key_key") @map("import_key") @db.VarChar(128)
+  createdById       String        @map("created_by_id") @db.VarChar(64)
+  updatedById       String?       @map("updated_by_id") @db.VarChar(64)
+  deletedAt         DateTime?     @map("deleted_at") @db.DateTime(0)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  event             Event         @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "event_contributions_event_fkey")
+  member            FamilyMember? @relation(fields: [memberId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_contributions_member_fkey")
 
   @@index([eventId, status, contributedAt], map: "event_contributions_event_status_date_idx")
   @@index([village], map: "event_contributions_village_idx")
@@ -239,6 +254,12 @@ model EventExpense {
   categoryId       String          @map("category_id") @db.VarChar(64)
   title            String          @db.VarChar(255)
   description      String?         @db.Text
+  titleHi          String?         @map("title_hi") @db.VarChar(255)
+  descriptionHi    String?         @map("description_hi") @db.Text
+  /// EVENT (the event's own expenses) or ORGANIZATION (a Sangathan programme accounted with the event).
+  expenseGroup     String          @default("EVENT") @map("expense_group") @db.VarChar(24)
+  serialNo         Int?            @map("serial_no")
+  importKey        String?         @unique(map: "event_expenses_import_key_key") @map("import_key") @db.VarChar(128)
   amount           Decimal         @db.Decimal(12, 2)
   vendorName       String?         @map("vendor_name") @db.VarChar(255)
   vendorMobile     String?         @map("vendor_mobile") @db.VarChar(20)
@@ -307,9 +328,20 @@ model EventRoster {
   event          Event                 @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "event_roster_event_fkey")
   member         FamilyMember?         @relation(fields: [memberId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_roster_member_fkey")
   team           EventTeam?            @relation(fields: [teamId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_roster_team_fkey")
+  studentId      String?               @map("student_id") @db.VarChar(255)
+  userId         String?               @map("user_id") @db.VarChar(64)
+  photoUrl       String?               @map("photo_url") @db.VarChar(500)
+  area           String?               @db.VarChar(150)
+  showMobile     Boolean               @default(false) @map("show_mobile")
+  showOnWebsite  Boolean               @default(false) @map("show_on_website")
+  reviewStatus   String                @default("APPROVED") @map("review_status") @db.VarChar(16)
+  reviewRemarks  String?               @map("review_remarks") @db.VarChar(500)
+  source         String                @default("ADMIN") @db.VarChar(16)
   assignments    EventResponsibility[]
 
   @@unique([eventId, memberId], map: "event_roster_event_member_key")
+  @@unique([eventId, studentId], map: "event_roster_event_student_key")
+  @@index([eventId, reviewStatus, showOnWebsite], map: "event_roster_event_review_idx")
   @@index([eventId, village], map: "event_roster_event_village_idx")
   @@index([eventId, status], map: "event_roster_event_status_idx")
   @@map("event_roster")
@@ -572,27 +604,27 @@ model Student {
 }
 
 model Transaction {
-  id             String    @id @db.VarChar(64)
-  transactionId  String    @unique(map: "transaction_id") @map("transaction_id") @db.VarChar(255)
-  type           String    @db.VarChar(255)
-  amount         Decimal   @db.Decimal(12, 2)
-  paymentMethod  String?   @map("payment_method") @db.VarChar(255)
-  paymentStatus  String?   @default("PENDING") @map("payment_status") @db.VarChar(64)
-  familyId       String?   @map("family_id") @db.VarChar(255)
-  memberId       String?   @map("member_id") @db.VarChar(255)
-  eventId        String?   @map("event_id") @db.VarChar(255)
-  referenceId    String?   @map("reference_id") @db.VarChar(255)
-  date           DateTime? @db.DateTime(0)
-  remarks        String?   @db.Text
-  screenshotFile String?   @map("screenshot_file") @db.VarChar(120)
-  utr            String?   @db.VarChar(40)
-  adminRemarks   String?   @map("admin_remarks") @db.Text
-  refundAmount   Decimal?  @map("refund_amount") @db.Decimal(12, 2)
-  refundReference String?  @map("refund_reference") @db.VarChar(120)
-  reviewedBy     String?   @map("reviewed_by") @db.VarChar(64)
-  reviewedAt     DateTime? @map("reviewed_at") @db.DateTime(0)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  id              String    @id @db.VarChar(64)
+  transactionId   String    @unique(map: "transaction_id") @map("transaction_id") @db.VarChar(255)
+  type            String    @db.VarChar(255)
+  amount          Decimal   @db.Decimal(12, 2)
+  paymentMethod   String?   @map("payment_method") @db.VarChar(255)
+  paymentStatus   String?   @default("PENDING") @map("payment_status") @db.VarChar(64)
+  familyId        String?   @map("family_id") @db.VarChar(255)
+  memberId        String?   @map("member_id") @db.VarChar(255)
+  eventId         String?   @map("event_id") @db.VarChar(255)
+  referenceId     String?   @map("reference_id") @db.VarChar(255)
+  date            DateTime? @db.DateTime(0)
+  remarks         String?   @db.Text
+  screenshotFile  String?   @map("screenshot_file") @db.VarChar(120)
+  utr             String?   @db.VarChar(40)
+  adminRemarks    String?   @map("admin_remarks") @db.Text
+  refundAmount    Decimal?  @map("refund_amount") @db.Decimal(12, 2)
+  refundReference String?   @map("refund_reference") @db.VarChar(120)
+  reviewedBy      String?   @map("reviewed_by") @db.VarChar(64)
+  reviewedAt      DateTime? @map("reviewed_at") @db.DateTime(0)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@index([familyId, date], map: "transactions_family_idx")
   @@index([referenceId], map: "transactions_reference_id_idx")
@@ -728,8 +760,8 @@ model SafarEntry {
   requests           SafarMatch[] @relation("SafarRequest")
   offers             SafarMatch[] @relation("SafarOffer")
 
-  adminRemarks       String?      @map("admin_remarks") @db.VarChar(500)
-  reviewedAt         DateTime?    @map("reviewed_at") @db.DateTime(0)
+  adminRemarks String?   @map("admin_remarks") @db.VarChar(500)
+  reviewedAt   DateTime? @map("reviewed_at") @db.DateTime(0)
 
   @@unique([userId, clientRequestId])
   @@index([userId, createdAt])
@@ -909,41 +941,83 @@ model SehatAudit {
 }
 
 model SagunProfile {
-  id              String         @id @db.VarChar(64)
-  userId          String         @map("user_id") @db.VarChar(64)
-  reference       String         @unique @db.VarChar(32)
+  id              String            @id @db.VarChar(64)
+  userId          String            @map("user_id") @db.VarChar(64)
+  reference       String            @unique @db.VarChar(32)
   data            Json
-  displayName     String         @default("") @map("display_name") @db.VarChar(150)
-  candidateType   String         @default("") @map("candidate_type") @db.VarChar(12)
-  birthDate       DateTime?      @map("birth_date") @db.Date
-  city            String         @default("") @db.VarChar(150)
-  gotra           String         @default("") @db.VarChar(150)
-  education       String         @default("") @db.VarChar(200)
-  occupation      String         @default("") @db.VarChar(200)
-  maritalStatus   String         @default("") @map("marital_status") @db.VarChar(20)
-  status          String         @default("DRAFT") @db.VarChar(20)
-  visibility      String         @default("PRIVATE") @db.VarChar(16)
-  reviewNotes     String?        @map("review_notes") @db.Text
-  familyId        String?        @map("family_id") @db.VarChar(255)
-  memberId        String?        @unique @map("member_id") @db.VarChar(64)
-  studentId       String?        @unique @map("student_id") @db.VarChar(255)
-  village         String         @default("") @db.VarChar(255)
-  ageAtSubmission Int?           @map("age_at_submission")
-  submittedAt     DateTime?      @map("submitted_at") @db.DateTime(0)
-  approvedAt      DateTime?      @map("approved_at") @db.DateTime(0)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt       DateTime       @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
-  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  member          FamilyMember?  @relation(fields: [memberId], references: [id], onDelete: SetNull)
-  student         Student?       @relation(fields: [studentId], references: [studentId], onDelete: SetNull, onUpdate: Cascade)
+  displayName     String            @default("") @map("display_name") @db.VarChar(150)
+  candidateType   String            @default("") @map("candidate_type") @db.VarChar(12)
+  birthDate       DateTime?         @map("birth_date") @db.Date
+  city            String            @default("") @db.VarChar(150)
+  gotra           String            @default("") @db.VarChar(150)
+  education       String            @default("") @db.VarChar(200)
+  occupation      String            @default("") @db.VarChar(200)
+  maritalStatus   String            @default("") @map("marital_status") @db.VarChar(20)
+  status          String            @default("DRAFT") @db.VarChar(20)
+  visibility      String            @default("PRIVATE") @db.VarChar(16)
+  reviewNotes     String?           @map("review_notes") @db.Text
+  familyId        String?           @map("family_id") @db.VarChar(255)
+  memberId        String?           @unique @map("member_id") @db.VarChar(64)
+  studentId       String?           @unique @map("student_id") @db.VarChar(255)
+  village         String            @default("") @db.VarChar(255)
+  ageAtSubmission Int?              @map("age_at_submission")
+  submittedAt     DateTime?         @map("submitted_at") @db.DateTime(0)
+  approvedAt      DateTime?         @map("approved_at") @db.DateTime(0)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime          @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  member          FamilyMember?     @relation(fields: [memberId], references: [id], onDelete: SetNull)
+  student         Student?          @relation(fields: [studentId], references: [studentId], onDelete: SetNull, onUpdate: Cascade)
   files           SagunFile[]
   inquiries       SagunInquiry[]
+  digitalCard     SagunDigitalCard?
 
   @@index([status, visibility, city])
   @@index([userId, createdAt])
   @@index([familyId])
   @@index([status, candidateType])
   @@map("sagun_profiles")
+}
+
+// One printable digital card per submitted Sagun profile. Personal details and approval stay on sagun_profiles;
+// this row only holds the card's own identity (printed profile code, QR verification token) and booklet selection.
+model SagunDigitalCard {
+  id                 String       @id @db.VarChar(64)
+  profileId          String       @unique @map("profile_id") @db.VarChar(64)
+  serial             Int          @unique
+  profileCode        String       @unique @map("profile_code") @db.VarChar(24)
+  verifyToken        String       @unique @map("verify_token") @db.VarChar(64)
+  designVersion      Int          @default(1) @map("design_version")
+  selectedForBooklet Boolean      @default(false) @map("selected_for_booklet")
+  lastPublishedAt    DateTime?    @map("last_published_at") @db.DateTime(0)
+  createdAt          DateTime     @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt          DateTime     @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  profile            SagunProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([selectedForBooklet])
+  @@map("sagun_digital_cards")
+}
+
+// A generated A4 booklet: which profiles, which layout, who generated it, and the stored PDF (private storage).
+model SagunBookletHistory {
+  id              String   @id @db.VarChar(64)
+  title           String   @db.VarChar(200)
+  edition         String   @default("") @db.VarChar(100)
+  profileIds      Json     @map("profile_ids")
+  cardLayout      Int      @map("card_layout")
+  grouping        String   @db.VarChar(16)
+  includeCover    Boolean  @map("include_cover")
+  includeIndex    Boolean  @map("include_index")
+  totalProfiles   Int      @map("total_profiles")
+  totalPages      Int      @map("total_pages")
+  pdfFilename     String?  @map("pdf_filename") @db.VarChar(120)
+  pdfSize         Int?     @map("pdf_size")
+  generatedBy     String   @map("generated_by") @db.VarChar(64)
+  generatedByName String   @default("") @map("generated_by_name") @db.VarChar(150)
+  generatedAt     DateTime @default(now()) @map("generated_at") @db.DateTime(0)
+
+  @@index([generatedAt])
+  @@map("sagun_booklet_history")
 }
 
 model SagunApplicationLog {
@@ -1154,36 +1228,36 @@ model PageBlock {
 // Room Hunting: rental listings posted by approved family members / registered students, room requirements
 // (anyone may post; anonymous ones wait for approval), the matches between them, enquiries and an audit log.
 model RentalListing {
-  id              String    @id @db.VarChar(64)
-  reference       String    @unique @db.VarChar(20)
-  clientRequestId String    @map("client_request_id") @db.VarChar(36)
-  userId          String    @map("user_id") @db.VarChar(64)
-  memberId        String?   @map("member_id") @db.VarChar(64)
-  familyId        String?   @map("family_id") @db.VarChar(255)
-  studentId       String?   @map("student_id") @db.VarChar(255)
-  propertyType    String    @map("property_type") @db.VarChar(60)
-  typeKey         String    @map("type_key") @db.VarChar(60)
-  availableFor    String    @default("ANY") @map("available_for") @db.VarChar(16)
-  rentAmount      Int       @map("rent_amount")
-  area            String    @db.VarChar(150)
-  areaKey         String    @map("area_key") @db.VarChar(150)
-  address         String?   @db.VarChar(500)
-  showAddress     Boolean   @default(false) @map("show_address")
-  availableFrom   DateTime? @map("available_from") @db.Date
-  description     String?   @db.Text
-  photoUrl        String?   @map("photo_url") @db.VarChar(500)
-  contactName     String    @map("contact_name") @db.VarChar(150)
-  contactMobile   String    @map("contact_mobile") @db.VarChar(10)
-  contactEmail    String?   @map("contact_email") @db.VarChar(254)
-  showMobile      Boolean   @default(false) @map("show_mobile")
-  showEmail       Boolean   @default(false) @map("show_email")
-  ownerConfirmed  Boolean   @default(false) @map("owner_confirmed")
-  status          String    @default("PENDING") @db.VarChar(16)
-  adminRemarks    String?   @map("admin_remarks") @db.VarChar(500)
-  approvedAt      DateTime? @map("approved_at") @db.DateTime(0)
-  expiresAt       DateTime? @map("expires_at") @db.DateTime(0)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  id              String          @id @db.VarChar(64)
+  reference       String          @unique @db.VarChar(20)
+  clientRequestId String          @map("client_request_id") @db.VarChar(36)
+  userId          String          @map("user_id") @db.VarChar(64)
+  memberId        String?         @map("member_id") @db.VarChar(64)
+  familyId        String?         @map("family_id") @db.VarChar(255)
+  studentId       String?         @map("student_id") @db.VarChar(255)
+  propertyType    String          @map("property_type") @db.VarChar(60)
+  typeKey         String          @map("type_key") @db.VarChar(60)
+  availableFor    String          @default("ANY") @map("available_for") @db.VarChar(16)
+  rentAmount      Int             @map("rent_amount")
+  area            String          @db.VarChar(150)
+  areaKey         String          @map("area_key") @db.VarChar(150)
+  address         String?         @db.VarChar(500)
+  showAddress     Boolean         @default(false) @map("show_address")
+  availableFrom   DateTime?       @map("available_from") @db.Date
+  description     String?         @db.Text
+  photoUrl        String?         @map("photo_url") @db.VarChar(500)
+  contactName     String          @map("contact_name") @db.VarChar(150)
+  contactMobile   String          @map("contact_mobile") @db.VarChar(10)
+  contactEmail    String?         @map("contact_email") @db.VarChar(254)
+  showMobile      Boolean         @default(false) @map("show_mobile")
+  showEmail       Boolean         @default(false) @map("show_email")
+  ownerConfirmed  Boolean         @default(false) @map("owner_confirmed")
+  status          String          @default("PENDING") @db.VarChar(16)
+  adminRemarks    String?         @map("admin_remarks") @db.VarChar(500)
+  approvedAt      DateTime?       @map("approved_at") @db.DateTime(0)
+  expiresAt       DateTime?       @map("expires_at") @db.DateTime(0)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   matches         RentalMatch[]
   enquiries       RentalEnquiry[]
 
@@ -1194,29 +1268,29 @@ model RentalListing {
 }
 
 model RentalRequirement {
-  id              String    @id @db.VarChar(64)
-  reference       String    @unique @db.VarChar(20)
-  clientRequestId String    @map("client_request_id") @db.VarChar(36)
-  userId          String?   @map("user_id") @db.VarChar(64)
-  name            String    @db.VarChar(150)
-  mobile          String    @db.VarChar(10)
-  email           String?   @db.VarChar(254)
-  propertyType    String    @map("property_type") @db.VarChar(60)
-  typeKey         String    @map("type_key") @db.VarChar(60)
-  tenantType      String    @default("ANY") @map("tenant_type") @db.VarChar(16)
-  area            String    @db.VarChar(150)
-  areaKey         String    @map("area_key") @db.VarChar(150)
-  minBudget       Int?      @map("min_budget")
-  maxBudget       Int       @map("max_budget")
-  moveInDate      DateTime? @map("move_in_date") @db.Date
-  note            String?   @db.VarChar(1000)
-  showMobile      Boolean   @default(false) @map("show_mobile")
-  showEmail       Boolean   @default(false) @map("show_email")
-  status          String    @default("PENDING") @db.VarChar(16)
-  adminRemarks    String?   @map("admin_remarks") @db.VarChar(500)
-  expiresAt       DateTime  @map("expires_at") @db.DateTime(0)
-  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(0)
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  id              String          @id @db.VarChar(64)
+  reference       String          @unique @db.VarChar(20)
+  clientRequestId String          @map("client_request_id") @db.VarChar(36)
+  userId          String?         @map("user_id") @db.VarChar(64)
+  name            String          @db.VarChar(150)
+  mobile          String          @db.VarChar(10)
+  email           String?         @db.VarChar(254)
+  propertyType    String          @map("property_type") @db.VarChar(60)
+  typeKey         String          @map("type_key") @db.VarChar(60)
+  tenantType      String          @default("ANY") @map("tenant_type") @db.VarChar(16)
+  area            String          @db.VarChar(150)
+  areaKey         String          @map("area_key") @db.VarChar(150)
+  minBudget       Int?            @map("min_budget")
+  maxBudget       Int             @map("max_budget")
+  moveInDate      DateTime?       @map("move_in_date") @db.Date
+  note            String?         @db.VarChar(1000)
+  showMobile      Boolean         @default(false) @map("show_mobile")
+  showEmail       Boolean         @default(false) @map("show_email")
+  status          String          @default("PENDING") @db.VarChar(16)
+  adminRemarks    String?         @map("admin_remarks") @db.VarChar(500)
+  expiresAt       DateTime        @map("expires_at") @db.DateTime(0)
+  createdAt       DateTime        @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime        @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   matches         RentalMatch[]
   enquiries       RentalEnquiry[]
 
@@ -1272,4 +1346,111 @@ model RentalAuditLog {
 
   @@index([entity, entityId, createdAt])
   @@map("rental_audit_logs")
+}
+
+// Sangathan Core Team shown on /core-team. Linked to an existing family member (or student) when there is one, so no
+// duplicate person record is created; the display fields are a snapshot the admin can edit.
+model CoreTeamMember {
+  id            String        @id @db.VarChar(64)
+  memberId      String?       @unique(map: "core_team_members_member_key") @map("member_id") @db.VarChar(64)
+  studentId     String?       @unique(map: "core_team_members_student_key") @map("student_id") @db.VarChar(255)
+  name          String        @db.VarChar(255)
+  nameHi        String?       @map("name_hi") @db.VarChar(255)
+  designation   String?       @db.VarChar(150)
+  designationHi String?       @map("designation_hi") @db.VarChar(150)
+  photoUrl      String?       @map("photo_url") @db.VarChar(500)
+  village       String?       @db.VarChar(255)
+  area          String?       @db.VarChar(150)
+  mobile        String?       @db.VarChar(20)
+  showMobile    Boolean       @default(false) @map("show_mobile")
+  status        String        @default("ACTIVE") @db.VarChar(16)
+  sortOrder     Int           @default(0) @map("sort_order")
+  createdById   String        @map("created_by_id") @db.VarChar(64)
+  updatedById   String?       @map("updated_by_id") @db.VarChar(64)
+  deletedAt     DateTime?     @map("deleted_at") @db.DateTime(0)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt     DateTime      @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  member        FamilyMember? @relation(fields: [memberId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "core_team_members_member_fkey")
+
+  @@index([status, sortOrder], map: "core_team_members_status_order_idx")
+  @@map("core_team_members")
+}
+
+/// "Become an NPSI Event Member": the teams people apply to (Core Team, Deepotsav Team, …), optionally shown on an event page.
+model EventMemberSection {
+  id           String                   @id @db.VarChar(64)
+  key          String                   @unique(map: "event_member_sections_key_key") @db.VarChar(40)
+  label        String                   @db.VarChar(150)
+  labelHi      String?                  @map("label_hi") @db.VarChar(150)
+  heading      String                   @db.VarChar(150)
+  headingHi    String?                  @map("heading_hi") @db.VarChar(150)
+  eventId      String?                  @map("event_id") @db.VarChar(64)
+  isCoreTeam   Boolean                  @default(false) @map("is_core_team")
+  accepting    Boolean                  @default(true)
+  status       String                   @default("ACTIVE") @db.VarChar(16)
+  sortOrder    Int                      @default(0) @map("sort_order")
+  createdAt    DateTime                 @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt    DateTime                 @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  event        Event?                   @relation(fields: [eventId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_member_sections_event_fkey")
+  applications EventMemberApplication[]
+
+  @@index([eventId], map: "event_member_sections_event_idx")
+  @@map("event_member_sections")
+}
+
+/// One application per person per section; once approved and visible it is the person's public team card.
+model EventMemberApplication {
+  id              String                      @id @db.VarChar(64)
+  sectionId       String?                     @map("section_id") @db.VarChar(64)
+  customEventName String?                     @map("custom_event_name") @db.VarChar(150)
+  userId          String?                     @map("user_id") @db.VarChar(64)
+  familyId        String?                     @map("family_id") @db.VarChar(255)
+  memberId        String?                     @map("member_id") @db.VarChar(64)
+  studentId       String?                     @map("student_id") @db.VarChar(255)
+  photoUrl        String?                     @map("photo_url") @db.VarChar(500)
+  name            String                      @db.VarChar(255)
+  designation     String?                     @db.VarChar(150)
+  designationHi   String?                     @map("designation_hi") @db.VarChar(150)
+  mobile          String?                     @db.VarChar(20)
+  mobileDigits    String?                     @map("mobile_digits") @db.VarChar(10)
+  mobilePublic    Boolean                     @default(false) @map("mobile_public")
+  email           String?                     @db.VarChar(255)
+  emailPublic     Boolean                     @default(false) @map("email_public")
+  village         String?                     @db.VarChar(255)
+  area            String?                     @db.VarChar(150)
+  showOnWebsite   Boolean                     @default(true) @map("show_on_website")
+  status          String                      @default("PENDING") @db.VarChar(16)
+  rejectionReason String?                     @map("rejection_reason") @db.VarChar(500)
+  /// section + person while PENDING/APPROVED, else null: one active application per person per section.
+  activeKey       String?                     @unique(map: "event_member_applications_active_key") @map("active_key") @db.VarChar(400)
+  rosterId        String?                     @unique(map: "event_member_applications_roster_key") @map("roster_id") @db.VarChar(64)
+  source          String                      @default("PUBLIC") @db.VarChar(16)
+  sortOrder       Int                         @default(0) @map("sort_order")
+  approvedById    String?                     @map("approved_by_id") @db.VarChar(64)
+  approvedAt      DateTime?                   @map("approved_at") @db.DateTime(0)
+  createdAt       DateTime                    @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt       DateTime                    @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+  section         EventMemberSection?         @relation(fields: [sectionId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_member_applications_section_fkey")
+  member          FamilyMember?               @relation(fields: [memberId], references: [id], onDelete: SetNull, onUpdate: Cascade, map: "event_member_applications_member_fkey")
+  logs            EventMemberApplicationLog[]
+
+  @@index([sectionId, status, showOnWebsite], map: "event_member_applications_section_status_idx")
+  @@index([userId], map: "event_member_applications_user_idx")
+  @@index([mobileDigits], map: "event_member_applications_mobile_idx")
+  @@index([memberId], map: "event_member_applications_member_idx")
+  @@map("event_member_applications")
+}
+
+model EventMemberApplicationLog {
+  id            String                 @id @db.VarChar(64)
+  applicationId String                 @map("application_id") @db.VarChar(64)
+  action        String                 @db.VarChar(32)
+  actorId       String?                @map("actor_id") @db.VarChar(64)
+  remarks       String?                @db.VarChar(500)
+  changes       Json?
+  createdAt     DateTime               @default(now()) @map("created_at") @db.DateTime(0)
+  application   EventMemberApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "event_member_application_logs_application_fkey")
+
+  @@index([applicationId, createdAt], map: "event_member_application_logs_application_idx")
+  @@map("event_member_application_logs")
 }
