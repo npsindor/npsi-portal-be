@@ -51,13 +51,15 @@ export class MobileOtpService {
     const code = generateOtp();
     let channel: OtpDelivery | null = await this.messaging.sendOtp(mobile, code);
     if (!channel && fallbackEmail && this.mail.isConfigured()) {
-      await this.mail.send({
-        to: fallbackEmail,
-        subject: "Your verification code / आपका सत्यापन कोड",
-        html: `<p>Your NPS Indore verification code is / आपका सत्यापन कोड:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p><p>Valid for 10 minutes. / 10 मिनट तक मान्य।</p>`,
-        text: `Your NPS Indore verification code is ${code}. Valid for 10 minutes.`,
-      });
+      await this.mailCode(fallbackEmail, code);
       channel = "EMAIL";
+    } else if (channel && purpose === "RESET" && fallbackEmail && this.mail.isConfigured()) {
+      // A WhatsApp / SMS provider "accepting" a message does not mean it arrived (unapproved template, number not on
+      // WhatsApp, DND). For a password reset the account's own registered email also gets the code, so the member
+      // is never left waiting. Best effort: a mail failure must not undo the code already sent.
+      await this.mailCode(fallbackEmail, code).catch((error: unknown) =>
+        console.warn("[otp] reset code email copy failed:", error instanceof Error ? error.message : error),
+      );
     }
     if (!channel && this.config.appEnv === "development") {
       console.warn(`[otp] development only — code for ${mobile.slice(0, 2)}******${mobile.slice(-2)}: ${code}`);
@@ -66,6 +68,15 @@ export class MobileOtpService {
     if (!channel) throw new ApiError(503, OTP_UNAVAILABLE);
     await this.challenges.create({ id: randomId(), mobileDigits: mobile, purpose, codeHash: hashOtp(code), channel, expiresAt: new Date(now + CODE_TTL_MS) });
     return { channel, expiresInSeconds: CODE_TTL_MS / 1000 };
+  }
+
+  private mailCode(to: string, code: string) {
+    return this.mail.send({
+      to,
+      subject: "Your verification code / आपका सत्यापन कोड",
+      html: `<p>Your NPS Indore verification code is / आपका सत्यापन कोड:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p><p>Valid for 10 minutes. / 10 मिनट तक मान्य।</p><p>If you did not ask for this, ignore this email. / यदि आपने यह अनुरोध नहीं किया है, तो इस ईमेल को अनदेखा करें।</p>`,
+      text: `Your NPS Indore verification code is ${code}. Valid for 10 minutes. If you did not ask for this, ignore this email.`,
+    });
   }
 
   async verify(mobile: string, purpose: OtpPurpose, code: string): Promise<string> {

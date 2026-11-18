@@ -21,7 +21,7 @@ const collator = new Intl.Collator("hi", { sensitivity: "base" });
 
 // Photos are re-encoded for print: upright (EXIF), cropped to the 3:4 frame and capped at 600 px high, which keeps a
 // 200-profile booklet a few MB instead of hundreds. sharp is loaded lazily; without it JPEG/PNG are used as stored.
-type Sharp = typeof import("sharp");
+type Sharp = typeof import("sharp").default;
 let sharpModule: Promise<Sharp | null> | null = null;
 const loadSharp = () => {
   sharpModule ??= import("sharp").then((module) => (module.default ?? module) as unknown as Sharp).catch(() => null);

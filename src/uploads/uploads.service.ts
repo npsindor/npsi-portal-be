@@ -31,7 +31,7 @@ const readHead = async (path: string): Promise<Buffer> => {
 
 // sharp is loaded lazily, like the Sagun cards do: if its native build can't load on a server,
 // uploads still work and are kept as sent (with a warning), rather than every upload failing.
-type Sharp = typeof import("sharp");
+type Sharp = typeof import("sharp").default;
 let sharpModule: Promise<Sharp | null> | null = null;
 const loadSharp = (): Promise<Sharp | null> => {
   sharpModule ??= import("sharp")
