@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { sagunFields } from "./sagun.fields.js";
-import { ageOf, effectiveFields, publicKeys, sagunUploadMime, sanitizeData } from "./sagun.rules.js";
+import { ageOf, effectiveFields, pdfHasActiveContent, publicKeys, sagunUploadMime, sanitizeData } from "./sagun.rules.js";
 
 const complete = (): Record<string, unknown> =>
   Object.fromEntries(
@@ -178,4 +178,14 @@ test("gift-list metadata accepts only valid recipients, record types and dates",
   assert.equal((sanitizeData(data, sagunFields, true).sagunItems as Record<string, string>[])[0].donorName, "Test");
   for (const change of [{ recipient: "PUBLIC" }, { recordStatus: "PAID" }, { givenOn: "2026-02-30" }])
     assert.throws(() => sanitizeData({ ...data, sagunItems: [{ ...data.sagunItems[0], ...change }] }, sagunFields, true));
+});
+
+test("identity PDFs with actions or scripts are refused; a plain PDF is fine", () => {
+  const pdf = (body: string) => Buffer.from(`%PDF-1.7\n1 0 obj << /Type /Catalog ${body} >> endobj\n%%EOF`, "latin1");
+  assert.equal(pdfHasActiveContent(pdf("/Pages 2 0 R")), false);
+  assert.equal(pdfHasActiveContent(pdf("/OpenAction << /S /JavaScript /JS (app.alert(1)) >>")), true);
+  assert.equal(pdfHasActiveContent(pdf("/OpenAction 3 0 R")), true);
+  assert.equal(pdfHasActiveContent(pdf("/Names << /J#61vaScript 4 0 R >>")), true, "hex-escaped names are decoded");
+  assert.equal(pdfHasActiveContent(pdf("/AA << /O 5 0 R >>")), true);
+  assert.equal(pdfHasActiveContent(pdf("/Producer (JSmith)")), false, "only PDF names count, not text");
 });

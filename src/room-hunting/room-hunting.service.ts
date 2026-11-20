@@ -9,6 +9,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { isUniqueViolation } from "../common/utils/display-ids.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
+import { escapeLike } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { RentalListing, RentalRequirement } from "../generated/prisma/client.js";
@@ -17,6 +18,8 @@ import {
   addDays,
   displayName,
   LISTING_DAYS,
+  listingPhotos,
+  MAX_LISTING_PHOTOS,
   matchScore,
   mobile10,
   normalKey,
@@ -68,7 +71,15 @@ export class RoomHuntingService {
       ...(query.type ? { typeKey: normalKey(query.type) } : {}),
       ...(query.area ? { areaKey: normalKey(query.area) } : {}),
       ...(query.maxRent !== undefined ? { rentAmount: { lte: query.maxRent } } : {}),
-      ...(query.q ? { OR: [{ area: { contains: query.q } }, { propertyType: { contains: query.q } }, { description: { contains: query.q } }] } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { area: { contains: escapeLike(query.q) } },
+              { propertyType: { contains: escapeLike(query.q) } },
+              { description: { contains: escapeLike(query.q) } },
+            ],
+          }
+        : {}),
     };
     const page = query.page ?? 1;
     const [total, rows] = await Promise.all([
@@ -85,7 +96,7 @@ export class RoomHuntingService {
       ...(query.type ? { typeKey: normalKey(query.type) } : {}),
       ...(query.area ? { areaKey: normalKey(query.area) } : {}),
       ...(query.maxRent !== undefined ? { maxBudget: { lte: query.maxRent } } : {}),
-      ...(query.q ? { OR: [{ area: { contains: query.q } }, { propertyType: { contains: query.q } }] } : {}),
+      ...(query.q ? { OR: [{ area: { contains: escapeLike(query.q) } }, { propertyType: { contains: escapeLike(query.q) } }] } : {}),
     };
     const page = query.page ?? 1;
     const [total, rows] = await Promise.all([
@@ -335,11 +346,11 @@ export class RoomHuntingService {
         ...(query.q
           ? {
               OR: [
-                { reference: { contains: query.q } },
-                { area: { contains: query.q } },
-                { contactName: { contains: query.q } },
-                { contactMobile: { contains: query.q } },
-                { propertyType: { contains: query.q } },
+                { reference: { contains: escapeLike(query.q) } },
+                { area: { contains: escapeLike(query.q) } },
+                { contactName: { contains: escapeLike(query.q) } },
+                { contactMobile: { contains: escapeLike(query.q) } },
+                { propertyType: { contains: escapeLike(query.q) } },
               ],
             }
           : {}),
@@ -366,11 +377,11 @@ export class RoomHuntingService {
         ...(query.q
           ? {
               OR: [
-                { reference: { contains: query.q } },
-                { area: { contains: query.q } },
-                { name: { contains: query.q } },
-                { mobile: { contains: query.q } },
-                { propertyType: { contains: query.q } },
+                { reference: { contains: escapeLike(query.q) } },
+                { area: { contains: escapeLike(query.q) } },
+                { name: { contains: escapeLike(query.q) } },
+                { mobile: { contains: escapeLike(query.q) } },
+                { propertyType: { contains: escapeLike(query.q) } },
               ],
             }
           : {}),
@@ -557,7 +568,7 @@ export class RoomHuntingService {
       showAddress: Boolean(dto.showAddress && dto.address),
       availableFrom: dateOnly(dto.availableFrom),
       description: dto.description || null,
-      photoUrl: dto.photoUrl || null,
+      ...this.photoFields(dto),
       contactName: dto.contactName,
       contactMobile,
       contactEmail: dto.contactEmail || null,
@@ -565,6 +576,12 @@ export class RoomHuntingService {
       showEmail: dto.showEmail,
       ownerConfirmed: true,
     };
+  }
+
+  // photoUrls (several) wins over the single photoUrl; the first photo is kept in photo_url for older readers.
+  private photoFields(dto: ListingDto) {
+    const photos = listingPhotos(dto.photoUrl ?? null, dto.photoUrls?.length ? dto.photoUrls : null).slice(0, MAX_LISTING_PHOTOS);
+    return { photoUrl: photos[0] ?? null, photoUrls: photos };
   }
 
   // Public shape: no owner identity beyond the name they post under, contacts only as the owner chose.
@@ -580,6 +597,7 @@ export class RoomHuntingService {
       availableFrom: day(row.availableFrom),
       description: row.description,
       photoUrl: row.photoUrl,
+      photos: listingPhotos(row.photoUrl, row.photoUrls),
       contactName: displayName(row.contactName),
       mobile: row.showMobile ? row.contactMobile : null,
       email: row.showEmail ? row.contactEmail : null,

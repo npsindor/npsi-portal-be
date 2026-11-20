@@ -1,7 +1,23 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform } from "class-transformer";
-import { Equals, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
-import { LISTING_STATUSES, MAX_RENT, REQUIREMENT_STATUSES, TENANT_TYPES } from "./room-hunting.rules.js";
+import {
+  ArrayMaxSize,
+  Equals,
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsIn,
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from "class-validator";
+import { LISTING_STATUSES, MAX_LISTING_PHOTOS, MAX_RENT, REQUIREMENT_STATUSES, TENANT_TYPES } from "./room-hunting.rules.js";
 
 const trim = ({ value }: { value: unknown }) => (typeof value === "string" ? value.trim() : value);
 const blankToUndefined = ({ value }: { value: unknown }) =>
@@ -25,6 +41,12 @@ export class ListingDto {
   @IsOptional()
   @Matches(UPLOAD_URL, { message: "Upload the photograph first." })
   photoUrl?: string;
+  @ApiPropertyOptional({ type: [String], maxItems: MAX_LISTING_PHOTOS, description: "Several URLs returned by POST /uploads; the first is the cover photo" })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_LISTING_PHOTOS, { message: `At most ${MAX_LISTING_PHOTOS} photographs.` })
+  @Matches(UPLOAD_URL, { each: true, message: "Upload the photograph first." })
+  photoUrls?: string[];
   @ApiProperty() @Transform(trim) @IsString() @MinLength(2) @MaxLength(150) contactName!: string;
   @ApiProperty() @Transform(trim) @IsString() @MaxLength(20) contactMobile!: string;
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsEmail() @MaxLength(254) contactEmail?: string;

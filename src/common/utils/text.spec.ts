@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
-import { normalizeName, withContactFields } from "./text.js";
+import { escapeLike, normalizeName, withContactFields } from "./text.js";
 
 describe("names are stored tidy", () => {
   test("normalizeName trims and collapses repeated spaces, tabs and newlines", () => {
@@ -28,4 +28,11 @@ describe("names are stored tidy", () => {
   test("an update without name fields doesn't add any", () => {
     assert.deepEqual(withContactFields({ status: "APPROVED" }, "mobile", "mobileDigits"), { status: "APPROVED" });
   });
+});
+
+test("escapeLike: % _ and \\ in typed search text are matched literally, not as LIKE wildcards", () => {
+  assert.equal(escapeLike("100%"), "100\\%");
+  assert.equal(escapeLike("a_b"), "a\\_b");
+  assert.equal(escapeLike("C:\\x"), "C:\\\\x");
+  assert.equal(escapeLike("पाटीदार NPSI-FAM-1"), "पाटीदार NPSI-FAM-1");
 });

@@ -81,7 +81,7 @@ export const FAMILYMEMBER_ORDERS = orderValues([
 export class FamilyMemberListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: FAMILYMEMBER_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(FAMILYMEMBER_ORDERS)
+  @IsIn(FAMILYMEMBER_ORDERS, { message: "Invalid sort field." })
   order?: (typeof FAMILYMEMBER_ORDERS)[number];
 
   @ApiPropertyOptional({ description: "Exact match" })

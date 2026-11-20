@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { communityAccount } from "../common/eligibility/community-account.js";
 import type { UserRow } from "../common/session/session.service.js";
+import { escapeLike } from "../common/utils/text.js";
 import { PrismaService } from "../database/prisma.service.js";
 
 export interface SearchHit {
@@ -17,9 +18,9 @@ export interface SearchResults {
 
 const LIMIT = 6;
 const day = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : "");
-const like = (q: string) => ({ contains: q });
+const like = (q: string) => ({ contains: escapeLike(q) });
 // Family / member / student ids are matched exactly or by their trailing number ("12" → NPSI-FAM-000012).
-const idLike = (q: string) => (/^\d{1,6}$/.test(q) ? { endsWith: q.padStart(6, "0") } : { contains: q.toUpperCase() });
+const idLike = (q: string) => (/^\d{1,6}$/.test(q) ? { endsWith: q.padStart(6, "0") } : { contains: escapeLike(q.toUpperCase()) });
 
 // One search across the portal. Everyone sees only published public content (news, events, community posts, room
 // hunting listings and requirements). A logged-in family member additionally finds people in their own family only;

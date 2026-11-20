@@ -6,6 +6,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { guardianNameOf } from "../common/utils/family-relations.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
+import { escapeLike } from "../common/utils/text.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { EventMemberApplication, EventMemberSection, Prisma } from "../generated/prisma/client.js";
 import {
@@ -57,10 +58,12 @@ export interface Candidate {
 export const toPublicCard = (row: EventMemberApplication) => ({
   id: row.id,
   name: row.name,
+  nameHi: row.nameHi,
   designation: row.designation,
   designationHi: row.designationHi,
   photoUrl: row.photoUrl,
   village: row.village,
+  villageHi: row.villageHi,
   area: row.area,
   mobile: row.mobilePublic && row.mobileDigits?.length === 10 ? row.mobileDigits : null,
   email: row.emailPublic ? row.email : null,
@@ -306,15 +309,29 @@ export class EventMembersService {
     const village = clean(input.village) ?? clean(person?.village);
     const area = clean(input.area);
     if (!name || name.length < 2) throw new ApiError(400, "EM_NAME");
-    if (mobileDigits.length !== 10) throw new ApiError(400, "EM_MOBILE");
+    // An admin listing someone on a team (e.g. the Core Team from the Sangathan's own list) needs only the name and
+    // village: the contact details stay optional, since none are shown without the person's own consent anyway.
+    const adminListing = isAdmin && !person;
+    // Admins may leave the mobile out (also for a registered member whose record has none); a typed one must be valid.
+    if (isAdmin ? mobileDigits.length !== 0 && mobileDigits.length !== 10 : mobileDigits.length !== 10) throw new ApiError(400, "EM_MOBILE");
     if (!person) {
-      if (!email) throw new ApiError(400, "EM_EMAIL");
+      if (!email && !adminListing) throw new ApiError(400, "EM_EMAIL");
       if (!village) throw new ApiError(400, "EM_VILLAGE");
-      if (!area) throw new ApiError(400, "EM_AREA");
+      if (!area && !adminListing) throw new ApiError(400, "EM_AREA");
     }
     const id = randomId();
-    const who = { memberId: person?.memberId ?? null, studentId: person?.studentId ?? null, mobileDigits };
+    const who = { memberId: person?.memberId ?? null, studentId: person?.studentId ?? null, mobileDigits: mobileDigits || null };
     await this.assertNoOpen(this.db, section?.id ?? null, customEventName, who);
+    // Without a mobile or linked record, the same name and village already on (or waiting for) the team is a duplicate.
+    if (adminListing && !who.mobileDigits && village) {
+      const sameName = await this.db.eventMemberApplication.findMany({
+        where: { status: { in: OPEN }, ...(section ? { sectionId: section.id } : { sectionId: null, customEventName: customEventName ?? "" }) },
+        select: { name: true, village: true },
+      });
+      const key = (value: string | null) => (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+      if (sameName.some((row) => key(row.name) === key(name) && key(row.village) === key(village))) throw new ApiError(409, "EM_DUPLICATE");
+    }
+    const approveNow = isAdmin && input.approveNow === true && Boolean(section);
     try {
       return await this.db.$transaction(async (tx) => {
         const row = await tx.eventMemberApplication.create({
@@ -328,14 +345,21 @@ export class EventMembersService {
             studentId: who.studentId,
             photoUrl: photoUrl || person?.photoUrl || null,
             name,
-            mobile: mobileDigits,
-            mobileDigits,
+            mobile: mobileDigits || null,
+            mobileDigits: mobileDigits || null,
             mobilePublic: input.mobilePublic === true,
             email,
             emailPublic: input.emailPublic === true,
             village,
             area,
-            status: "PENDING",
+            designation: isAdmin ? clean(input.designation) : null,
+            designationHi: isAdmin ? clean(input.designationHi) : null,
+            nameHi: isAdmin ? clean(input.nameHi) : null,
+            villageHi: isAdmin ? clean(input.villageHi) : null,
+            status: approveNow ? "APPROVED" : "PENDING",
+            // A new team member goes to the end of the team; the admin can move them (Arrange order).
+            ...(approveNow && section ? { sortOrder: await this.nextSortOrder(this.db, section.id) } : {}),
+            ...(approveNow ? { approvedById: user?.id ?? null, approvedAt: new Date() } : {}),
             activeKey: activeKeyOf(section?.id ?? null, customEventName, who, id),
             source: isAdmin ? "ADMIN" : user ? "PORTAL" : "PUBLIC",
           },
@@ -346,6 +370,10 @@ export class EventMembersService {
           mobilePublic: row.mobilePublic,
           emailPublic: row.emailPublic,
         });
+        if (approveNow && section && user) {
+          await this.syncRoster(tx, row, section, user);
+          await log(tx, row.id, "APPROVED", user.id, null, { section: section.key, addedByAdmin: true });
+        }
         return { id: row.id, status: row.status };
       });
     } catch (error) {
@@ -412,6 +440,7 @@ export class EventMembersService {
         data: {
           status: "APPROVED",
           sectionId: section.id,
+          sortOrder: await this.nextSortOrder(tx, section.id),
           rejectionReason: null,
           approvedById: user.id,
           approvedAt: new Date(),
@@ -443,6 +472,8 @@ export class EventMembersService {
         designation: input.designation === undefined ? undefined : clean(input.designation),
         designationHi: input.designationHi === undefined ? undefined : clean(input.designationHi),
         village: input.village === undefined ? undefined : clean(input.village),
+        nameHi: input.nameHi === undefined ? undefined : clean(input.nameHi),
+        villageHi: input.villageHi === undefined ? undefined : clean(input.villageHi),
         area: input.area === undefined ? undefined : clean(input.area),
         photoUrl,
         showOnWebsite: input.showOnWebsite,
@@ -489,6 +520,19 @@ export class EventMembersService {
     });
   }
 
+  // Deletes the entry for good (its history goes with it); the person's family/student record and login are untouched.
+  // An approved member first leaves the event roster, as with remove().
+  async purge(id: string, user: UserRow) {
+    this.admin(user);
+    await this.db.$transaction(async (tx) => {
+      const row = await tx.eventMemberApplication.findFirst({ where: { id } });
+      if (!row) throw new ApiError(404, "EM_NOT_FOUND");
+      await this.deactivateRoster(tx, row, user);
+      await tx.eventMemberApplication.delete({ where: { id } });
+    });
+    console.info(JSON.stringify({ event: "event_member_deleted", applicationId: id, by: user.id }));
+  }
+
   // Admin search of existing members and students, to file an application for someone already registered.
   async people(query: string, user: UserRow) {
     this.admin(user);
@@ -500,10 +544,10 @@ export class EventMembersService {
         where: {
           status: { in: ACTIVE_MEMBER },
           OR: [
-            { name: { contains: q } },
-            { membershipId: { contains: q } },
-            { familyId: { contains: q } },
-            ...(phone.length >= 6 ? [{ mobileDigits: { contains: phone } }] : []),
+            { name: { contains: escapeLike(q) } },
+            { membershipId: { contains: escapeLike(q) } },
+            { familyId: { contains: escapeLike(q) } },
+            ...(phone.length >= 6 ? [{ mobileDigits: { contains: escapeLike(phone) } }] : []),
           ],
         },
         include: { family: { select: { village: true, nativePlace: true } } },
@@ -513,7 +557,11 @@ export class EventMembersService {
       this.db.student.findMany({
         where: {
           status: "ACTIVE",
-          OR: [{ studentName: { contains: q } }, { studentId: { contains: q } }, ...(phone.length >= 6 ? [{ mobileDigits: { contains: phone } }] : [])],
+          OR: [
+            { studentName: { contains: escapeLike(q) } },
+            { studentId: { contains: escapeLike(q) } },
+            ...(phone.length >= 6 ? [{ mobileDigits: { contains: escapeLike(phone) } }] : []),
+          ],
         },
         orderBy: { studentName: "asc" },
         take: 10,
@@ -563,6 +611,38 @@ export class EventMembersService {
       sections: sections.map((section) => ({ ...section, approved: count(section.id, "APPROVED"), pending: count(section.id, "PENDING") })),
       other: { pending: count(null, "PENDING") },
     };
+  }
+
+  // The number after the last approved member of the team, so a newly approved member is listed last.
+  private async nextSortOrder(db: Db, sectionId: string): Promise<number> {
+    const last = await db.eventMemberApplication.aggregate({ where: { sectionId, status: "APPROVED" }, _max: { sortOrder: true } });
+    return (last._max.sortOrder ?? 0) + 1;
+  }
+
+  // Admin → Arrange order: the team's approved members in the given order get 1, 2, 3…; anyone approved but missing
+  // from the list keeps their place after them. The website lists the team in this order.
+  async reorderSection(sectionId: string, ids: string[], user: UserRow) {
+    this.admin(user);
+    const section = await this.db.eventMemberSection.findUnique({ where: { id: sectionId } });
+    if (!section) throw new ApiError(404, "EM_SECTION");
+    const members = await this.db.eventMemberApplication.findMany({
+      where: { sectionId, status: "APPROVED" },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }, { id: "asc" }],
+      select: { id: true, sortOrder: true },
+    });
+    const known = new Set(members.map((row) => row.id));
+    const unique = [...new Set(ids)];
+    if (unique.some((id) => !known.has(id))) throw new ApiError(400, "EM_ORDER");
+    const ordered = [...unique, ...members.map((row) => row.id).filter((id) => !unique.includes(id))];
+    await this.db.$transaction(async (tx) => {
+      for (const [index, id] of ordered.entries()) {
+        const before = members.find((row) => row.id === id)?.sortOrder;
+        if (before === index + 1) continue;
+        await tx.eventMemberApplication.update({ where: { id }, data: { sortOrder: index + 1 } });
+        await log(tx, id, "UPDATED", user.id, null, { sortOrder: { from: before ?? null, to: index + 1 } } as Prisma.InputJsonValue);
+      }
+    });
+    return { ids: ordered };
   }
 
   async saveSection(input: EventMemberSectionDto, user: UserRow, id?: string) {

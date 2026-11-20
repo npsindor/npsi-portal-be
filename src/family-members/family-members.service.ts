@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { type AdminScope, adminScopeOf, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
@@ -16,11 +17,25 @@ import { type FamilyMemberVo, toFamilyMemberVo } from "./vo/family-members.vo.js
 
 const PREFIX = "NPSI-MEM-";
 
-// The fields the member's "my family" screen edits; the rest is admin-only.
-const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "address", "status"] as const;
+// The fields the member's "my family" screen edits; the rest (status above all) is admin-only.
+const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "address"] as const;
+
+export const MEMBER_ELSEWHERE =
+  "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
+export const ADMIN_EMAIL_MEMBER = "This email belongs to an administrator account and can't be added as a family member.";
+
+const tenDigits = (value: string | null | undefined): string | null => {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length >= 10 ? digits.slice(-10) : null;
+};
+const sameText = (a: string | null | undefined, b: string | null | undefined) => (a || "").trim().toLowerCase() === (b || "").trim().toLowerCase();
 // Members of a family. Admins manage all of them; a member may add, edit and
 // remove the members of their own family. Every change recounts the families'
 // member counts in the same transaction.
+// A member added (or whose mobile / email is changed) by the family head waits as PENDING until an admin approves
+// it: only ACTIVE members count for event registration, Shagun, the verification card, and for linking a login
+// account to the family by email. So a head can neither activate unverified people nor pull someone else's account
+// into their family.
 @Injectable()
 export class FamilyMembersService {
   constructor(
@@ -29,7 +44,14 @@ export class FamilyMembersService {
     private readonly membership: MembershipRepository,
   ) {}
 
-  async list(query: FamilyMemberListQueryDto): Promise<FamilyMemberVo[]> {
+  // A staff member lists one family's members at a time, and only for a family of their villages.
+  async list(query: FamilyMemberListQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<FamilyMemberVo[]> {
+    if (!scope.allVillages) {
+      const family = query.familyId
+        ? await this.prisma.family.findFirst({ where: { familyId: query.familyId }, select: { village: true, nativePlace: true } })
+        : null;
+      if (!family || !villageAllowed(scope, family.village, family.nativePlace)) throw new ApiError(403, OUTSIDE_VILLAGES);
+    }
     const where: Prisma.FamilyMemberWhereInput = { familyId: query.familyId };
     const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toFamilyMemberVo);
@@ -40,8 +62,9 @@ export class FamilyMembersService {
     if (user.role !== "admin") {
       const ownFamilyId = await this.membership.ownFamilyId(user);
       if (!ownFamilyId || dto.familyId !== ownFamilyId) throw new ApiError(403, "You can only add members to your own family.");
-      input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId } as CreateFamilyMemberDto;
+      input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId, status: "PENDING" } as CreateFamilyMemberDto;
       assertNoMarkup(input);
+      await this.assertContactsFree(ownFamilyId, input, null);
     }
     const row = await this.prisma.$transaction(async (tx) => {
       const created = await createWithDisplayId(
@@ -75,13 +98,22 @@ export class FamilyMembersService {
 
   async update(id: string, dto: UpdateFamilyMemberDto, user: UserRow): Promise<FamilyMemberVo> {
     let input: UpdateFamilyMemberDto = dto;
-    if (user.role !== "admin") {
+    // A staff member with family access approves (or deactivates) members of their villages' families: status only.
+    const staff = user.role !== "admin" ? await this.staffStatusChange(id, dto, user) : null;
+    if (staff) input = { status: dto.status };
+    else if (user.role !== "admin") {
       const ownFamilyId = await this.membership.ownFamilyId(user);
       if (!ownFamilyId) throw new ApiError(403, "No family found for your account.");
       const member = await this.repo.findById(id);
       if (!member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only update members of your own family.");
       input = pick(dto, MEMBER_FIELDS);
       assertNoMarkup(input);
+      await this.assertContactsFree(ownFamilyId, input, member.id);
+      // A new mobile or email on an approved member goes back to an admin before it counts again.
+      const contactChanged =
+        (input.mobile !== undefined && tenDigits(input.mobile) !== tenDigits(member.mobile)) ||
+        (input.email !== undefined && !sameText(input.email, member.email));
+      if (contactChanged && member.status !== "PENDING") input = { ...input, status: "PENDING" };
     }
     const row = await this.prisma.$transaction(async (tx) => {
       const fromFamilyId = (await this.repo.findById(id, tx))?.familyId;
@@ -92,6 +124,37 @@ export class FamilyMembersService {
     });
     if (!row) throw new ApiError(404, "Record not found");
     return toFamilyMemberVo(row);
+  }
+
+  // { status } alone, from a staff member whose FAMILIES access covers this member's family: allowed (true). Any other
+  // change from them goes through the normal own-family rules.
+  private async staffStatusChange(id: string, dto: UpdateFamilyMemberDto, user: UserRow): Promise<boolean> {
+    const keys = Object.entries(dto)
+      .filter(([, value]) => value !== undefined)
+      .map(([key]) => key);
+    if (keys.length !== 1 || keys[0] !== "status") return false;
+    const scope = await adminScopeOf(this.prisma, user);
+    if (!scope?.areas.includes("FAMILIES")) return false;
+    const member = await this.repo.findById(id);
+    if (!member) throw new ApiError(404, "Record not found");
+    const family = await this.prisma.family.findFirst({ where: { familyId: member.familyId }, select: { village: true, nativePlace: true } });
+    if (!family || !villageAllowed(scope, family.village, family.nativePlace)) throw new ApiError(403, OUTSIDE_VILLAGES);
+    return true;
+  }
+
+  // A head may not add a person who is already an active member of another family (that is a transfer), nor an
+  // administrator's email.
+  private async assertContactsFree(familyId: string, input: { mobile?: string | null; email?: string | null }, memberId: string | null): Promise<void> {
+    const mobile = tenDigits(input.mobile);
+    const email = input.email?.trim() || null;
+    if (email && (await this.prisma.user.findFirst({ where: { email, role: "admin" }, select: { id: true } }))) throw new ApiError(409, ADMIN_EMAIL_MEMBER);
+    const contact: Prisma.FamilyMemberWhereInput[] = [...(mobile ? [{ mobileDigits: mobile }] : []), ...(email ? [{ email }] : [])];
+    if (!contact.length) return;
+    const elsewhere = await this.prisma.familyMember.findFirst({
+      where: { OR: contact, status: { in: ["ACTIVE", "Active", "APPROVED"] }, familyId: { not: familyId }, ...(memberId ? { id: { not: memberId } } : {}) },
+      select: { id: true },
+    });
+    if (elsewhere) throw new ApiError(409, MEMBER_ELSEWHERE);
   }
 
   async remove(id: string, user: UserRow): Promise<void> {

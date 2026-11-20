@@ -93,7 +93,11 @@ export class MobileOtpService {
     return token;
   }
 
-  async consume(mobile: string, purpose: OtpPurpose, token: string | undefined): Promise<void> {
-    if (!token || !(await this.challenges.consume(sha256(token), mobile, purpose))) throw new ApiError(400, VERIFICATION_EXPIRED);
+  // Uses up a verification token. True when the code reached the mobile itself (WhatsApp / SMS, or the development
+  // log); false when it went to the fallback email, which proves the email but not the mobile number.
+  async consume(mobile: string, purpose: OtpPurpose, token: string | undefined): Promise<boolean> {
+    const channel = token ? await this.challenges.consume(sha256(token), mobile, purpose) : null;
+    if (!channel) throw new ApiError(400, VERIFICATION_EXPIRED);
+    return channel !== "EMAIL";
   }
 }

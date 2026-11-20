@@ -133,6 +133,6 @@ export const STUDENTAPPLICATION_ORDERS = orderValues([
 export class StudentApplicationListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: STUDENTAPPLICATION_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(STUDENTAPPLICATION_ORDERS)
+  @IsIn(STUDENTAPPLICATION_ORDERS, { message: "Invalid sort field." })
   order?: (typeof STUDENTAPPLICATION_ORDERS)[number];
 }

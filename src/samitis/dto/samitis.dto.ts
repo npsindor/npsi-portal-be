@@ -26,6 +26,6 @@ export const SAMITI_ORDERS = orderValues(["id", "name", "description", "formedDa
 export class SamitiListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: SAMITI_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(SAMITI_ORDERS)
+  @IsIn(SAMITI_ORDERS, { message: "Invalid sort field." })
   order?: (typeof SAMITI_ORDERS)[number];
 }

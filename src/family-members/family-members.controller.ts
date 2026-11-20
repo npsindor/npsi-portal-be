@@ -13,6 +13,8 @@ import {
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
 import type { Response } from "express";
+import { AdminAreaGuard, AdminAreaRoute, CurrentAdminScope } from "../common/admin-access/admin-area.guard.js";
+import { type AdminScope } from "../common/admin-access/admin-scope.js";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
@@ -28,14 +30,15 @@ export class FamilyMembersController {
   constructor(private readonly familyMembers: FamilyMembersService) {}
 
   @Get()
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminAreaGuard)
+  @AdminAreaRoute("FAMILIES")
   @ApiOperation({ summary: "List family members", description: "Admin only." })
   @ApiOkResponse({ type: FamilyMemberVo, isArray: true })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid order, limit or filter" })
   @ApiUnauthorizedResponse({ type: ErrorVo })
   @ApiForbiddenResponse({ type: ErrorVo })
-  list(@Query() query: FamilyMemberListQueryDto): Promise<FamilyMemberVo[]> {
-    return this.familyMembers.list(query);
+  list(@Query() query: FamilyMemberListQueryDto, @CurrentAdminScope() scope: AdminScope): Promise<FamilyMemberVo[]> {
+    return this.familyMembers.list(query, scope);
   }
 
   @Post()

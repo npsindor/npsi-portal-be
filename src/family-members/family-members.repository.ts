@@ -35,8 +35,10 @@ export class FamilyMembersRepository {
 
   // null when the id doesn't exist.
   async update(id: string, data: Prisma.FamilyMemberUncheckedUpdateInput, db: Db = this.prisma): Promise<FamilyMember | null> {
-    const { count } = await db.familyMember.updateMany({ where: { id }, data: contact(data) });
-    return count ? this.findById(id, db) : null;
+    // MySQL reports 0 changed rows when nothing changes (e.g. only ignored fields were sent), so the row's existence
+    // decides the 404, not the count.
+    await db.familyMember.updateMany({ where: { id }, data: contact(data) });
+    return this.findById(id, db);
   }
 
   // Deleting an id that doesn't exist is not an error.

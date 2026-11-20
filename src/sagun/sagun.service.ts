@@ -4,6 +4,7 @@ import { Injectable } from "@nestjs/common";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
+import { escapeLike } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { Prisma, SagunProfile } from "../generated/prisma/client.js";
@@ -35,7 +36,18 @@ import {
   type SagunSettingsValues,
 } from "./sagun.eligibility.js";
 import { SAGUN_CITIES, sagunFields } from "./sagun.fields.js";
-import { ageOf, contactKeys, effectiveFields, fileKinds, type ProfileData, pick, publicKeys, sagunUploadMime, sanitizeData } from "./sagun.rules.js";
+import {
+  ageOf,
+  contactKeys,
+  effectiveFields,
+  fileKinds,
+  type ProfileData,
+  pdfHasActiveContent,
+  pick,
+  publicKeys,
+  sagunUploadMime,
+  sanitizeData,
+} from "./sagun.rules.js";
 
 // Private Sagun storage (photos, documents, generated booklets): never inside the public uploads folder or a web root.
 export function sagunPrivateRoot(uploadsDir: string) {
@@ -546,7 +558,7 @@ export class SagunService {
       city: query.city,
       gotra: query.gotra,
     }))
-      if (value) (where as Record<string, unknown>)[key] = { contains: value };
+      if (value) (where as Record<string, unknown>)[key] = { contains: escapeLike(value) };
     if (query.minAge || query.maxAge) where.birthDate = this.birthRange(query.minAge, query.maxAge);
     const rows = await this.db.sagunProfile.findMany({
       where,
@@ -752,9 +764,9 @@ export class SagunService {
     const where: Prisma.SagunProfileWhereInput = {
       ...(query.status ? { status: query.status } : {}),
       ...(query.candidateType ? { candidateType: query.candidateType } : {}),
-      ...(query.village ? { village: { contains: query.village } } : {}),
-      ...(query.education ? { education: { contains: query.education } } : {}),
-      ...(query.occupation ? { occupation: { contains: query.occupation } } : {}),
+      ...(query.village ? { village: { contains: escapeLike(query.village) } } : {}),
+      ...(query.education ? { education: { contains: escapeLike(query.education) } } : {}),
+      ...(query.occupation ? { occupation: { contains: escapeLike(query.occupation) } } : {}),
       ...(query.minAge || query.maxAge ? { birthDate: this.birthRange(query.minAge, query.maxAge) } : {}),
     };
     if (search) {
@@ -855,6 +867,7 @@ export class SagunService {
     if (!file.size || file.size > 10 * 1024 * 1024) throw new ApiError(400, "SAGUN_FILE_SIZE");
     const mime = sagunUploadMime(file.buffer, kind, file.mimetype, file.originalname);
     if (!mime) throw new ApiError(400, "SAGUN_FILE_TYPE");
+    if (mime === "application/pdf" && pdfHasActiveContent(file.buffer)) throw new ApiError(400, "SAGUN_PDF_ACTIVE");
     const root = this.privateDir();
     await mkdir(root, { recursive: true, mode: 0o700 });
     const filename = `${randomId()}.${mime === "image/png" ? "png" : mime === "image/jpeg" ? "jpg" : mime === "image/webp" ? "webp" : "pdf"}`;

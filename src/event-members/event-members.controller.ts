@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   type MiddlewareConsumer,
@@ -9,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   RequestMethod,
   UseGuards,
@@ -18,7 +20,14 @@ import { CurrentUser, OptionalUser } from "../common/decorators/current-user.dec
 import { AdminGuard, OptionalUserGuard, UserGuard } from "../common/guards/auth.guards.js";
 import { roomSubmitLimiter } from "../common/rate-limit/limiters.js";
 import type { UserRow } from "../common/session/session.service.js";
-import { EventMemberApplyDto, EventMemberRemoveDto, EventMemberReviewDto, EventMemberSectionDto, EventMemberUpdateDto } from "./event-members.dto.js";
+import {
+  EventMemberApplyDto,
+  EventMemberOrderDto,
+  EventMemberRemoveDto,
+  EventMemberReviewDto,
+  EventMemberSectionDto,
+  EventMemberUpdateDto,
+} from "./event-members.dto.js";
 import { EventMembersService } from "./event-members.service.js";
 
 @ApiTags("Become an NPSI Event Member")
@@ -60,6 +69,17 @@ export class EventMemberSectionsController {
   @ApiResponse({ status: 404, description: "Not found" })
   update(@Param("id") id: string, @Body() dto: EventMemberSectionDto, @CurrentUser() user: UserRow) {
     return this.service.saveSection(dto, user, id);
+  }
+
+  @Put(":id/member-order")
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Set the order the website shows a team's approved members in (first id = 1) — admin only" })
+  @ApiResponse({ status: 200, description: "The saved order" })
+  @ApiResponse({ status: 400, description: "An id that is not an approved member of this team" })
+  @ApiResponse({ status: 404, description: "Section not found" })
+  reorder(@Param("id") id: string, @Body() dto: EventMemberOrderDto, @CurrentUser() user: UserRow) {
+    return this.service.reorderSection(id, dto.ids, user);
   }
 }
 
@@ -165,6 +185,17 @@ export class EventMemberApplicationsController {
   @ApiResponse({ status: 400, description: "Tried to publish a mobile/email without the member's consent, or bad photo" })
   update(@Param("id") id: string, @Body() dto: EventMemberUpdateDto, @CurrentUser() user: UserRow) {
     return this.service.update(id, dto, user);
+  }
+
+  @Delete(":id")
+  @HttpCode(204)
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Delete the entry permanently, with its history (the person's account and records stay) — admin only" })
+  @ApiResponse({ status: 204, description: "Deleted" })
+  @ApiResponse({ status: 404, description: "Not found" })
+  purge(@Param("id") id: string, @CurrentUser() user: UserRow) {
+    return this.service.purge(id, user);
   }
 
   @Post(":id/removal")

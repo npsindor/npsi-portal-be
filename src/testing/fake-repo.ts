@@ -60,15 +60,23 @@ export const fakeMembership = () => ({
 });
 
 // EventsRepository stand-in: "ev" costs 250 per member, "free" nothing.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const open = { date: new Date(Date.now() + 30 * DAY_MS), registrationOpen: null, registrationClose: null };
 export const fakeEvents = () => ({
   feeOf: mock.fn(async (id: string) =>
     id === "ev"
-      ? { title: "Garba", fee: 250, status: "PUBLISHED" }
+      ? { title: "Garba", fee: 250, status: "PUBLISHED", ...open }
       : id === "free"
-        ? { title: "Puja", fee: 0, status: "PUBLISHED" }
+        ? { title: "Puja", fee: 0, status: "PUBLISHED", ...open }
         : id === "draft"
-          ? { title: "Diwali", fee: 0, status: "DRAFT" }
-          : null,
+          ? { title: "Diwali", fee: 0, status: "DRAFT", ...open }
+          : id === "closed"
+            ? { title: "Navratri", fee: 0, status: "PUBLISHED", ...open, registrationClose: new Date(Date.now() - DAY_MS) }
+            : id === "past"
+              ? { title: "Holi", fee: 0, status: "PUBLISHED", ...open, date: new Date(Date.now() - 2 * DAY_MS) }
+              : id === "later"
+                ? { title: "Milan", fee: 0, status: "PUBLISHED", ...open, registrationOpen: new Date(Date.now() + DAY_MS) }
+                : null,
   ),
 });
 
@@ -76,6 +84,7 @@ export const fakeEvents = () => ({
 // with a marker client (the fake repositories ignore which client they get).
 // It also answers the login-account lookups (login-account.ts) with "no such records" unless `accounts` lists some.
 export interface FakeAccountRecords {
+  adminAccess?: Record<string, unknown>[];
   users?: Record<string, unknown>[];
   families?: Record<string, unknown>[];
   members?: Record<string, unknown>[];
@@ -89,6 +98,13 @@ const matches = (row: Record<string, unknown>, where: Where | undefined): boolea
   return Object.entries(where).every(([key, value]) => {
     if (key === "OR") return (value as Where[]).some((part) => matches(row, part));
     if (key === "NOT") return !matches(row, value as Where);
+    // Prisma's { in: [...] } / { not: x } on a plain field.
+    if (value && typeof value === "object" && !Array.isArray(value) && "in" in value) {
+      const options = (value as { in: unknown[] }).in.map((option) => String(option ?? "").toLowerCase());
+      return options.includes(String(row[key] ?? "").toLowerCase());
+    }
+    if (value && typeof value === "object" && !Array.isArray(value) && "not" in value && Object.keys(value).length === 1)
+      return String(row[key] ?? "").toLowerCase() !== String((value as { not: unknown }).not ?? "").toLowerCase();
     if (value && typeof value === "object" && !(value instanceof Date))
       return row[key] && typeof row[key] === "object" ? matches(row[key] as Record<string, unknown>, value as Where) : false;
     return String(row[key] ?? "").toLowerCase() === String(value ?? "").toLowerCase();
@@ -107,6 +123,7 @@ export const fakeAccountDb = (records: FakeAccountRecords = {}) => {
     application: model(records.applications),
     student: model(records.students),
     studentApplication: model(records.studentApplications),
+    adminAccess: model(records.adminAccess),
   };
 };
 export const TX = { transaction: true, ...fakeAccountDb() };

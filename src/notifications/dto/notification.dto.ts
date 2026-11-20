@@ -45,6 +45,6 @@ export const NOTIFICATION_ORDERS = orderValues(["date", "createdAt"] as const);
 export class NotificationListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: NOTIFICATION_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(NOTIFICATION_ORDERS)
+  @IsIn(NOTIFICATION_ORDERS, { message: "Invalid sort field." })
   order?: (typeof NOTIFICATION_ORDERS)[number];
 }

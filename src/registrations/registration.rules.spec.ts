@@ -87,3 +87,9 @@ test("a member/student birth date must be a real date before today (India time)"
   assert.equal(isPastBirthDate("1850-01-01", "2026-11-14"), false);
   assert.equal(isPastBirthDate("2010-05-06T00:00:00.000Z", "2026-11-14"), true); // stored date-times read as their date
 });
+
+test("the mobile step is done only for a proven mobile number (not an admin without one, nor an emailed-code number)", () => {
+  const base = { hasEmail: true, hasPhoto: false, registration: null, approved: false, familyMembers: null, headDetails: false };
+  assert.equal(profileCompletion({ ...base, mobileVerified: false }).steps[0].done, false);
+  assert.equal(profileCompletion({ ...base, mobileVerified: true }).steps[0].done, true);
+});

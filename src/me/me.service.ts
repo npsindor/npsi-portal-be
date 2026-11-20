@@ -7,7 +7,7 @@ import { type FeedbackVo, toFeedbackVo } from "../feedback/vo/feedback.vo.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
 import { toStudentVo } from "../students/vo/students.vo.js";
 import { MeRepository } from "./me.repository.js";
-import type { MyFamilyVo } from "./vo/me.vo.js";
+import type { MyFamilyVo, MyOpenTransferRequestVo } from "./vo/me.vo.js";
 
 // Narrow, purpose-built reads for the logged-in member, so the UI never has to
 // fetch whole sensitive tables and filter them client-side.
@@ -22,7 +22,8 @@ export class MeService {
     // Account-first registrations own their family / student record; older ones are found by email.
     let family = await this.repo.activeFamilyOwnedBy(user.id);
     if (!family && user.email) family = await this.repo.activeFamilyByEmail(user.email);
-    if (!family && user.email) {
+    // Administrators are never linked to a family through a member record.
+    if (!family && user.email && user.role !== "admin") {
       const familyId = await this.repo.memberFamilyIdByEmail(user.email);
       if (familyId) family = await this.repo.familyByFamilyId(familyId);
     }
@@ -37,6 +38,10 @@ export class MeService {
 
   // Every registration of the member's family (cancelled ones included), newest first; the
   // family is the one event registration checks against.
+  async openTransferRequests(user: UserRow): Promise<MyOpenTransferRequestVo[]> {
+    return (await this.repo.openTransferRequestsBy(user.id)).map((row) => ({ ...row, createdAt: row.createdAt.toISOString() }));
+  }
+
   async eventRegistrations(user: UserRow): Promise<EventRegistrationVo[]> {
     const familyId = await this.membership.ownFamilyId(user);
     return familyId ? (await this.repo.eventRegistrationsOfFamily(familyId)).map(toEventRegistrationVo) : [];

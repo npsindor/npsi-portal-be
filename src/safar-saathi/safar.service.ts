@@ -4,6 +4,7 @@ import { ApiError } from "../common/filters/api-error.js";
 import { MailService } from "../common/mail/mail.service.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
+import { escapeLike } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { SafarEntry } from "../generated/prisma/client.js";
@@ -283,7 +284,16 @@ export class SafarService {
       where: {
         ...(query.status ? { status: query.status } : { status: { not: "ARCHIVED" } }),
         ...(query.kind ? { kind: query.kind } : {}),
-        ...(q ? { OR: [{ name: { contains: q } }, { phone: { contains: q } }, { origin: { contains: q } }, { destination: { contains: q } }] } : {}),
+        ...(q
+          ? {
+              OR: [
+                { name: { contains: escapeLike(q) } },
+                { phone: { contains: escapeLike(q) } },
+                { origin: { contains: escapeLike(q) } },
+                { destination: { contains: escapeLike(q) } },
+              ],
+            }
+          : {}),
       },
       orderBy: { createdAt: "desc" },
       take: 500,

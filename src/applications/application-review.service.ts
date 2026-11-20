@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
+import { type AdminScope, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { ApplicantNotifier, type Outbound } from "../common/messaging/applicant-notifier.service.js";
@@ -42,12 +43,14 @@ export class ApplicationReviewService {
     private readonly students: StudentsRepository,
   ) {}
 
-  async review(id: string, dto: ReviewDto): Promise<ApplicationReviewVo> {
+  // scope: the reviewer's admin access (a staff member may only decide registrations from their villages).
+  async review(id: string, dto: ReviewDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<ApplicationReviewVo> {
     const remarks = reviewRemarks(dto, (message) => new ApiError(400, message));
     let outbound: Outbound | null = null;
     const result = await this.prisma.$transaction(async (tx) => {
       const application = await this.applications.findById(id, tx);
       if (!application) throw new ApiError(404, "Application not found.");
+      if (!villageAllowed(scope, application.village, application.nativePlace)) throw new ApiError(403, OUTSIDE_VILLAGES);
       if (application.status === "APPROVED") throw new ApiError(409, "This application has already been approved.");
       // The applicant's own language when they gave one (account-first registrations), else the admin's.
       const lang = application.lang ? asLang(application.lang) : (dto.lang ?? "en");

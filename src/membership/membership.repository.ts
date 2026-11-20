@@ -2,6 +2,8 @@ import { Injectable } from "@nestjs/common";
 import type { UserRow } from "../common/session/session.service.js";
 import { PrismaService } from "../database/prisma.service.js";
 
+const ACTIVE_MEMBER = ["ACTIVE", "Active", "APPROVED"];
+
 // Which family a user belongs to, and who its members are: the questions several
 // modules ask before letting a member act on a record.
 @Injectable()
@@ -9,7 +11,8 @@ export class MembershipRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   // The family (display id) a user belongs to: an ACTIVE family registered
-  // with their email, else the family of a member with their email.
+  // with their email, else the family of an ACTIVE (admin-approved) member with their email. A member a head
+  // added on their own is PENDING and links nobody; an administrator is never linked through a member record.
   async ownFamilyId(user: UserRow | null): Promise<string | null> {
     if (!user) return null;
     // Families approved from an account-first registration are owned by that account.
@@ -18,7 +21,11 @@ export class MembershipRepository {
     if (!user.email) return null;
     const family = await this.prisma.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { familyId: true } });
     if (family?.familyId) return family.familyId;
-    const member = await this.prisma.familyMember.findFirst({ where: { email: user.email, family: { status: "ACTIVE" } }, select: { familyId: true } });
+    if (user.role === "admin") return null;
+    const member = await this.prisma.familyMember.findFirst({
+      where: { email: user.email, status: { in: ACTIVE_MEMBER }, family: { status: "ACTIVE" } },
+      select: { familyId: true },
+    });
     return member ? member.familyId : null;
   }
 

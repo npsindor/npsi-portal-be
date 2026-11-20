@@ -27,11 +27,13 @@ export class OtpChallengesRepository {
   }
 
   // Single use: only the first caller gets true.
-  async consume(tokenHash: string, mobileDigits: string, purpose: string): Promise<boolean> {
-    const { count } = await this.prisma.otpChallenge.updateMany({
-      where: { tokenHash, mobileDigits, purpose, usedAt: null, tokenExpiresAt: { gt: new Date() } },
-      data: { usedAt: new Date() },
-    });
-    return count === 1;
+  // Marks the verified challenge used; returns how its code was delivered (WHATSAPP, SMS, EMAIL, DEV), or null when
+  // the token is unknown, used or expired.
+  async consume(tokenHash: string, mobileDigits: string, purpose: string): Promise<string | null> {
+    const where = { tokenHash, mobileDigits, purpose, usedAt: null, tokenExpiresAt: { gt: new Date() } };
+    const challenge = await this.prisma.otpChallenge.findFirst({ where, select: { channel: true } });
+    if (!challenge) return null;
+    const { count } = await this.prisma.otpChallenge.updateMany({ where, data: { usedAt: new Date() } });
+    return count === 1 ? challenge.channel : null;
   }
 }

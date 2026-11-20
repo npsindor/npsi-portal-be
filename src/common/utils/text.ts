@@ -31,3 +31,7 @@ export const withContactFields = <T extends object>(data: T, mobileField: string
   }
   return out as T;
 };
+
+// Text a person typed, for Prisma's contains / startsWith / endsWith (SQL LIKE): `%`, `_` and `\` are matched as
+// themselves instead of acting as wildcards (a search for "%%" must not list every record).
+export const escapeLike = (value: string): string => value.replace(/[\\%_]/g, (character) => `\\${character}`);

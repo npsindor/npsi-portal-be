@@ -22,7 +22,8 @@ describe("platform", () => {
   test("GET /health", async () => {
     const res = await api("get", `${V1}/health`);
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { ok: true, database: "mysql", env: "e2e" });
+    // Only "up or not": the database type and environment name are not shared publicly.
+    assert.deepEqual(res.body, { ok: true });
   });
   test("unknown routes are 404 with the error format", async () => {
     const res = await api("get", `${V1}/nope`);
@@ -46,11 +47,9 @@ describe("platform", () => {
     assert.equal(res.headers["x-powered-by"], undefined);
     assert.equal((await api("get", `${V1}/health`).set("X-Request-Id", "trace-42")).headers["x-request-id"], "trace-42");
   });
-  test("Swagger UI and document are served at /api/docs", async () => {
-    assert.equal((await api("get", "/api/docs")).status, 200);
-    const doc = await api("get", "/api/docs-json");
-    assert.equal(doc.status, 200);
-    assert.ok(doc.body.paths["/api/v1/auth/sessions"]);
+  test("Swagger UI and document are not served outside development (they map every endpoint)", async () => {
+    assert.equal((await api("get", "/api/docs")).status, 404);
+    assert.equal((await api("get", "/api/docs-json")).status, 404);
   });
 });
 
@@ -73,7 +72,7 @@ describe("auth", () => {
   test("POST /auth/otp-verifications", async () => {
     assert.equal((await api("post", `${V1}/auth/otp-verifications`).send({ email: "otp@e2e.local", otpCode: "1" })).status, 400);
     assert.deepEqual((await api("post", `${V1}/auth/otp-verifications`).send({ email: "ghost@e2e.local", otpCode: "111111" })).body, {
-      error: "Account not found.",
+      error: "Invalid or expired verification code.",
     });
     const res = await api("post", `${V1}/auth/otp-verifications`).send({ email: "otp@e2e.local", otpCode: OTP });
     assert.equal(res.status, 200);
@@ -101,7 +100,7 @@ describe("auth", () => {
   test("POST /auth/password-resets and /confirmations", async () => {
     assert.equal((await api("post", `${V1}/auth/password-resets`).send({})).status, 400);
     assert.deepEqual((await api("post", `${V1}/auth/password-resets`).send({ email: "member@e2e.local" })).body, { ok: true });
-    assert.deepEqual((await api("post", `${V1}/auth/password-resets/confirmations`).send({ resetToken: "nope", newPassword: "12345678" })).body, {
+    assert.deepEqual((await api("post", `${V1}/auth/password-resets/confirmations`).send({ resetToken: "nope", newPassword: "Fresh#Pass2026" })).body, {
       error: "This reset link is invalid or expired.",
     });
   });
@@ -116,7 +115,9 @@ describe("auth", () => {
   test("PUT /auth/password", async () => {
     assert.deepEqual((await api("put", `${V1}/auth/password`).send({})).body, AUTH_REQUIRED);
     assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: "1" })).status, 400);
-    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: "x", newPassword: "12345678" })).status, 401);
+    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: "x", newPassword: "Fresh#Pass2026" })).status, 401);
+    // A common password is refused before anything else.
+    assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: "12345678" })).status, 400);
     assert.equal((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: PASSWORD })).status, 400);
     assert.deepEqual((await api("put", `${V1}/auth/password`, TOKENS.noFamily).send({ currentPassword: PASSWORD, newPassword: "Changed@123" })).body, {
       ok: true,
@@ -132,6 +133,8 @@ describe("auth", () => {
       phone: "9100000002",
       role: "user",
       photoUrl: null,
+      account: { type: "FAMILY", status: "ACTIVE" },
+      adminAccess: null,
     });
   });
 });

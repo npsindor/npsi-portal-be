@@ -32,6 +32,6 @@ export const RULE_ORDERS = orderValues(["id", "sectionNumber", "titleEn", "title
 export class RuleListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: RULE_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(RULE_ORDERS)
+  @IsIn(RULE_ORDERS, { message: "Invalid sort field." })
   order?: (typeof RULE_ORDERS)[number];
 }

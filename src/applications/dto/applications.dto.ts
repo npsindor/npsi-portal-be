@@ -101,6 +101,6 @@ export const APPLICATION_ORDERS = orderValues([
 export class ApplicationListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: APPLICATION_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(APPLICATION_ORDERS)
+  @IsIn(APPLICATION_ORDERS, { message: "Invalid sort field." })
   order?: (typeof APPLICATION_ORDERS)[number];
 }

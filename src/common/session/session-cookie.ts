@@ -1,5 +1,5 @@
 import type { Request, Response } from "express";
-import { SESSION_TTL } from "../../auth/users.repository.js";
+import { sessionTtl } from "../../auth/users.repository.js";
 
 // The session token travels in an httpOnly cookie, out of reach of page
 // scripts. SameSite=Strict: the frontend (npsindore.org) and the API
@@ -9,8 +9,9 @@ export const SESSION_COOKIE = "npsi_session";
 
 const options = (secure: boolean) => ({ httpOnly: true, secure, sameSite: "strict" as const, path: "/" });
 
-export const setSessionCookie = (response: Response, token: string, secure: boolean): void => {
-  response.cookie(SESSION_COOKIE, token, { ...options(secure), maxAge: SESSION_TTL });
+// The cookie lives as long as the session can (shorter for administrators).
+export const setSessionCookie = (response: Response, token: string, secure: boolean, role?: string | null): void => {
+  response.cookie(SESSION_COOKIE, token, { ...options(secure), maxAge: sessionTtl(role) });
 };
 
 export const clearSessionCookie = (response: Response, secure: boolean): void => {

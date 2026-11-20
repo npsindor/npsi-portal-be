@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { type AdminScope, SUPER_ADMIN_SCOPE, villageWhere } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { randomId } from "../common/utils/crypto.js";
@@ -15,8 +16,9 @@ import { type FamilyVo, toFamilyVo } from "./vo/families.vo.js";
 export class FamiliesService {
   constructor(private readonly repo: FamiliesRepository) {}
 
-  async list(query: FamilyListQueryDto): Promise<FamilyVo[]> {
-    const where: Prisma.FamilyWhereInput = { familyId: query.familyId, status: query.status };
+  // A staff member sees only the families of their villages (village or native place).
+  async list(query: FamilyListQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<FamilyVo[]> {
+    const where: Prisma.FamilyWhereInput = { familyId: query.familyId, status: query.status, ...(villageWhere(scope, ["village", "nativePlace"]) ?? {}) };
     const rows = await this.repo.list(where, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toFamilyVo);
   }

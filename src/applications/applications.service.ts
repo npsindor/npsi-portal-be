@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { type AdminScope, SUPER_ADMIN_SCOPE, villageWhere } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { adminNewApplicationEmail, memberWelcomeEmail } from "../common/mail/email-templates.js";
@@ -44,8 +45,14 @@ export class ApplicationsService {
     private readonly config: AppConfigService,
   ) {}
 
-  async list(query: ApplicationListQueryDto): Promise<ApplicationVo[]> {
-    const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
+  // A staff member sees only registrations from their villages (village or native place).
+  async list(query: ApplicationListQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<ApplicationVo[]> {
+    const rows = await this.repo.list(
+      villageWhere(scope, ["village", "nativePlace"]) ?? {},
+      toOrderBy(query.order ?? "-createdAt"),
+      query.limit ?? DEFAULT_LIMIT,
+      query.offset,
+    );
     return rows.map(toApplicationVo);
   }
 

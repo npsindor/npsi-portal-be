@@ -63,7 +63,14 @@ export async function loginAccount(db: Db, user: UserRow): Promise<LoginAccount>
   const byEmail = <T>(clause: T) => (email ? [clause] : []);
   const [families, members, applications, students, studentApplications] = await Promise.all([
     db.family.findMany({ where: { OR: [{ ownerUserId: user.id }, ...byEmail({ email })] }, select: { familyId: true, status: true } }),
-    email ? db.familyMember.findMany({ where: { email }, select: { familyId: true, status: true, family: { select: { status: true } } } }) : [],
+    // Only members an admin approved (ACTIVE) speak for an account: a member a head added on their own (PENDING) must not
+    // change another person's account, and administrators are never tied to a family through a member record.
+    email && user.role !== "admin"
+      ? db.familyMember.findMany({
+          where: { email, status: { in: ["ACTIVE", "Active", "APPROVED"] } },
+          select: { familyId: true, status: true, family: { select: { status: true } } },
+        })
+      : [],
     db.application.findMany({ where: { OR: [{ userId: user.id }, ...byEmail({ email })] }, select: { status: true } }),
     db.student.findMany({
       where: { OR: [{ userId: user.id }, ...byEmail({ email })], NOT: { status: "TRANSFERRED" } },

@@ -85,6 +85,6 @@ export const FEEDBACK_ORDERS = orderValues([
 export class FeedbackListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: FEEDBACK_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(FEEDBACK_ORDERS)
+  @IsIn(FEEDBACK_ORDERS, { message: "Invalid sort field." })
   order?: (typeof FEEDBACK_ORDERS)[number];
 }

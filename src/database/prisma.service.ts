@@ -45,6 +45,16 @@ export class PrismaService extends PrismaClient implements OnApplicationBootstra
         password: db.password,
         database: db.name,
         timezone: "+00:00",
+        // Every LIKE Prisma sends (contains / startsWith: site search, room hunting, member lookups) is
+        // `LIKE CONCAT('%', ?, '%')`. From MariaDB 11.2 the server's default utf8mb4 collation is utf8mb4_uca1400_ai_ci
+        // (character_set_collations), so the '%' literal and the bound value can end up in different collations and
+        // CONCAT fails with "Illegal mix of collations": a 500 on the hosted server, while older local servers work.
+        // Pin the session to the collation the tables use. The /*M!110200 … */ part runs only on MariaDB 11.2+, where the
+        // variable exists; older MariaDB and MySQL see just `SET @npsi_session = 1`, so the same settings work everywhere.
+        initSql: [
+          "SET @npsi_session = 1 /*M!110200 , SESSION character_set_collations = 'utf8mb4=utf8mb4_unicode_ci' */",
+          "SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci",
+        ],
         // Avoid filling ten connections on every watch-mode restart.
         connectionLimit: 3,
         minimumIdle: 1,

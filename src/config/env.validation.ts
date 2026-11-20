@@ -19,6 +19,7 @@ export class EnvironmentVariables {
   @IsOptional() @IsString() TRUST_PROXY?: string;
   @IsOptional() @IsString() APP_ENV?: string;
   @IsOptional() @IsString() RECAPTCHA_SECRET_KEY?: string;
+  @IsOptional() @IsString() ADMIN_LOGIN_CODE?: string;
   @IsOptional() @IsString() SMTP_HOST?: string;
   @IsOptional() @Matches(NUMERIC, { message: "SMTP_PORT must be a number" }) SMTP_PORT?: string;
   @IsOptional() @IsString() SMTP_USER?: string;

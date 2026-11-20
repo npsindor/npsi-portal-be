@@ -70,7 +70,7 @@ export class AuthController {
   @ApiNotFoundResponse({ type: ErrorVo, description: "Account not found" })
   async verifyOtp(@Body() body: VerifyOtpDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
     const { accessToken, ...session } = await this.auth.verifyOtp(body);
-    setSessionCookie(response, accessToken, this.secureCookies);
+    setSessionCookie(response, accessToken, this.secureCookies, session.user?.role);
     return session;
   }
 
@@ -101,7 +101,7 @@ export class AuthController {
   @ApiConflictResponse({ type: ErrorVo, description: "Mobile or email already registered" })
   async registerWithMobile(@Body() body: MobileRegisterDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
     const { accessToken, ...session } = await this.auth.registerWithMobile(body);
-    setSessionCookie(response, accessToken, this.secureCookies);
+    setSessionCookie(response, accessToken, this.secureCookies, session.user?.role);
     return session;
   }
 
@@ -125,7 +125,7 @@ export class AuthController {
   @ApiForbiddenResponse({ type: ErrorVo, description: "Account not verified yet, wrong login portal for this account, or account/membership inactive" })
   async login(@Body() body: LoginDto, @Res({ passthrough: true }) response: Response): Promise<SessionVo> {
     const { accessToken, ...session } = await this.auth.login(body);
-    setSessionCookie(response, accessToken, this.secureCookies);
+    setSessionCookie(response, accessToken, this.secureCookies, session.user?.role);
     return session;
   }
 

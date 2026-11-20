@@ -40,7 +40,73 @@ import {
 
 export const MOBILE_TAKEN = "This mobile number is already registered.";
 export const NOT_VERIFIED = "Please verify your account before logging in.";
+// Administrator sign-in has a second step: the code emailed to the admin after the password was right.
+export const ADMIN_CODE_REQUIRED = "Enter the sign-in code sent to your email to finish logging in.";
+export const ADMIN_EMAIL_REQUIRED = "Administrator accounts need an email address for the sign-in code. Ask another administrator to add one.";
+export const ADMIN_CODE_NOT_SENT = "The sign-in code could not be sent. Please try again later.";
+export const OTP_INVALID_CODE = "Invalid or expired verification code.";
+export const COMMON_PASSWORD = "This password is too common and easy to guess. Choose a different one.";
 const PASSWORD_RULE = "Password must be at least 8 characters.";
+
+// Passwords from the top of public breach lists (compared case-insensitively): refused even though they are 8+ long.
+const COMMON_PASSWORDS = new Set([
+  "12345678",
+  "123456789",
+  "1234567890",
+  "11111111",
+  "00000000",
+  "88888888",
+  "87654321",
+  "12341234",
+  "11223344",
+  "12121212",
+  "password",
+  "password1",
+  "password@123",
+  "password@1",
+  "password123",
+  "passw0rd",
+  "p@ssw0rd",
+  "p@ssword",
+  "qwertyui",
+  "qwerty123",
+  "qwertyuiop",
+  "1qaz2wsx",
+  "1q2w3e4r",
+  "iloveyou",
+  "sunshine",
+  "princess",
+  "football",
+  "baseball",
+  "superman",
+  "abcd1234",
+  "abc12345",
+  "abcdefgh",
+  "admin123",
+  "admin@123",
+  "administrator",
+  "welcome1",
+  "welcome123",
+  "letmein1",
+  "trustno1",
+  "computer",
+  "internet",
+  "whatever",
+  "india123",
+  "india@123",
+  "indore123",
+  "patidar",
+  "patidar123",
+  "patidar@123",
+  "npsindore",
+  "npsi1234",
+  "changeme",
+  "default1",
+]);
+export const isCommonPassword = (value: string): boolean => COMMON_PASSWORDS.has(value.trim().toLowerCase());
+const assertNotCommon = (value: string): void => {
+  if (isCommonPassword(value)) throw new ApiError(400, COMMON_PASSWORD);
+};
 
 const OK: OkVo = { ok: true };
 const logMailError = (label: string) => (error: unknown) => console.error(`[mailer] ${label} failed:`, error instanceof Error ? error.message : error);
@@ -94,11 +160,15 @@ export class AuthService {
     if (!isPassword(body?.password)) throw new ApiError(400, PASSWORD_RULE);
     const email = body.email?.trim().toLowerCase() || null;
     if (email && !EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
+    assertNotCommon(body.password);
     if (await this.users.findIdByPhone(mobile)) throw new ApiError(409, MOBILE_TAKEN);
-    await this.mobileOtp.consume(mobile, "REGISTER", body.verificationToken);
+    // When the code went to the fallback email (no WhatsApp / SMS), the email is proven but the mobile isn't: it is
+    // stored unverified, so it can't log in or reset a password and doesn't block the number's real owner.
+    const phoneVerified = await this.mobileOtp.consume(mobile, "REGISTER", body.verificationToken);
+    if (!phoneVerified && !email) throw new ApiError(400, "Enter the email the verification code was sent to.");
     const id = randomId();
     try {
-      await this.users.insertMobileRegistered(id, email, body.fullName?.trim().slice(0, 255) || null, mobile, hashPassword(body.password));
+      await this.users.insertMobileRegistered(id, email, body.fullName?.trim().slice(0, 255) || null, mobile, hashPassword(body.password), phoneVerified);
     } catch (error) {
       if ((error as { code?: string }).code === "P2002") throw new ApiError(409, "An account with this email already exists.");
       throw error;
@@ -114,6 +184,7 @@ export class AuthService {
     const { email, password, fullName, phone, recaptchaToken } = body || {};
     if (!(await this.recaptcha.verify(recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
     if (!email || !isPassword(password)) throw new ApiError(400, "Email and password are required; password must be at least 8 characters.");
+    assertNotCommon(password);
     if (!phone || !/^[6-9]\d{9}$/.test(phone.trim())) throw new ApiError(400, "A valid 10-digit mobile number is required.");
     if (await this.users.findIdByPhone(phone.trim())) throw new ApiError(409, "This mobile number is already registered.");
     const id = randomId();
@@ -129,17 +200,21 @@ export class AuthService {
     return { user: PublicUserVo.from(user), requiresOtp: true };
   }
 
+  // The emailed code: first verification of a new account, and an administrator's second sign-in step. `email` may
+  // also be the mobile number the administrator logged in with. An unknown account and a wrong code get the same
+  // answer, so this can't be used to find out which emails are registered.
   async verifyOtp(body: VerifyOtpDto): Promise<IssuedSession> {
-    const email = String(body?.email || "")
+    const identifier = String(body?.email || "")
       .trim()
       .toLowerCase();
     const code = String(body?.otpCode || "").trim();
-    if (!email || !/^\d{6}$/.test(code)) throw new ApiError(400, "A valid 6-digit verification code is required.");
-    const existing = await this.users.findByEmail(email);
-    if (!existing) throw new ApiError(404, "Account not found.");
-    const notExpired = existing.otpExpiresAt && existing.otpExpiresAt > new Date();
-    const matches = existing.otpHash && safeEqual(hashOtp(code), existing.otpHash);
-    if (!notExpired || !matches) throw new ApiError(400, "Invalid or expired verification code.");
+    if (!identifier || !/^\d{6}$/.test(code)) throw new ApiError(400, "A valid 6-digit verification code is required.");
+    if (!(await this.recaptcha.verify(body?.recaptchaToken))) throw new ApiError(400, RECAPTCHA_FAILED);
+    const phone = identifier.includes("@") ? "" : normalizeMobile(identifier);
+    const existing = phone ? await this.users.findByPhone(phone) : await this.users.findByEmail(identifier);
+    const notExpired = existing?.otpExpiresAt && existing.otpExpiresAt > new Date();
+    const matches = existing?.otpHash && safeEqual(hashOtp(code), existing.otpHash);
+    if (!existing || !notExpired || !matches) throw new ApiError(400, OTP_INVALID_CODE);
     // Same portal rules as the password login: the code proves the email, not which portal the account may use.
     const account = await this.users.loginAccount(existing);
     assertLoginPortal(existing, account, asPortal(body?.portal));
@@ -180,6 +255,19 @@ export class AuthService {
     // The password is right; now the account type, decided from its registration records, must match the portal.
     const account = await this.users.loginAccount(user);
     assertLoginPortal(user, account, asPortal(body?.portal));
+    // Administrators finish with the code emailed to them (POST /auth/otp-verifications); no session until then.
+    if (user.role === "admin" && this.config.adminLoginCode) {
+      if (!user.email) throw new ApiError(403, ADMIN_EMAIL_REQUIRED);
+      if (!this.mail.isConfigured() && this.config.appEnv !== "development") throw new ApiError(503, ADMIN_CODE_NOT_SENT);
+      try {
+        await this.issueOtp(user, "Your administrator sign-in code");
+      } catch (error) {
+        // The mail server refused or is down: say so plainly (the details go to the server log), never a bare 500.
+        logMailError("admin sign-in code")(error);
+        throw new ApiError(503, ADMIN_CODE_NOT_SENT);
+      }
+      throw new ApiError(403, ADMIN_CODE_REQUIRED);
+    }
     const token = createToken();
     await this.users.startSession(user.id, sha256(token));
     return { user: PublicUserVo.from(user), accessToken: token, account: AccountVo.from(account) };
@@ -193,7 +281,7 @@ export class AuthService {
     const token = createToken();
     // At most one email per account per few minutes (an earlier link stays valid); see setResetTokenByEmail.
     if ((await this.users.findIdByEmail(email)) && (await this.users.setResetTokenByEmail(email, sha256(token)))) {
-      const resetUrl = `${this.config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+      const resetUrl = `${this.config.frontendUrl}/reset-password#token=${encodeURIComponent(token)}`;
       // Not awaited: the reply must not take longer for a real account (that would reveal which emails exist).
       // Best effort: SMTP errors must never reach this unauthenticated caller.
       void this.mail
@@ -213,6 +301,7 @@ export class AuthService {
     if (body?.verificationToken) {
       const mobile = validMobile(body.phone);
       if (!isPassword(newPassword)) throw new ApiError(400, PASSWORD_RULE);
+      assertNotCommon(newPassword);
       const user = await this.users.findByPhone(mobile);
       await this.mobileOtp.consume(mobile, "RESET", body.verificationToken);
       if (!user) throw new ApiError(400, "This reset link is invalid or expired.");
@@ -221,6 +310,7 @@ export class AuthService {
     }
     if (!resetToken || typeof resetToken !== "string" || !isPassword(newPassword))
       throw new ApiError(400, "A valid reset token and password of at least 8 characters are required.");
+    assertNotCommon(newPassword);
     const changed = await this.users.resetPassword(hashPassword(newPassword), sha256(resetToken)); // also logs out every device
     if (!changed) throw new ApiError(400, "This reset link is invalid or expired.");
     return OK;
@@ -262,7 +352,7 @@ export class AuthService {
     }
     const token = createToken();
     await this.users.setInviteResetToken(user.id, sha256(token));
-    const setPasswordUrl = `${this.config.frontendUrl}/reset-password?token=${encodeURIComponent(token)}`;
+    const setPasswordUrl = `${this.config.frontendUrl}/reset-password#token=${encodeURIComponent(token)}`;
     const loginUrl = `${this.config.frontendUrl}/login`;
     const username = user.email || user.phone || loginPhone;
     const invite = memberInviteEmail({ name: user.fullName || email.split("@")[0], setPasswordUrl, loginUrl, username, password: defaultPassword, kind });
@@ -274,6 +364,7 @@ export class AuthService {
   async changePassword(user: UserRow, body: ChangePasswordDto, currentToken?: string): Promise<OkVo> {
     const { currentPassword, newPassword } = body || {};
     if (!isPassword(newPassword)) throw new ApiError(400, "New password must be at least 8 characters.");
+    assertNotCommon(newPassword);
     if (!verifyPassword(currentPassword, user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
     if (newPassword === currentPassword) throw new ApiError(400, "The new password must be different from the current one.");
     await this.users.updatePassword(user.id, hashPassword(newPassword), currentToken ? sha256(currentToken) : undefined);
@@ -281,7 +372,7 @@ export class AuthService {
   }
 
   async me(user: UserRow): Promise<MeVo> {
-    return { ...PublicUserVo.from(user), account: AccountVo.from(await this.users.loginAccount(user)) };
+    return { ...PublicUserVo.from(user), account: AccountVo.from(await this.users.loginAccount(user)), adminAccess: await this.users.adminAccess(user) };
   }
 
   async currentSession(user: UserRow | null): Promise<CurrentSessionVo> {
@@ -294,6 +385,7 @@ export class AuthService {
     assertNoMarkup(body);
     const fullName = body.fullName === undefined ? undefined : body.fullName?.trim() || null;
     let phone: string | null | undefined;
+    let phoneVerified: boolean | undefined;
     if (body.phone !== undefined) {
       phone = body.phone?.trim() || null;
       if (phone && !/^[6-9]\d{9}$/.test(phone)) throw new ApiError(400, "A valid 10-digit mobile number is required.");
@@ -303,7 +395,7 @@ export class AuthService {
       // (POST /auth/mobile-otps and /verifications, purpose REGISTER), so nobody can claim someone else's.
       if (phone && phone !== normalizeMobile(user.phone ?? "")) {
         if (!body.phoneVerificationToken) throw new ApiError(400, PHONE_NOT_VERIFIED);
-        await this.mobileOtp.consume(phone, "REGISTER", body.phoneVerificationToken);
+        phoneVerified = await this.mobileOtp.consume(phone, "REGISTER", body.phoneVerificationToken);
       }
     }
     let photoUrl: string | null | undefined;
@@ -311,7 +403,7 @@ export class AuthService {
       photoUrl = body.photoUrl?.trim() || null;
       if (photoUrl && !OWN_UPLOAD_URL.test(photoUrl)) throw new ApiError(400, "The photo must be an image uploaded to the portal.");
     }
-    return PublicUserVo.from(await this.users.updateProfile(user.id, { fullName, phone, photoUrl }));
+    return PublicUserVo.from(await this.users.updateProfile(user.id, { fullName, phone, phoneVerified, photoUrl }));
   }
 
   // Without a token there is no session to end; still a 204 for the caller.
@@ -326,15 +418,24 @@ export class AuthService {
   }
 
   // Fresh single-use OTP, valid 10 minutes, sent by email.
-  async issueOtp(user: UserRow): Promise<void> {
+  async issueOtp(user: UserRow, subject = "Your verification code"): Promise<void> {
     const code = generateOtp();
     await this.users.setOtp(user.id, hashOtp(code));
-    await this.mail.send({
-      to: user.email as string,
-      subject: "Your verification code",
-      html: `<p>Your verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p><p>This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
-      text: `Your verification code is ${code}. It expires in 10 minutes.`,
-    });
+    // Local development without working email: the code goes to the server log instead (never on test / production).
+    const devLog = () => console.info(`[dev] ${subject} for ${user.email}: ${code}`);
+    if (!this.mail.isConfigured() && this.config.appEnv === "development") devLog();
+    try {
+      await this.mail.send({
+        to: user.email as string,
+        subject,
+        html: `<p>Your verification code is:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p><p>This code expires in 10 minutes. If you didn't request this, you can ignore this email.</p>`,
+        text: `Your verification code is ${code}. It expires in 10 minutes.`,
+      });
+    } catch (error) {
+      if (this.config.appEnv !== "development") throw error;
+      logMailError("verification code")(error);
+      devLog();
+    }
   }
 
   async sendRegistrationEmails(user: UserRow): Promise<void> {

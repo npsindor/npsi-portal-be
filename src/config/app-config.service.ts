@@ -37,6 +37,11 @@ export class AppConfigService {
   get appEnv(): string {
     return this.get("APP_ENV") || "development";
   }
+  // Administrators sign in with password + a code emailed to them. ADMIN_LOGIN_CODE=false turns the second step off
+  // (automated tests; an emergency switch if email is down) — never leave it off on a live server.
+  get adminLoginCode(): boolean {
+    return this.get("ADMIN_LOGIN_CODE") !== "false";
+  }
   get recaptchaSecret(): string | undefined {
     return this.get("RECAPTCHA_SECRET_KEY");
   }

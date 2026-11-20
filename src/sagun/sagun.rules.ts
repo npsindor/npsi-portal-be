@@ -21,6 +21,13 @@ export const sagunUploadMime = (buffer: Buffer, kind: string, _declaredMime?: st
   const pdf = buffer.subarray(0, 5).toString() === "%PDF-";
   return png ? "image/png" : jpg ? "image/jpeg" : webp ? "image/webp" : pdf && kind !== "PHOTO" ? "application/pdf" : null;
 };
+// A PDF that carries actions or scripts (run by readers such as Acrobat when the file is opened) is refused: an
+// identity document needs none of them. Names written as #xx hex escapes (/J#61vaScript) are decoded first.
+const ACTIVE_PDF_NAMES = /\/(?:JavaScript|JS|OpenAction|AA|Launch|SubmitForm|ImportData|RichMedia|EmbeddedFile|GoToR|GoToE|XFA)\b/;
+export const pdfHasActiveContent = (buffer: Buffer): boolean => {
+  const text = buffer.toString("latin1").replace(/#([0-9A-Fa-f]{2})/g, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16)));
+  return ACTIVE_PDF_NAMES.test(text);
+};
 export const effectiveFields = (overrides: unknown): SagunField[] =>
   sagunFields
     .filter((field) => field.section !== "sagun" && !field.removed)

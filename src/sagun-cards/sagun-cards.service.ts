@@ -248,8 +248,12 @@ export class SagunCardsService {
   // front anyway (name, category, profile ID) and never contact, family or document details.
   async verify(token: string) {
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
-    const card = await this.db.sagunDigitalCard.findUnique({ where: { verifyToken: token }, select: { profileId: true, profileCode: true } });
-    if (!card) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
+    const card = await this.db.sagunDigitalCard.findUnique({
+      where: { verifyToken: token },
+      select: { profileId: true, profileCode: true, verifyToken: true },
+    });
+    // The column compares case-insensitively; the token itself is case-sensitive, so the exact value must match.
+    if (!card || card.verifyToken !== token) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
     const [view] = await this.views({ id: { in: [card.profileId] } });
     const active = Boolean(view?.bookletEligible);
     return {

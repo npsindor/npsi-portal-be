@@ -16,6 +16,12 @@ describe("toErrorResponse", () => {
       },
     );
   });
+  test("a unique-key refusal (Prisma P2002) is a 409, without the index name", () => {
+    assert.deepEqual(toErrorResponse(Object.assign(new Error("Unique constraint failed on `event_registrations_active_key_key`"), { code: "P2002" })), {
+      status: 409,
+      body: { error: "This record already exists." },
+    });
+  });
   test("anything else is a 500", () => {
     assert.equal(toErrorResponse(new Error("boom")).status, 500);
   });

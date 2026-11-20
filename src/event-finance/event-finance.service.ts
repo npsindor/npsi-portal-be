@@ -4,6 +4,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
 import { guardianNameOf } from "../common/utils/family-relations.js";
+import { escapeLike } from "../common/utils/text.js";
 import { PrismaService } from "../database/prisma.service.js";
 import { Prisma } from "../generated/prisma/client.js";
 import {
@@ -635,7 +636,11 @@ export class EventFinanceService {
       where: {
         status: "ACTIVE",
         family: { status: { in: ["ACTIVE", "APPROVED"] } },
-        OR: [{ name: { contains: search } }, { membershipId: { contains: search } }, { family: { village: { contains: search } } }],
+        OR: [
+          { name: { contains: escapeLike(search) } },
+          { membershipId: { contains: escapeLike(search) } },
+          { family: { village: { contains: escapeLike(search) } } },
+        ],
       },
       include: {
         family: { select: { familyId: true, headName: true, village: true, members: { where: { relationship: "Father" }, select: { name: true }, take: 1 } } },

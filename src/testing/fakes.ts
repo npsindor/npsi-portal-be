@@ -22,7 +22,7 @@ export const fakeConfig = (overrides: Partial<Record<keyof AppConfigService, unk
 
 export const fakeMail = () => {
   const send = mock.fn(async (_message: unknown) => ({ skipped: true }));
-  return { send, service: as<MailService>({ send }) };
+  return { send, service: as<MailService>({ send, isConfigured: () => true }) };
 };
 
 export const fakeRecaptcha = (passes = true) => {
@@ -46,6 +46,7 @@ export const user = (overrides: Partial<UserRow> = {}): UserRow => ({
   otpHash: null,
   otpExpiresAt: null,
   photoUrl: null,
+  phoneVerified: true,
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"),
   ...overrides,
