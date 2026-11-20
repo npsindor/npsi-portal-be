@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
+import { type AdminScope, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE } from "../common/admin-access/admin-scope.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { APPROVAL_EMAIL_IS_FAMILY_LOGIN, bindsToFamily, loginAccount, loginAccountForEmail } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
@@ -35,7 +36,9 @@ export class StudentApplicationReviewService {
     private readonly notifier: ApplicantNotifier,
   ) {}
 
-  async review(id: string, dto: ReviewDto): Promise<StudentApplicationReviewVo> {
+  // Student applications carry no village, so only an admin with access to all villages may decide them.
+  async review(id: string, dto: ReviewDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<StudentApplicationReviewVo> {
+    if (!scope.allVillages) throw new ApiError(403, OUTSIDE_VILLAGES);
     const remarks = reviewRemarks(dto, (message) => new ApiError(400, message));
     let outbound: Outbound | null = null;
     const result = await this.prisma.$transaction(async (tx): Promise<{ application: StudentApplication; student: Student | null }> => {

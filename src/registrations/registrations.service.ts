@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { ApplicationsRepository } from "../applications/applications.repository.js";
+import { type AdminScope, adminScopeOf, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT } from "../common/dto/list-query.dto.js";
 import { bindsToFamily, FAMILY_ACCOUNT_STUDENT_REGISTRATION, loginAccount } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
@@ -37,6 +38,8 @@ import {
 type AnyApplication = { type: "FAMILY"; row: Application } | { type: "STUDENT"; row: StudentApplication };
 
 const logMail = (error: unknown) => console.error("[mailer] registration email failed:", error instanceof Error ? error.message : error);
+
+export const ALREADY_IN_FAMILY = "Your account already belongs to an active family on the portal, so it can't register another family.";
 
 // Account-first registration: a logged-in (mobile-verified) user submits the short family or student form
 // with proof of the UPI payment; admins verify the payment, then approve the application as before.
@@ -86,6 +89,11 @@ export class RegistrationsService {
       );
     if (type === "FAMILY" && (await this.availability.isMobileTaken(mobile)))
       throw new ApiError(409, "This mobile number is already registered with a family on the portal.");
+    // The mobile alone isn't enough: an account already tied to an active family by its email can't register another.
+    if (type === "FAMILY") {
+      const account = await loginAccount(this.prisma, user);
+      if (account.type === "FAMILY" && account.status === "ACTIVE") throw new ApiError(409, ALREADY_IN_FAMILY);
+    }
     if (type === "STUDENT" && (await this.availability.isStudentMobileTaken(mobile)))
       throw new ApiError(409, "This mobile number is already registered as a student on the portal.");
     const screenshotFile = await this.files.claim(user.id, dto.screenshotFileId);
@@ -184,7 +192,8 @@ export class RegistrationsService {
   }
 
   // Admin: registration-fee payments with who paid, the application's state and which admin reviewed it.
-  async payments(query: RegistrationPaymentsQueryDto) {
+  // A staff member sees the fees of family registrations from their villages (student fees only with all villages).
+  async payments(query: RegistrationPaymentsQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE) {
     const rows = await this.transactions.registrationFees(query.status, query.limit ?? DEFAULT_LIMIT, query.offset);
     const ids = rows.map((row) => row.referenceId).filter((id): id is string => Boolean(id));
     const reviewerIds = [...new Set(rows.map((row) => row.reviewedBy).filter((id): id is string => Boolean(id)))];
@@ -193,7 +202,12 @@ export class RegistrationsService {
       ids.length ? this.prisma.studentApplication.findMany({ where: { applicationId: { in: ids } } }) : [],
       reviewerIds.length ? this.prisma.user.findMany({ where: { id: { in: reviewerIds } }, select: { id: true, fullName: true, email: true } }) : [],
     ]);
-    return rows.map((row) => {
+    const inScope = (row: (typeof rows)[number]) => {
+      if (scope.allVillages) return true;
+      const family = families.find((app) => app.applicationId === row.referenceId);
+      return Boolean(family && villageAllowed(scope, family.village, family.nativePlace));
+    };
+    return rows.filter(inScope).map((row) => {
       const family = families.find((app) => app.applicationId === row.referenceId);
       const student = students.find((app) => app.applicationId === row.referenceId);
       const reviewer = reviewers.find((user) => user.id === row.reviewedBy);
@@ -210,7 +224,7 @@ export class RegistrationsService {
     });
   }
 
-  async reviewPayment(id: string, dto: PaymentReviewDto, admin: UserRow) {
+  async reviewPayment(id: string, dto: PaymentReviewDto, admin: UserRow, scope: AdminScope = SUPER_ADMIN_SCOPE) {
     const decision = dto.decision as PaymentDecision;
     const remarks = dto.remarks?.trim() || null;
     if (decision !== "VERIFIED" && !remarks) throw new ApiError(400, "Remarks are required for this payment decision.");
@@ -225,13 +239,25 @@ export class RegistrationsService {
           throw new ApiError(400, "Enter a valid refund amount and the actual refund transaction reference before completing the refund.");
       }
       const application = await this.applicationFor(fee.referenceId, tx);
+      if (!this.feeInScope(scope, application)) throw new ApiError(403, OUTSIDE_VILLAGES);
       if (decision === "REJECTED" && application?.row.status === "APPROVED")
         throw new ApiError(409, "The application is already approved; refund the payment instead of rejecting it.");
+      // A full refund of an approved registration takes back what it paid for: the family (or student record) it created
+      // is suspended for the admin to review, instead of staying active with full member access.
+      let refundNote: string | null = null;
+      if (decision === "REFUNDED" && application?.row.status === "APPROVED" && Number(dto.refundAmount) >= fee.amount.toNumber()) {
+        refundNote = "Registration fee fully refunded; the registration was suspended for admin review.";
+        if (application.type === "FAMILY" && application.row.resultingFamilyId) {
+          await tx.family.updateMany({ where: { familyId: application.row.resultingFamilyId, status: "ACTIVE" }, data: { status: "SUSPENDED" } });
+        } else if (application.type === "STUDENT" && application.row.resultingStudentId) {
+          await tx.student.updateMany({ where: { studentId: application.row.resultingStudentId, status: "ACTIVE" }, data: { status: "INACTIVE" } });
+        }
+      }
       const row = await this.transactions.update(
         id,
         {
           paymentStatus: decision,
-          adminRemarks: remarks,
+          adminRemarks: refundNote ? [remarks, refundNote].filter(Boolean).join(" | ") : remarks,
           reviewedBy: admin.id,
           reviewedAt: new Date(),
           ...(decision === "REFUNDED" ? { refundAmount: dto.refundAmount, refundReference } : {}),
@@ -272,14 +298,24 @@ export class RegistrationsService {
   }
 
   // The payment screenshot, for an admin or the applicant who uploaded it.
+  // For an admin, a staff member with payment access for that registration's village, or the applicant who uploaded it.
   async screenshot(id: string, user: UserRow) {
     const fee = await this.transactions.findById(id);
     if (!fee?.screenshotFile) throw new ApiError(404, "Record not found");
     if (user.role !== "admin") {
       const application = await this.applicationFor(fee.referenceId);
-      if (application?.row.userId !== user.id) throw new ApiError(404, "Record not found");
+      const scope = await adminScopeOf(this.prisma, user);
+      const staff = scope?.areas.includes("PAYMENTS") && this.feeInScope(scope, application);
+      if (!staff && application?.row.userId !== user.id) throw new ApiError(404, "Record not found");
     }
     return this.files.read(fee.screenshotFile);
+  }
+
+  // Whether a registration fee belongs to the admin scope: a family registration from one of its villages, or any
+  // registration for an admin with all villages.
+  private feeInScope(scope: AdminScope, application: AnyApplication | null): boolean {
+    if (scope.allVillages) return true;
+    return application?.type === "FAMILY" && villageAllowed(scope, application.row.village, application.row.nativePlace);
   }
 
   async completionFor(user: UserRow) {
@@ -304,6 +340,7 @@ export class RegistrationsService {
     const head = members.find((member) => member.relationship.toLowerCase() === "head") ?? members[0];
     const isFamily = Boolean(family) || latest?.type === "FAMILY" || (!latest && !student);
     return profileCompletion({
+      mobileVerified: Boolean(user.phone && user.phoneVerified),
       hasEmail: Boolean(user.email),
       hasPhoto: Boolean(user.photoUrl),
       registration: latest ? { status: latest.row.status, paymentStatus: fee?.paymentStatus ?? null } : null,

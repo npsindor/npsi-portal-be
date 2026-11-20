@@ -85,6 +85,6 @@ export const EVENTREGISTRATION_ORDERS = orderValues([
 export class EventRegistrationListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: EVENTREGISTRATION_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(EVENTREGISTRATION_ORDERS)
+  @IsIn(EVENTREGISTRATION_ORDERS, { message: "Invalid sort field." })
   order?: (typeof EVENTREGISTRATION_ORDERS)[number];
 }

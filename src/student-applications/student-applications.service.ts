@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { APPROVE_THROUGH_REVIEW } from "../applications/applications.service.js";
+import { type AdminScope, SUPER_ADMIN_SCOPE } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
 import { bindsToFamily, loginAccountForEmail, STUDENT_EMAIL_IS_FAMILY_LOGIN } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
@@ -34,7 +35,9 @@ export class StudentApplicationsService {
     private readonly recaptcha: RecaptchaService,
   ) {}
 
-  async list(query: StudentApplicationListQueryDto): Promise<StudentApplicationVo[]> {
+  // Student applications carry no village: a staff member limited to some villages sees none.
+  async list(query: StudentApplicationListQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<StudentApplicationVo[]> {
+    if (!scope.allVillages) return [];
     const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
     return rows.map(toStudentApplicationVo);
   }

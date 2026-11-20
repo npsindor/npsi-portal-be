@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { Transform, Type } from "class-transformer";
-import { Equals, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
+import { ArrayMaxSize, Equals, IsArray, IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from "class-validator";
 
 // Error texts are codes; the frontend shows them in English or Hindi.
 const blankToUndefined = ({ value }: { value: unknown }) =>
@@ -83,6 +83,41 @@ export class EventMemberApplyDto {
   consent!: boolean;
 
   @ApiPropertyOptional({ description: "reCAPTCHA token (required when not logged in)" }) @IsOptional() @IsString() recaptchaToken?: string;
+
+  @ApiPropertyOptional({
+    description:
+      "Admins only: add the person to the team at once (APPROVED). An admin adding someone without a linked record needs only the name and village; mobile, email and area are optional.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  approveNow?: boolean;
+
+  @ApiPropertyOptional({ description: "Admins only: the name in Hindi, shown when the site is in Hindi" })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  nameHi?: string;
+
+  @ApiPropertyOptional({ description: "Admins only: the village in Hindi, shown when the site is in Hindi" })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  villageHi?: string;
+
+  @ApiPropertyOptional({ description: "Admins only: role shown on the card, e.g. Coordinator" })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  designation?: string;
+  @ApiPropertyOptional({ description: "Admins only: the role in Hindi" })
+  @Transform(blankToUndefined)
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  designationHi?: string;
 }
 
 export class EventMemberReviewDto {
@@ -102,6 +137,8 @@ export class EventMemberUpdateDto {
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(150) designation?: string | null;
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(150) designationHi?: string | null;
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(255) village?: string;
+  @ApiPropertyOptional({ description: "Name in Hindi" }) @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(255) nameHi?: string;
+  @ApiPropertyOptional({ description: "Village in Hindi" }) @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(255) villageHi?: string;
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(150) area?: string;
   @ApiPropertyOptional() @Transform(blankToUndefined) @IsOptional() @IsString() @MaxLength(500) photoUrl?: string | null;
   @ApiPropertyOptional({ description: "Move to another section (maps an OTHER request)" })
@@ -122,6 +159,14 @@ export class EventMemberRemoveDto {
   @IsString({ message: "EM_REASON" })
   @MaxLength(500)
   reason!: string;
+}
+
+export class EventMemberOrderDto {
+  @ApiProperty({ type: String, isArray: true, description: "The team's members in the order the website shows them (first = 1)" })
+  @IsArray()
+  @ArrayMaxSize(2000)
+  @IsString({ each: true })
+  ids!: string[];
 }
 
 export class EventMemberSectionDto {

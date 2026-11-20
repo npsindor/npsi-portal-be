@@ -2,18 +2,21 @@ import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { PrismaService } from "../database/prisma.service.js";
 import type { MembershipRepository } from "../membership/membership.repository.js";
-import { FAM, fakeMembership, fakeModelRepo, fakePrisma, TX } from "../testing/fake-repo.js";
+import { FAM, type FakeAccountRecords, fakeMembership, fakeModelRepo, fakePrisma, TX } from "../testing/fake-repo.js";
 import { admin, as, rejectsWith, user } from "../testing/fakes.js";
 import { familyMemberRow } from "../testing/rows.js";
 import type { FamilyMembersRepository } from "./family-members.repository.js";
 import { FamilyMembersService } from "./family-members.service.js";
 
 const member = () => user({ id: "u-m" });
-const build = () => {
-  const repo = fakeModelRepo(familyMemberRow, [familyMemberRow({ id: "m-own", familyId: FAM }), familyMemberRow({ id: "m-other", familyId: "OTHER" })]);
+const build = (accounts?: FakeAccountRecords) => {
+  const repo = fakeModelRepo(familyMemberRow, [
+    familyMemberRow({ id: "m-own", familyId: FAM, status: "ACTIVE", email: "son@example.com", mobile: "9000000001" }),
+    familyMemberRow({ id: "m-other", familyId: "OTHER" }),
+  ]);
   repo.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
   return {
-    service: new FamilyMembersService(as<PrismaService>(fakePrisma()), as<FamilyMembersRepository>(repo), as<MembershipRepository>(fakeMembership())),
+    service: new FamilyMembersService(as<PrismaService>(fakePrisma(accounts)), as<FamilyMembersRepository>(repo), as<MembershipRepository>(fakeMembership())),
     repo,
   };
 };
@@ -25,6 +28,51 @@ describe("FamilyMembersService", () => {
     assert.deepEqual([created.membershipId, created.familyId, created.dob, created.photoUrl], ["NPSI-MEM-000052", FAM, "2015-03-04", null]);
     await rejectsWith(service.create({ familyId: "OTHER", name: "X", relationship: "Son" }, member()), 403, "You can only add members to your own family.");
     await rejectsWith(service.create({ familyId: FAM, name: "<b>", relationship: "Son" }, member()), 400, 'The "name" field cannot contain < or > characters.');
+  });
+  test("a member a head adds waits for admin approval: status is PENDING whatever the client sends (create and edit)", async () => {
+    const { service, repo } = build();
+    const created = await service.create({ familyId: FAM, name: "Kid", relationship: "Son", status: "ACTIVE" }, member());
+    assert.equal(created.status, "PENDING");
+    const pending = repo.stored.at(-1);
+    assert.equal((await service.update(pending?.id as string, { status: "ACTIVE" }, member())).status, "PENDING");
+    assert.equal(
+      (await service.update("m-own", { status: "INACTIVE", name: "Same person" }, member())).status,
+      "ACTIVE",
+      "a head can't change status either way",
+    );
+  });
+  test("changing an approved member's mobile or email sends them back for approval", async () => {
+    const { service } = build();
+    assert.equal((await service.update("m-own", { email: "SON@example.com", mobile: "+91 90000 00001" }, member())).status, "ACTIVE", "same contact");
+    assert.equal((await service.update("m-own", { email: "new@example.com" }, member())).status, "PENDING");
+  });
+  test("a head can't add an active member of another family (that is a transfer) or an administrator's email", async () => {
+    const { service } = build({
+      users: [{ id: "u-admin", email: "admin@npsindore.org", role: "admin" }],
+      members: [{ id: "x-1", familyId: "OTHER", email: "taken@example.com", mobileDigits: "9111111111", status: "ACTIVE" }],
+    });
+    const add = (extra: object) => service.create({ familyId: FAM, name: "Someone", relationship: "Brother", ...extra }, member());
+    const elsewhere =
+      "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
+    await rejectsWith(add({ email: "taken@example.com" }), 409, elsewhere);
+    await rejectsWith(add({ mobile: "+91 91111 11111" }), 409, elsewhere);
+    await rejectsWith(add({ email: "admin@npsindore.org" }), 409, "This email belongs to an administrator account and can't be added as a family member.");
+    await rejectsWith(service.update("m-own", { email: "admin@npsindore.org" }, member()), 409, /administrator account/);
+    assert.equal((await add({ email: "fresh@example.com" })).status, "PENDING");
+  });
+  test("a staff member with family access approves members of their villages' families: status only", async () => {
+    const staffUser = user({ id: "u-staff" });
+    const { service } = build({
+      adminAccess: [{ userId: "u-staff", active: true, areas: ["FAMILIES"], allVillages: false, villages: ["Rampura"] }],
+      families: [
+        { familyId: FAM, village: "Rampura", status: "ACTIVE" },
+        { familyId: "OTHER", village: "Khedi", status: "ACTIVE" },
+      ],
+    });
+    assert.equal((await service.update("m-own", { status: "INACTIVE" }, staffUser)).status, "INACTIVE");
+    await rejectsWith(service.update("m-other", { status: "ACTIVE" }, staffUser), 403, "This record belongs to a village outside your admin access.");
+    // Anything beyond the status goes through the normal own-family rules (the staff member has no family here).
+    await rejectsWith(service.update("m-own", { status: "ACTIVE", name: "X" }, staffUser), 403, "No family found for your account.");
   });
   test("members edit and remove only their own family's members", async () => {
     const { service } = build();

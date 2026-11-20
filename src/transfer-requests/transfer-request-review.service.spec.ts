@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { describe, test } from "node:test";
+import { describe, mock, test } from "node:test";
 import type { PrismaService } from "../database/prisma.service.js";
 import type { FamiliesRepository } from "../families/families.repository.js";
 import type { FamilyMembersRepository } from "../family-members/family-members.repository.js";
@@ -16,7 +16,9 @@ const familyMove = transferRequestRow({
   requestId: "TRF-000001",
   requestType: "family_to_family",
   sourceMembershipId: "NPSI-MEM-000005",
+  sourceFamilyId: "NPSI-FAM-000001",
   targetFamilyId: "NPSI-FAM-000002",
+  openKey: "M:NPSI-MEM-000005",
 });
 const studentMove = transferRequestRow({
   id: "tr-2",
@@ -26,11 +28,26 @@ const studentMove = transferRequestRow({
   targetFamilyId: "NPSI-FAM-000002",
 });
 
-const build = (requests = [familyMove, studentMove]) => {
-  const transferRequests = fakeModelRepo(
+const build = (requests = [familyMove, studentMove], memberFamilyId = "NPSI-FAM-000001") => {
+  const base = fakeModelRepo(
     transferRequestRow,
     requests.map((r) => ({ ...r })),
   );
+  const transferRequests = {
+    ...base,
+    // Closes the person's other open requests, like the real repository.
+    closeOthers: mock.fn(async (request: { id: string; sourceMembershipId: string | null; sourceStudentId: string | null }, remarks: string) => {
+      const others = base.stored.filter(
+        (row) =>
+          row.id !== request.id &&
+          ["PENDING", "CORRECTION_REQUIRED"].includes(row.status) &&
+          ((request.sourceMembershipId && row.sourceMembershipId === request.sourceMembershipId) ||
+            (request.sourceStudentId && row.sourceStudentId === request.sourceStudentId)),
+      );
+      for (const row of others) Object.assign(row, { status: "REJECTED", adminRemarks: remarks, openKey: null });
+      return others.length;
+    }),
+  };
   const families = {
     ...fakeModelRepo(familyRow, [
       familyRow({ id: "f-1", familyId: "NPSI-FAM-000001", familyName: "Old", memberCount: 3, status: "ACTIVE" }),
@@ -45,7 +62,7 @@ const build = (requests = [familyMove, studentMove]) => {
   const familyMembers = {
     ...fakeModelRepo(familyMemberRow, [familyMemberRow({ id: "m-5", membershipId: "NPSI-MEM-000005", familyId: "NPSI-FAM-000001", status: "PENDING" })]),
     findByMembershipId: async (membershipId: string) =>
-      membershipId === "NPSI-MEM-000005" ? familyMemberRow({ id: "m-5", membershipId, familyId: "NPSI-FAM-000001" }) : null,
+      membershipId === "NPSI-MEM-000005" ? familyMemberRow({ id: "m-5", membershipId, familyId: memberFamilyId }) : null,
     hasContactInFamily: async (_familyId: string, mobile: string | null) => mobile === "9000000000",
   };
   familyMembers.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
@@ -63,7 +80,7 @@ const build = (requests = [familyMove, studentMove]) => {
     as<StudentsRepository>(students),
     as<NotificationsRepository>(notifications),
   );
-  return { service, families, familyMembers, students, notifications };
+  return { service, families, familyMembers, students, notifications, transferRequests };
 };
 
 describe("TransferRequestReviewService", () => {
@@ -128,5 +145,43 @@ describe("TransferRequestReviewService", () => {
     const dup = build();
     dup.students.findByStudentId = async (studentId: string) => studentRow({ id: "s-3", studentId, mobile: "9000000000" });
     await rejectsWith(dup.service.review("tr-2", { decision: "APPROVED" }, admin()), 409, "This person is already a member of the target family.");
+    await rejectsWith(
+      build([{ ...familyMove, status: "REJECTED" }]).service.review("tr-1", { decision: "APPROVED" }, admin()),
+      409,
+      "This transfer request has already been decided (REJECTED).",
+    );
+    const transferred = build();
+    transferred.students.findByStudentId = async (studentId: string) => studentRow({ id: "s-3", studentId, status: "TRANSFERRED" });
+    await rejectsWith(transferred.service.review("tr-2", { decision: "APPROVED" }, admin()), 409, "This student has already been transferred to a family.");
+  });
+  test("a stale request can't move a member out of a family that never asked", async () => {
+    // The member already went to another family (e.g. through an earlier request).
+    const { service, familyMembers } = build([familyMove], "NPSI-FAM-000009");
+    await rejectsWith(
+      service.review("tr-1", { decision: "APPROVED" }, admin()),
+      409,
+      "This member is no longer in the family that asked for the transfer, so the request is out of date. Reject it.",
+    );
+    assert.equal(familyMembers.stored[0].familyId, "NPSI-FAM-000001", "nobody moved");
+    await rejectsWith(
+      build([familyMove], "NPSI-FAM-000002").service.review("tr-1", { decision: "APPROVED" }, admin()),
+      409,
+      "This member is already in the target family.",
+    );
+  });
+  test("deciding one request closes the person's other open requests; a correction keeps them open", async () => {
+    const duplicate = { ...familyMove, id: "tr-9", requestId: "TRF-000009", openKey: null };
+    const { service, transferRequests } = build([familyMove, duplicate]);
+    const approved = await service.review("tr-1", { decision: "APPROVED" }, admin());
+    assert.equal(approved.status, "APPROVED");
+    assert.equal(transferRequests.stored[0].openKey, null, "the open-request key is released");
+    assert.deepEqual(
+      [transferRequests.stored[1].status, transferRequests.stored[1].adminRemarks],
+      ["REJECTED", "Closed: TRF-000001 for the same person was approved."],
+    );
+    const second = build([familyMove, { ...duplicate }]);
+    await second.service.review("tr-1", { decision: "CORRECTION_REQUIRED", remarks: "Add a reason" }, admin());
+    assert.equal(second.transferRequests.stored[1].status, "PENDING");
+    assert.equal(second.transferRequests.stored[0].openKey, "M:NPSI-MEM-000005", "still open while the correction is pending");
   });
 });

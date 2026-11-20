@@ -150,7 +150,7 @@ const seed = async () => {
     [IDS.member1, FAMILY1, IDS.member2, FAMILY2],
   );
   await query(
-    "INSERT INTO events (id, title, date, venue, fee, status, created_at) VALUES (?, 'Paid Event', '2026-12-01', 'Hall', 100, 'PUBLISHED', '2026-01-03 00:00:00'), (?, 'Free Event', '2026-12-02', 'Hall', 0, 'PUBLISHED', '2026-01-04 00:00:00')",
+    "INSERT INTO events (id, title, date, venue, fee, status, created_at) VALUES (?, 'Paid Event', '2099-12-01', 'Hall', 100, 'PUBLISHED', '2026-01-03 00:00:00'), (?, 'Free Event', '2099-12-02', 'Hall', 0, 'PUBLISHED', '2026-01-04 00:00:00')",
     [IDS.event, IDS.freeEvent],
   );
   await query(
@@ -199,6 +199,7 @@ export const setup = async () => {
       SMTP_PORT: "",
       SMTP_FROM: "",
       RECAPTCHA_SECRET_KEY: "",
+      ADMIN_LOGIN_CODE: "false",
       ADMIN_NOTIFICATION_EMAILS: "admin-notify@test.local",
       LOG_REQUESTS: "false",
     },
@@ -229,8 +230,13 @@ export const setup = async () => {
 export const teardown = async () => {
   server?.kill();
   if (db) {
-    await db.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
-    await db.end();
+    // Close the connection even when the DROP fails (no rights): an open socket keeps the run from exiting.
+    try {
+      await db.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
+    } finally {
+      await db.end();
+      db = undefined;
+    }
   }
   fs.rmSync(UPLOADS_DIR, { recursive: true, force: true });
 };
@@ -246,5 +252,5 @@ export const call = (method, url, { token, ip } = {}) => {
   const req = http()
     [method.toLowerCase()](url)
     .set("X-Forwarded-For", ip || nextIp());
-  return token ? req.set("Authorization", `Bearer ${token}`) : req;
+  return token ? req.set("Cookie", `npsi_session=${token}`) : req;
 };

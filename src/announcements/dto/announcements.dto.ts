@@ -61,7 +61,7 @@ export const ANNOUNCEMENT_ORDERS = orderValues([
 export class AnnouncementListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: ANNOUNCEMENT_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(ANNOUNCEMENT_ORDERS)
+  @IsIn(ANNOUNCEMENT_ORDERS, { message: "Invalid sort field." })
   order?: (typeof ANNOUNCEMENT_ORDERS)[number];
 
   @ApiPropertyOptional({ enum: ANNOUNCEMENT_CATEGORIES })

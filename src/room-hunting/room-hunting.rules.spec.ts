@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { displayName, matchScore, mobile10, normalKey, notifiable } from "./room-hunting.rules.js";
+import { displayName, listingPhotos, matchScore, mobile10, normalKey, notifiable } from "./room-hunting.rules.js";
 
 const listing = (over = {}) => ({ typeKey: "1bhk", areaKey: "vijaynagar", rentAmount: 9000, availableFor: "ANY", ...over });
 const need = (over = {}) => ({ typeKey: "1bhk", areaKey: "vijaynagar", maxBudget: 10000, tenantType: "ANY", ...over });
@@ -42,4 +42,11 @@ test("mobile numbers are 10-digit Indian numbers; public names are shortened", (
   assert.equal(mobile10("5876543210"), null);
   assert.equal(displayName("Ramesh Kumar Patidar"), "Ramesh P.");
   assert.equal(displayName("Ramesh"), "Ramesh");
+});
+
+test("listingPhotos: the stored list wins, the single photo is the fallback, no duplicates or junk", () => {
+  assert.deepEqual(listingPhotos("/uploads/a.jpg", ["/uploads/b.jpg", "/uploads/b.jpg", 5, ""]), ["/uploads/b.jpg"]);
+  assert.deepEqual(listingPhotos("/uploads/a.jpg", null), ["/uploads/a.jpg"]);
+  assert.deepEqual(listingPhotos("/uploads/a.jpg", []), ["/uploads/a.jpg"]);
+  assert.deepEqual(listingPhotos(null, "x"), []);
 });

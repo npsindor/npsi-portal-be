@@ -42,6 +42,6 @@ export const PRINCIPLE_ORDERS = orderValues([
 export class PrincipleListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: PRINCIPLE_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(PRINCIPLE_ORDERS)
+  @IsIn(PRINCIPLE_ORDERS, { message: "Invalid sort field." })
   order?: (typeof PRINCIPLE_ORDERS)[number];
 }

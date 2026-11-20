@@ -7,7 +7,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { EventRegistrationVo } from "../event-registrations/vo/event-registrations.vo.js";
 import { FeedbackVo } from "../feedback/vo/feedback.vo.js";
 import { MeService } from "./me.service.js";
-import { MyFamilyVo } from "./vo/me.vo.js";
+import { MyFamilyVo, MyOpenTransferRequestVo } from "./vo/me.vo.js";
 
 @ApiTags("me")
 @ApiBearerAuth()
@@ -30,6 +30,14 @@ export class MeController {
   @ApiUnauthorizedResponse({ type: ErrorVo })
   feedback(@CurrentUser() user: UserRow): Promise<FeedbackVo[]> {
     return this.me.feedback(user);
+  }
+
+  @Get("transfer-requests")
+  @ApiOperation({ summary: "Transfer requests the logged-in member filed that are still open (PENDING / CORRECTION_REQUIRED)" })
+  @ApiOkResponse({ type: MyOpenTransferRequestVo, isArray: true })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  transferRequests(@CurrentUser() user: UserRow): Promise<MyOpenTransferRequestVo[]> {
+    return this.me.openTransferRequests(user);
   }
 
   @Get("event-registrations")

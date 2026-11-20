@@ -15,19 +15,42 @@ import { sha256 } from "./utils/crypto.js";
 afterEach(() => mock.restoreAll());
 
 describe("SessionService", () => {
-  const sessions = (row: unknown) => {
-    const first = mock.fn(async (_args: { where: { id: string; expiresAt: { gt: Date } } }) => (row ? { user: row } : null));
-    return { first, service: new SessionService(as<PrismaService>({ session: { findFirst: first } })) };
+  const MINUTE = 60_000;
+  const sessions = (row: unknown, lastSeenAt: Date | null = new Date()) => {
+    const first = mock.fn(async (_args: { where: { id: string; expiresAt: { gt: Date } } }) =>
+      row ? { id: "s-1", user: row, lastSeenAt, createdAt: new Date(Date.now() - 60 * MINUTE) } : null,
+    );
+    const deleteMany = mock.fn(async (_args: unknown) => ({ count: 1 }));
+    const updateMany = mock.fn(async (_args: unknown) => ({ count: 1 }));
+    return { first, deleteMany, updateMany, service: new SessionService(as<PrismaService>({ session: { findFirst: first, deleteMany, updateMany } })) };
   };
+  const cookie = (token: string) => request({ cookie: `npsi_session=${token}` });
 
-  test("reads the token after an optional Bearer prefix", () => {
-    assert.equal(bearerToken(request({ authorization: "Bearer abc" })), "abc");
-    assert.equal(bearerToken(request({ authorization: "bearer   abc" })), "abc");
-    assert.equal(bearerToken(request({ authorization: "abc" })), "abc");
+  test("reads the token only from the session cookie; an Authorization header is ignored", () => {
+    assert.equal(bearerToken(request({ authorization: "Bearer abc" })), undefined);
     assert.equal(bearerToken(request()), undefined);
     assert.equal(bearerToken(request({ cookie: "theme=dark; npsi_session=abc%3D; x=1" })), "abc=", "from the session cookie");
-    assert.equal(bearerToken(request({ authorization: "Bearer hdr", cookie: "npsi_session=ck" })), "hdr", "the header wins");
+    assert.equal(bearerToken(request({ authorization: "Bearer hdr", cookie: "npsi_session=ck" })), "ck", "the cookie, never the header");
     assert.equal(bearerToken(request({ cookie: "other=1" })), undefined);
+  });
+  test("idle timeout: a member session unused for over 3 days, an admin one for over 2 hours, has ended", async () => {
+    const idleMember = sessions(user(), new Date(Date.now() - 4 * 24 * 60 * MINUTE));
+    assert.equal(await idleMember.service.getBearerUser(cookie("t")), null);
+    assert.equal(idleMember.deleteMany.mock.callCount(), 1, "the idle session is removed");
+    assert.equal(
+      (await sessions(user(), new Date(Date.now() - 3 * 60 * MINUTE)).service.getBearerUser(cookie("t")))?.id,
+      "u-1",
+      "a member 3 hours idle is fine",
+    );
+    assert.equal(await sessions(user({ role: "admin" }), new Date(Date.now() - 3 * 60 * MINUTE)).service.getBearerUser(cookie("t")), null);
+  });
+  test("last activity is written at most every few minutes", async () => {
+    const fresh = sessions(user(), new Date(Date.now() - MINUTE));
+    await fresh.service.getBearerUser(cookie("t"));
+    assert.equal(fresh.updateMany.mock.callCount(), 0);
+    const stale = sessions(user(), new Date(Date.now() - 10 * MINUTE));
+    await stale.service.getBearerUser(cookie("t"));
+    assert.equal(stale.updateMany.mock.callCount(), 1);
   });
   test("no token means no user, without a query", async () => {
     const { first, service } = sessions(user());
@@ -36,14 +59,14 @@ describe("SessionService", () => {
   });
   test("looks up live sessions by token", async () => {
     const { first, service } = sessions(user());
-    assert.equal((await service.getBearerUser(request({ authorization: "Bearer t" })))?.id, "u-1");
+    assert.equal((await service.getBearerUser(cookie("t")))?.id, "u-1");
     const { where } = first.mock.calls[0].arguments[0];
     assert.equal(where.id, sha256("t"), "looks up the token's hash");
     assert.ok(where.expiresAt.gt instanceof Date, "only unexpired sessions");
-    assert.equal(await sessions(undefined).service.getBearerUser(request({ authorization: "Bearer t" })), null);
+    assert.equal(await sessions(undefined).service.getBearerUser(cookie("t")), null);
   });
   test("requireUser / requireAdmin", async () => {
-    const auth = request({ authorization: "Bearer t" });
+    const auth = cookie("t");
     await rejectsWith(sessions(undefined).service.requireUser(auth), 401, "Authentication required.");
     await rejectsWith(sessions(user()).service.requireAdmin(auth), 403, "Admin access required.");
     assert.equal((await sessions(user({ role: "admin" })).service.requireAdmin(auth)).role, "admin");

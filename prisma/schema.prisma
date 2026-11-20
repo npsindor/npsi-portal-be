@@ -90,6 +90,10 @@ model EventRegistration {
   updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   event           Event     @relation(fields: [eventId], references: [id], onDelete: Restrict, onUpdate: Cascade, map: "event_registrations_event_id_fkey")
 
+  // "<event id>:<family id>" while the registration is not CANCELLED, NULL otherwise: one live registration per
+  // family and event, even for simultaneous requests.
+  activeKey String? @unique(map: "event_registrations_active_key_key") @map("active_key") @db.VarChar(400)
+
   @@map("event_registrations")
 }
 
@@ -656,6 +660,10 @@ model TransferRequest {
   targetFamilyName      String?   @map("target_family_name") @db.Text
   requestedDate         DateTime? @map("requested_date") @db.DateTime(0)
 
+  // Set while the request is open (PENDING / CORRECTION_REQUIRED) to "M:<membership id>" or "S:<student id>", NULL
+  // once decided: the unique key allows one open request per member or student, even for simultaneous submissions.
+  openKey String? @unique(map: "transfer_requests_open_key_key") @map("open_key") @db.VarChar(300)
+
   @@map("transfer_requests")
 }
 
@@ -686,6 +694,9 @@ model User {
   otpHash             String?             @map("otp_hash") @db.VarChar(255)
   otpExpiresAt        DateTime?           @map("otp_expires_at") @db.DateTime(0)
   photoUrl            String?             @map("photo_url") @db.Text
+  // false while the mobile number was never proven by a code sent to it (the code went to the email fallback):
+  // such a number can't be used to log in or reset the password and doesn't block anyone else from registering it.
+  phoneVerified       Boolean             @default(true) @map("phone_verified")
   sessions            Session[]
   notificationReads   NotificationRead[]
 
@@ -697,11 +708,13 @@ model User {
 // One row per logged-in device: the SHA-256 of its session token (the token
 // itself is never stored), whose session it is, and when it expires.
 model Session {
-  id        String   @id @db.VarChar(64)
-  userId    String   @map("user_id") @db.VarChar(64)
-  expiresAt DateTime @map("expires_at") @db.DateTime(0)
-  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(0)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "sessions_user_id_fkey")
+  id         String    @id @db.VarChar(64)
+  userId     String    @map("user_id") @db.VarChar(64)
+  expiresAt  DateTime  @map("expires_at") @db.DateTime(0)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  // Last request on this session (written at most every few minutes); a session idle for too long has ended.
+  lastSeenAt DateTime? @map("last_seen_at") @db.DateTime(0)
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Cascade, map: "sessions_user_id_fkey")
 
   @@index([userId], map: "sessions_user_idx")
   @@map("sessions")
@@ -1246,6 +1259,7 @@ model RentalListing {
   availableFrom   DateTime?       @map("available_from") @db.Date
   description     String?         @db.Text
   photoUrl        String?         @map("photo_url") @db.VarChar(500)
+  photoUrls       Json?           @map("photo_urls")
   contactName     String          @map("contact_name") @db.VarChar(150)
   contactMobile   String          @map("contact_mobile") @db.VarChar(10)
   contactEmail    String?         @map("contact_email") @db.VarChar(254)
@@ -1409,6 +1423,8 @@ model EventMemberApplication {
   studentId       String?                     @map("student_id") @db.VarChar(255)
   photoUrl        String?                     @map("photo_url") @db.VarChar(500)
   name            String                      @db.VarChar(255)
+  nameHi          String?                     @map("name_hi") @db.VarChar(255)
+  villageHi       String?                     @map("village_hi") @db.VarChar(255)
   designation     String?                     @db.VarChar(150)
   designationHi   String?                     @map("designation_hi") @db.VarChar(150)
   mobile          String?                     @db.VarChar(20)
@@ -1453,4 +1469,39 @@ model EventMemberApplicationLog {
 
   @@index([applicationId, createdAt], map: "event_member_application_logs_application_idx")
   @@map("event_member_application_logs")
+}
+
+// The highest display number ever handed out per prefix (e.g. "TRF-"), so a number is never reused after the record
+// that had it is deleted.
+model DisplayIdCounter {
+  prefix String @id @db.VarChar(40)
+  last   Int
+
+  @@map("display_id_counters")
+}
+
+// Public pages ("page:/about") and homepage sections ("section:home.updates") an admin switched off. No row = shown.
+model SiteVisibility {
+  key         String   @id @db.VarChar(120)
+  visible     Boolean  @default(true)
+  updatedById String?  @map("updated_by_id") @db.VarChar(64)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@map("site_visibility")
+}
+
+// Role-based admin access (Admin → Assign roles): which admin work a registered family member may do, and for which
+// villages. The super admin (users.role = "admin") always has everything.
+model AdminAccess {
+  userId      String   @id @map("user_id") @db.VarChar(64)
+  areas       Json
+  villages    Json
+  allVillages Boolean  @default(false) @map("all_villages")
+  active      Boolean  @default(true)
+  note        String?  @db.VarChar(500)
+  grantedById String   @map("granted_by_id") @db.VarChar(64)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@map("admin_access")
 }

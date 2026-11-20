@@ -21,7 +21,7 @@ const collator = new Intl.Collator("hi", { sensitivity: "base" });
 
 // Photos are re-encoded for print: upright (EXIF), cropped to the 3:4 frame and capped at 600 px high, which keeps a
 // 200-profile booklet a few MB instead of hundreds. sharp is loaded lazily; without it JPEG/PNG are used as stored.
-type Sharp = typeof import("sharp");
+type Sharp = typeof import("sharp").default;
 let sharpModule: Promise<Sharp | null> | null = null;
 const loadSharp = () => {
   sharpModule ??= import("sharp").then((module) => (module.default ?? module) as unknown as Sharp).catch(() => null);
@@ -248,8 +248,12 @@ export class SagunCardsService {
   // front anyway (name, category, profile ID) and never contact, family or document details.
   async verify(token: string) {
     if (!/^[A-Za-z0-9_-]{16,64}$/.test(token)) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
-    const card = await this.db.sagunDigitalCard.findUnique({ where: { verifyToken: token }, select: { profileId: true, profileCode: true } });
-    if (!card) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
+    const card = await this.db.sagunDigitalCard.findUnique({
+      where: { verifyToken: token },
+      select: { profileId: true, profileCode: true, verifyToken: true },
+    });
+    // The column compares case-insensitively; the token itself is case-sensitive, so the exact value must match.
+    if (!card || card.verifyToken !== token) throw new ApiError(404, "SAGUN_CARD_NOT_FOUND");
     const [view] = await this.views({ id: { in: [card.profileId] } });
     const active = Boolean(view?.bookletEligible);
     return {

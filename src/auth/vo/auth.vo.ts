@@ -26,8 +26,17 @@ export class AccountVo {
   }
 }
 
+// The admin work this account may do (super admin: everything); null for an ordinary member.
+export class AdminAccessSummaryVo {
+  @ApiProperty() superAdmin: boolean;
+  @ApiProperty({ type: String, isArray: true, example: ["REGISTRATIONS", "FAMILIES"] }) areas: string[];
+  @ApiProperty() allVillages: boolean;
+  @ApiProperty({ type: String, isArray: true }) villages: string[];
+}
+
 export class MeVo extends PublicUserVo {
   @ApiProperty({ type: AccountVo }) account: AccountVo;
+  @ApiProperty({ type: AdminAccessSummaryVo, nullable: true }) adminAccess: AdminAccessSummaryVo | null;
 }
 
 // GET /auth/sessions/current: always 200, so a visitor who is not logged in is not an error.

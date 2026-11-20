@@ -34,7 +34,7 @@ describe("health", () => {
   test("reports ok, database and environment", async () => {
     const res = await api("health");
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { ok: true, database: "mysql", env: "contract" });
+    assert.deepEqual(res.body, { ok: true });
   });
 });
 
@@ -140,8 +140,8 @@ describe("auth: OTP", () => {
   test("400 when the code is not 6 digits", async () => {
     assertError(await api("verifyOtp").send({ email: "otp@test.local", otpCode: "12" }), 400, "A valid 6-digit verification code is required.");
   });
-  test("404 for an unknown account", async () => {
-    assertError(await api("verifyOtp").send({ email: "ghost@test.local", otpCode: "123456" }), 404, "Account not found.");
+  test("an unknown account gets the same 400 as a wrong code (no account probing)", async () => {
+    assertError(await api("verifyOtp").send({ email: "ghost@test.local", otpCode: "123456" }), 400, "Invalid or expired verification code.");
   });
   test("400 for a wrong code", async () => {
     assertError(await api("verifyOtp").send({ email: "otp@test.local", otpCode: "000000" }), 400, "Invalid or expired verification code.");
@@ -149,7 +149,7 @@ describe("auth: OTP", () => {
   test("200 verifies the account and returns a session", async () => {
     const res = await api("verifyOtp").send({ email: "OTP@test.local", otpCode: OTP_CODE });
     assert.equal(res.status, 200);
-    assert.deepEqual(keys(res.body), ["user"], "the token travels only in the httpOnly cookie");
+    assert.deepEqual(keys(res.body), ["account", "user"], "the token travels only in the httpOnly cookie");
     assert.match(sessionToken(res), /^[0-9a-f]{64}$/);
     assert.equal(res.body.user.email, "otp@test.local");
     const me = await api("me", [], { token: sessionToken(res) });
@@ -185,7 +185,7 @@ describe("auth: login", () => {
     for (const body of [{ email: "LOGIN@test.local" }, { phone: "+91 91000 00006" }, { username: "login@test.local" }]) {
       const res = await api("login").send({ ...body, password: PASSWORDS.login });
       assert.equal(res.status, 200, JSON.stringify(body));
-      assert.deepEqual(keys(res.body), ["user"]);
+      assert.deepEqual(keys(res.body), ["account", "user"], "no token in the body");
       assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
       assert.equal(res.body.user.id, IDS.loginUser);
     }
@@ -200,7 +200,7 @@ describe("auth: session cookie", () => {
     assert.ok(setCookie, "session cookie set");
     assert.match(setCookie, /HttpOnly/i);
     assert.match(setCookie, /SameSite=Strict/i);
-    assert.match(setCookie, /Max-Age=2592000/);
+    assert.match(setCookie, /Max-Age=1209600/, "member sessions last 14 days");
     const cookie = setCookie.split(";")[0];
     const me = await api("me").set("Cookie", cookie);
     assert.deepEqual([me.status, me.body.email], [200, "login@test.local"]);
@@ -209,9 +209,9 @@ describe("auth: session cookie", () => {
     assert.match([logout.headers["set-cookie"]].flat().join(";"), /npsi_session=;/);
     assertError(await api("me").set("Cookie", cookie), 401, "Authentication required.");
   });
-  test("the Authorization header still works and wins over a cookie", async () => {
-    const res = await api("me", [], { token: TOKENS.member }).set("Cookie", "npsi_session=not-a-session");
-    assert.deepEqual([res.status, res.body.email], [200, "member@test.local"]);
+  test("the session is the cookie only: a valid token in an Authorization header does not log anyone in", async () => {
+    assertError(await api("me").set("Authorization", `Bearer ${TOKENS.member}`), 401, "Authentication required.");
+    assertError(await api("me").set("Cookie", "npsi_session=not-a-session"), 401, "Authentication required.");
   });
 });
 
@@ -234,7 +234,16 @@ describe("auth: me and logout", () => {
   test("200 returns only public user fields", async () => {
     const res = await api("me", [], { token: TOKENS.member });
     assert.equal(res.status, 200);
-    assert.deepEqual(res.body, { id: IDS.memberUser, email: "member@test.local", fullName: "member", phone: "9100000002", role: "user", photoUrl: null });
+    assert.deepEqual(res.body, {
+      id: IDS.memberUser,
+      email: "member@test.local",
+      fullName: "member",
+      phone: "9100000002",
+      role: "user",
+      photoUrl: null,
+      account: { type: "FAMILY", status: "ACTIVE" },
+      adminAccess: null,
+    });
   });
   test("logout returns 204 and ends the session", async () => {
     const login = await api("login").send({ email: "login@test.local", password: PASSWORDS.login });
@@ -521,7 +530,7 @@ describe("entities: list", () => {
     assertError(await api("list", ["Event", "?offset=-1"]), 400, "offset must not be less than 0");
   });
   test("unknown order fields and out-of-range limits are 400s; unknown query parameters are ignored", async () => {
-    assertError(await api("list", ["Event", "?order=nope"]), 400, /^order must be one of the following values: /);
+    assertError(await api("list", ["Event", "?order=nope"]), 400, "Invalid sort field.");
     assertError(await api("list", ["Event", "?limit=0"]), 400, "limit must not be less than 1");
     assert.equal((await api("list", ["Event", "?filter=%7Bnot-json"])).status, 200);
   });
@@ -584,7 +593,7 @@ describe("entities: create", () => {
     };
     assertError(await api("create", ["Application"]).send({ ...valid, mobile: "123" }), 400, "A valid 10-digit mobile number is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, familyName: " " }), 400, "Family name is required.");
-    assertError(await api("create", ["Application"]).send({ ...valid, email: "bad" }), 400, "A valid email address is required.");
+    assertError(await api("create", ["Application"]).send({ ...valid, email: "bad" }), 400, "Enter a valid email address.");
     assertError(await api("create", ["Application"]).send({ ...valid, address: "" }), 400, "Address is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, city: "" }), 400, "City is required.");
     assertError(await api("create", ["Application"]).send({ ...valid, district: "" }), 400, "District is required.");
@@ -726,7 +735,7 @@ describe("entities: create", () => {
     assert.equal(res.status, 201);
     assert.equal(res.body.membershipId, "NPSI-MEM-000003");
     assert.equal(res.body.photoUrl, null);
-    assert.equal(res.body.status, "ACTIVE");
+    assert.equal(res.body.status, "PENDING", "a member added by the family head waits for an administrator");
     IDS.createdMember = res.body.id;
   });
   test("feedback: auth required, markup rejected, 201 with sequential id", async () => {
@@ -781,32 +790,58 @@ describe("entities: create", () => {
     assert.equal(res.body.registeredById, IDS.memberUser);
     assert.deepEqual(res.body.memberIds, [IDS.member1]);
   });
-  test("transfer request: ownership checks and forced PENDING status", async () => {
+  test("transfer request: ownership checks, forced PENDING status, requester from the session, one open request per member", async () => {
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", sourceFamilyId: FAMILY2 }),
-      403,
-      "You can only request a transfer for your own family.",
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", targetFamilyId: FAMILY2 }),
+      400,
+      "Choose the family member to transfer.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", sourceMembershipId: "NPSI-MEM-000002" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+        requestType: "family_to_family",
+        sourceMembershipId: "NPSI-MEM-000002",
+        targetFamilyId: FAMILY2,
+      }),
       403,
       "You can only request a transfer for a member of your own family.",
     );
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "student_to_family", sourceStudentId: "NPSI-STU-999999" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+        requestType: "student_to_family",
+        sourceStudentId: "NPSI-STU-999999",
+        targetFamilyId: FAMILY2,
+      }),
       403,
       "You can only request a transfer for your own student record.",
     );
     const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
       requestType: "family_to_family",
-      sourceFamilyId: FAMILY1,
+      sourceFamilyId: FAMILY2,
       sourceMembershipId: "NPSI-MEM-000001",
+      targetFamilyId: FAMILY2,
       status: "APPROVED",
+      requesterName: "Admin Spoof",
+      requesterEmail: "admin@test.local",
     });
-    assert.equal(res.status, 201);
+    assert.equal(res.status, 201, JSON.stringify(res.body));
     assert.equal(res.body.status, "PENDING");
     assert.equal(res.body.requesterId, IDS.memberUser);
     assert.equal(res.body.requestId, "TRF-000001");
+    assert.equal(res.body.sourceFamilyId, FAMILY1, "the source family is the requester's own");
+    assert.notEqual(res.body.requesterName, "Admin Spoof");
+    assert.notEqual(res.body.requesterEmail, "admin@test.local");
+    assertError(
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+        requestType: "family_to_family",
+        sourceMembershipId: "NPSI-MEM-000001",
+        targetFamilyId: FAMILY2,
+      }),
+      409,
+      "A transfer request for this member is already pending (TRF-000001) and is under admin review.",
+    );
+    // Decided: the member may be put up for transfer again (the transfer test below does).
+    const rejected = await api("review", ["TransferRequest", res.body.id], { token: TOKENS.admin }).send({ decision: "REJECTED", remarks: "Not now" });
+    assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
   });
 });
 
@@ -1072,11 +1107,7 @@ describe("notifications module", () => {
     const res = await api("list", ["Notification", "?order=-date&limit=2"], { token: TOKENS.admin });
     assert.equal(res.status, 200);
     assert.equal(res.body.length, 2);
-    assertError(
-      await api("list", ["Notification", "?order=title"], { token: TOKENS.admin }),
-      400,
-      "order must be one of the following values: date, -date, createdAt, -createdAt",
-    );
+    assertError(await api("list", ["Notification", "?order=title"], { token: TOKENS.admin }), 400, "Invalid sort field.");
     assertError(await api("list", ["Notification", "?limit=9999"], { token: TOKENS.admin }), 400, "limit must not be greater than 500");
   });
   test("missing title, message or type is a 400", async () => {
@@ -1172,7 +1203,11 @@ describe("reviews (end to end, last: they create families and move members)", ()
     );
     assert.equal(targetNotice?.title, "New Transfer Request");
     assertError(
-      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({ requestType: "family_to_family", targetFamilyId: "NPSI-FAM-999999" }),
+      await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+        requestType: "family_to_family",
+        sourceMembershipId: "NPSI-MEM-000001",
+        targetFamilyId: "NPSI-FAM-999999",
+      }),
       404,
       "Target family not found.",
     );
@@ -1221,12 +1256,14 @@ describe("drafts stay private", () => {
       assert.equal((await ids(TOKENS.admin)).includes(id), true, `${entity}: shown to admins`);
     }
     assert.ok((await api("list", ["Event"])).body.every((event) => event.status === "PUBLISHED"));
-    // Members can't register for an event they can't see.
+    // Members can't register for an event they can't see. (Its own family member: earlier transfer tests move fm-1 away.)
+    const own = (await api("create", ["FamilyMember"], { token: TOKENS.admin }).send({ familyId: FAMILY1, name: "Draft Check", relationship: "Son" })).body.id;
     assertError(
-      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: draft.id, familyId: FAMILY1, memberIds: [] }),
+      await api("create", ["EventRegistration"], { token: TOKENS.member }).send({ eventId: draft.id, familyId: FAMILY1, memberIds: [own] }),
       404,
       "Event not found.",
     );
+    assert.equal((await api("remove", ["FamilyMember", own], { token: TOKENS.admin })).status, 204);
     assert.equal((await api("remove", ["Event", draft.id], { token: TOKENS.admin })).status, 204);
     assert.equal((await api("remove", ["Announcement", archived.id], { token: TOKENS.admin })).status, 204);
   });
@@ -1247,6 +1284,76 @@ describe("me: event registrations", () => {
   test("a user without a family gets an empty list", async () => {
     const res = await api("myEventRegistrations", [], { token: TOKENS.noFamily });
     assert.deepEqual([res.status, res.body], [200, []]);
+  });
+});
+
+describe("me: open transfer requests", () => {
+  test("401 without a token; only the member's own undecided requests", async () => {
+    assertError(await api("myTransferRequests"), 401, "Authentication required.");
+    const res = await api("myTransferRequests", [], { token: TOKENS.member });
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body));
+    assert.ok(res.body.every((row) => ["PENDING", "CORRECTION_REQUIRED"].includes(row.status)));
+    assert.deepEqual((await api("myTransferRequests", [], { token: TOKENS.noFamily })).body, []);
+  });
+});
+
+describe("site visibility", () => {
+  test("anyone reads what is switched off; only admins change it, and only known keys", async () => {
+    assert.deepEqual((await api("siteVisibility")).body, { hidden: [] });
+    assertError(await api("updateSiteVisibility").send({ items: [] }), 401, "Authentication required.");
+    assertError(await api("updateSiteVisibility", [], { token: TOKENS.member }).send({ items: [] }), 403, "Admin access required.");
+    assertError(
+      await api("updateSiteVisibility", [], { token: TOKENS.admin }).send({ items: [{ key: "page:/admin", visible: false }] }),
+      400,
+      /Unknown page or section/,
+    );
+    const saved = await api("updateSiteVisibility", [], { token: TOKENS.admin }).send({ items: [{ key: "page:/help", visible: false }] });
+    assert.deepEqual(saved.body, { hidden: ["page:/help"] });
+    await api("updateSiteVisibility", [], { token: TOKENS.admin }).send({ items: [{ key: "page:/help", visible: true }] });
+    assert.deepEqual((await api("siteVisibility")).body, { hidden: [] });
+  });
+});
+
+describe("admin dashboard charts and admin access (roles)", () => {
+  test("charts: admins only; 12 months of transactions, users and registrations", async () => {
+    assertError(await api("dashboardCharts", [], { token: TOKENS.member }), 403, "Admin access required.");
+    const res = await api("dashboardCharts", [], { token: TOKENS.admin });
+    assert.equal(res.status, 200);
+    assert.equal(res.body.transactions.length, 12);
+    assert.equal(res.body.users.length, 12);
+    assert.ok(res.body.userTotals.total >= 1);
+  });
+  test("only the super admin manages roles; a member with access gets exactly that admin work, and loses it again", async () => {
+    assertError(await api("adminAccessList", [], { token: TOKENS.member }), 403, "Admin access required.");
+    assertError(await api("dashboardCharts"), 401, "Authentication required.");
+    assertError(
+      await api("saveAdminAccess", [IDS.adminUser], { token: TOKENS.admin }).send({ areas: ["FAMILIES"], allVillages: true, villages: [] }),
+      400,
+      "This account is already a super admin.",
+    );
+    // Before: a member can't list registrations.
+    assertError(await api("list", ["Application"], { token: TOKENS.member }), 403, "Admin access required.");
+    const saved = await api("saveAdminAccess", [IDS.memberUser], { token: TOKENS.admin }).send({ areas: ["REGISTRATIONS"], allVillages: true, villages: [] });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    assert.equal((await api("list", ["Application"], { token: TOKENS.member })).status, 200);
+    assertError(await api("list", ["Student"], { token: TOKENS.member }), 403, "Admin access required.");
+    const me = (await api("me", [], { token: TOKENS.member })).body;
+    assert.deepEqual(me.adminAccess, { superAdmin: false, areas: ["REGISTRATIONS"], allVillages: true, villages: [] });
+    assert.equal((await api("removeAdminAccess", [IDS.memberUser], { token: TOKENS.admin })).status, 204);
+    assertError(await api("list", ["Application"], { token: TOKENS.member }), 403, "Admin access required.");
+  });
+});
+
+describe("team member order", () => {
+  test("only admins arrange a team; unknown sections and members are refused", async () => {
+    assertError(await api("teamMemberOrder", ["ems-core-team"], { token: TOKENS.member }).send({ ids: [] }), 403, "Admin access required.");
+    assertError(await api("teamMemberOrder", ["no-such-section"], { token: TOKENS.admin }).send({ ids: [] }), 404, "EM_SECTION");
+    assertError(await api("teamMemberOrder", ["ems-core-team"], { token: TOKENS.admin }).send({ ids: ["not-a-member"] }), 400, "EM_ORDER");
+  });
+  test("deleting a team entry is admin-only; an unknown entry is a 404", async () => {
+    assertError(await api("deleteEventMember", ["no-such-entry"], { token: TOKENS.member }), 403, "Admin access required.");
+    assertError(await api("deleteEventMember", ["no-such-entry"], { token: TOKENS.admin }), 404, "EM_NOT_FOUND");
   });
 });
 

@@ -33,9 +33,11 @@ import {
 import type { Response } from "express";
 import { memoryStorage } from "multer";
 import { ApplicationsModule } from "../applications/applications.module.js";
+import { AdminAreaGuard, AdminAreaRoute, CurrentAdminScope } from "../common/admin-access/admin-area.guard.js";
+import { type AdminScope } from "../common/admin-access/admin-scope.js";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
+import { UserGuard } from "../common/guards/auth.guards.js";
 import { uploadDailyLimiter, uploadLimiter } from "../common/rate-limit/limiters.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { LookupsModule } from "../lookups/lookups.module.js";
@@ -104,25 +106,27 @@ export class RegistrationsController {
   }
 
   @Get("registration-payments")
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminAreaGuard)
+  @AdminAreaRoute("PAYMENTS")
   @ApiOperation({ summary: "Registration-fee payments with applicant details — admin only" })
   @ApiOkResponse({ description: "Payments, newest first" })
   @ApiForbiddenResponse({ type: ErrorVo })
-  payments(@Query() query: RegistrationPaymentsQueryDto) {
-    return this.service.payments(query);
+  payments(@Query() query: RegistrationPaymentsQueryDto, @CurrentAdminScope() scope: AdminScope) {
+    return this.service.payments(query, scope);
   }
 
   @Post("registration-payments/:id/review")
   @HttpCode(200)
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminAreaGuard)
+  @AdminAreaRoute("PAYMENTS")
   @ApiOperation({ summary: "Verify, reject (with remarks) or refund (with remarks) a registration payment; the applicant is notified — admin only" })
   @ApiOkResponse({ type: TransactionVo })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Remarks missing" })
   @ApiNotFoundResponse({ type: ErrorVo })
   @ApiConflictResponse({ type: ErrorVo, description: "Not allowed from the current payment status" })
   @ApiForbiddenResponse({ type: ErrorVo })
-  review(@Param("id") id: string, @Body() dto: PaymentReviewDto, @CurrentUser() user: UserRow) {
-    return this.service.reviewPayment(id, dto, user);
+  review(@Param("id") id: string, @Body() dto: PaymentReviewDto, @CurrentUser() user: UserRow, @CurrentAdminScope() scope: AdminScope) {
+    return this.service.reviewPayment(id, dto, user, scope);
   }
 
   @Get("registration-payments/:id/screenshot")

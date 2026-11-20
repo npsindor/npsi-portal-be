@@ -86,6 +86,16 @@ describe("ApplicationReviewService", () => {
     // The new login owns the application, so it shows under the applicant's own registrations.
     assert.deepEqual(applications.linkToAccount.mock.calls[0].arguments, ["app-1", "ram@example.com"]);
   });
+  test("a staff reviewer may only decide registrations from their villages", async () => {
+    const scope = { superAdmin: false, areas: ["REGISTRATIONS" as const], allVillages: false, villages: ["Rampura"] };
+    await rejectsWith(
+      build({ ...pending, village: "Khedi", nativePlace: null }).service.review("app-1", { decision: "REJECTED", remarks: "x" }, scope),
+      403,
+      "This record belongs to a village outside your admin access.",
+    );
+    const inside = await build({ ...pending, village: "rampura" }).service.review("app-1", { decision: "REJECTED", remarks: "Wrong photo" }, scope);
+    assert.equal(inside.application.status, "REJECTED");
+  });
   test("reject / correction: remarks required, recorded and sent to the applicant; nothing else created", async () => {
     const { service, families, notifications, auth } = build();
     await rejectsWith(service.review("app-1", { decision: "REJECTED", remarks: "  " }), 400, "Remarks are required to reject or ask for a correction.");

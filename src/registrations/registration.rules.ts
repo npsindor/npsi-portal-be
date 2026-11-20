@@ -59,6 +59,8 @@ export const birthDateError = (value: string, type: RegistrationType, today = in
 };
 
 export interface CompletionInput {
+  // The account has a mobile number proven with a code sent to it (an admin without a mobile has not).
+  mobileVerified?: boolean;
   hasEmail: boolean;
   hasPhoto: boolean;
   registration: { status: string | null; paymentStatus: string | null } | null;
@@ -77,7 +79,7 @@ export interface CompletionStep {
 export const profileCompletion = (input: CompletionInput): { percent: number; steps: CompletionStep[]; next: CompletionStep | null } => {
   const registered = Boolean(input.registration && input.registration.status !== "REJECTED");
   const steps: CompletionStep[] = [
-    { key: "mobileVerified", done: true, weight: 10, link: "/portal" },
+    { key: "mobileVerified", done: input.mobileVerified ?? true, weight: 10, link: "/portal/settings" },
     { key: "registrationSubmitted", done: registered || input.approved, weight: 25, link: "/portal/registration" },
     { key: "paymentVerified", done: input.approved || PAID.includes(input.registration?.paymentStatus || ""), weight: 15, link: "/portal/registration" },
     { key: "approved", done: input.approved, weight: 15, link: "/portal/registration" },

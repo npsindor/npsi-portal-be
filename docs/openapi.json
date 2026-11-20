@@ -5274,6 +5274,293 @@
         ]
       }
     },
+    "/api/v1/site-visibility": {
+      "get": {
+        "operationId": "SiteVisibilityController_hidden",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteVisibilityVo"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Public: the pages and homepage sections an admin switched off",
+        "tags": [
+          "Site visibility"
+        ]
+      },
+      "put": {
+        "operationId": "SiteVisibilityController_update",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiteVisibilityUpdateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiteVisibilityVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown page or section",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Admin: switch pages / homepage sections on or off",
+        "tags": [
+          "Site visibility"
+        ]
+      }
+    },
+    "/api/v1/admin-dashboard/charts": {
+      "get": {
+        "operationId": "AdminDashboardController_charts",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardChartsVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Admin: monthly transactions, new users and registrations for the dashboard charts",
+        "tags": [
+          "Admin dashboard"
+        ]
+      }
+    },
+    "/api/v1/admin-access": {
+      "get": {
+        "operationId": "AdminAccessController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminAccessVo"
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: members with admin access, what they may do and for which villages",
+        "tags": [
+          "Admin access (roles)"
+        ]
+      }
+    },
+    "/api/v1/admin-access/candidates": {
+      "get": {
+        "operationId": "AdminAccessController_candidates",
+        "parameters": [
+          {
+            "name": "q",
+            "required": true,
+            "in": "query",
+            "description": "Name, email or mobile (2+ characters)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminAccessCandidateVo"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: find accounts by name, email or mobile; only active registered family members are eligible",
+        "tags": [
+          "Admin access (roles)"
+        ]
+      }
+    },
+    "/api/v1/admin-access/{userId}": {
+      "put": {
+        "operationId": "AdminAccessController_save",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminAccessDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminAccessVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not a registered family member, a super admin, or no access / villages chosen",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: give or change a member's admin access",
+        "tags": [
+          "Admin access (roles)"
+        ]
+      },
+      "delete": {
+        "operationId": "AdminAccessController_remove",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: remove a member's admin access",
+        "tags": [
+          "Admin access (roles)"
+        ]
+      }
+    },
     "/api/v1/home-highlights": {
       "get": {
         "description": "Public: active slides inside their date window; admins see all.",
@@ -7870,6 +8157,51 @@
         ]
       }
     },
+    "/api/v1/event-member-sections/{id}/member-order": {
+      "put": {
+        "operationId": "EventMemberSectionsController_reorder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EventMemberOrderDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The saved order"
+          },
+          "400": {
+            "description": "An id that is not an approved member of this team"
+          },
+          "404": {
+            "description": "Section not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Set the order the website shows a team's approved members in (first id = 1) — admin only",
+        "tags": [
+          "Become an NPSI Event Member"
+        ]
+      }
+    },
     "/api/v1/event-members/teams": {
       "get": {
         "operationId": "EventMembersPublicController_teams",
@@ -8158,6 +8490,36 @@
         "tags": [
           "Become an NPSI Event Member"
         ]
+      },
+      "delete": {
+        "operationId": "EventMemberApplicationsController_purge",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "description": "Not found"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Delete the entry permanently, with its history (the person's account and records stay) — admin only",
+        "tags": [
+          "Become an NPSI Event Member"
+        ]
       }
     },
     "/api/v1/event-member-applications/{id}/removal": {
@@ -8429,6 +8791,46 @@
           }
         ],
         "summary": "Feedback submitted with the logged-in member's email (latest 100)",
+        "tags": [
+          "me"
+        ]
+      }
+    },
+    "/api/v1/me/transfer-requests": {
+      "get": {
+        "operationId": "MeController_transferRequests",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MyOpenTransferRequestVo"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Transfer requests the logged-in member filed that are still open (PENDING / CORRECTION_REQUIRED)",
         "tags": [
           "me"
         ]
@@ -13733,11 +14135,16 @@
         "properties": {
           "email": {
             "type": "string",
-            "example": "member@example.com"
+            "example": "member@example.com",
+            "description": "The account's email (an administrator may give the mobile they logged in with)"
           },
           "otpCode": {
             "type": "string",
             "example": "123456"
+          },
+          "recaptchaToken": {
+            "type": "string",
+            "description": "Google reCAPTCHA v3 token (required when the server has a secret configured)"
           },
           "portal": {
             "type": "string",
@@ -14058,6 +14465,39 @@
           }
         }
       },
+      "AdminAccessSummaryVo": {
+        "type": "object",
+        "properties": {
+          "superAdmin": {
+            "type": "boolean"
+          },
+          "areas": {
+            "example": [
+              "REGISTRATIONS",
+              "FAMILIES"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "allVillages": {
+            "type": "boolean"
+          },
+          "villages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "superAdmin",
+          "areas",
+          "allVillages",
+          "villages"
+        ]
+      },
       "MeVo": {
         "type": "object",
         "properties": {
@@ -14096,6 +14536,15 @@
           },
           "account": {
             "$ref": "#/components/schemas/AccountVo"
+          },
+          "adminAccess": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AdminAccessSummaryVo"
+              }
+            ]
           }
         },
         "required": [
@@ -14105,7 +14554,8 @@
           "phone",
           "role",
           "photoUrl",
-          "account"
+          "account",
+          "adminAccess"
         ]
       },
       "CurrentSessionVo": {
@@ -15617,6 +16067,369 @@
             "nullable": true
           }
         }
+      },
+      "SiteVisibilityVo": {
+        "type": "object",
+        "properties": {
+          "hidden": {
+            "example": [
+              "page:/transportation",
+              "section:home.gallery"
+            ],
+            "description": "Keys switched off (everything else is shown)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "hidden"
+        ]
+      },
+      "SiteVisibilityItemDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "page:/room-hunting",
+            "description": "page:<path> or section:home.<section>"
+          },
+          "visible": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "key",
+          "visible"
+        ]
+      },
+      "SiteVisibilityUpdateDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SiteVisibilityItemDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "TransactionMonthVo": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "example": "2026-11"
+          },
+          "received": {
+            "type": "number",
+            "example": 25000,
+            "description": "Amount received (SUCCESS / VERIFIED)"
+          },
+          "pending": {
+            "type": "number",
+            "example": 3000,
+            "description": "Amount still pending"
+          },
+          "other": {
+            "type": "number",
+            "example": 500,
+            "description": "Amount failed, rejected or refunded"
+          },
+          "count": {
+            "type": "number",
+            "example": 14
+          }
+        },
+        "required": [
+          "month",
+          "received",
+          "pending",
+          "other",
+          "count"
+        ]
+      },
+      "SliceVo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Registration Fee"
+          },
+          "value": {
+            "type": "number",
+            "example": 12000
+          },
+          "count": {
+            "type": "number",
+            "example": 24
+          }
+        },
+        "required": [
+          "name",
+          "value",
+          "count"
+        ]
+      },
+      "MonthPointVo": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "example": "2026-11"
+          },
+          "count": {
+            "type": "number",
+            "example": 12,
+            "description": "Count in that month"
+          }
+        },
+        "required": [
+          "month",
+          "count"
+        ]
+      },
+      "DashboardChartsVo": {
+        "type": "object",
+        "properties": {
+          "transactions": {
+            "description": "Last 12 months, oldest first",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TransactionMonthVo"
+            }
+          },
+          "transactionTypes": {
+            "description": "Received amount by transaction type (all time)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SliceVo"
+            }
+          },
+          "transactionStatuses": {
+            "description": "Transactions by payment status (all time)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SliceVo"
+            }
+          },
+          "users": {
+            "description": "New user accounts per month",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthPointVo"
+            }
+          },
+          "familyRegistrations": {
+            "description": "Family registration applications per month",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthPointVo"
+            }
+          },
+          "studentRegistrations": {
+            "description": "Student registration applications per month",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MonthPointVo"
+            }
+          },
+          "userTotals": {
+            "type": "object",
+            "example": {
+              "total": 120,
+              "active": 110,
+              "verified": 115,
+              "admins": 2
+            }
+          }
+        },
+        "required": [
+          "transactions",
+          "transactionTypes",
+          "transactionStatuses",
+          "users",
+          "familyRegistrations",
+          "studentRegistrations",
+          "userTotals"
+        ]
+      },
+      "AdminAccessVo": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "email": {
+            "type": "object",
+            "nullable": true
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true
+          },
+          "familyId": {
+            "type": "object",
+            "nullable": true,
+            "example": "NPSI-FAM-000024"
+          },
+          "village": {
+            "type": "object",
+            "nullable": true
+          },
+          "areas": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "REGISTRATIONS",
+                "STUDENT_REGISTRATIONS",
+                "PAYMENTS",
+                "FAMILIES"
+              ]
+            }
+          },
+          "allVillages": {
+            "type": "boolean"
+          },
+          "villages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "note": {
+            "type": "object",
+            "nullable": true
+          },
+          "grantedBy": {
+            "type": "object",
+            "nullable": true,
+            "description": "Name or email of the admin who last changed it"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email",
+          "phone",
+          "familyId",
+          "village",
+          "areas",
+          "allVillages",
+          "villages",
+          "active",
+          "note",
+          "grantedBy",
+          "updatedAt"
+        ]
+      },
+      "AdminAccessCandidateVo": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "object",
+            "nullable": true
+          },
+          "email": {
+            "type": "object",
+            "nullable": true
+          },
+          "phone": {
+            "type": "object",
+            "nullable": true
+          },
+          "familyId": {
+            "type": "object",
+            "nullable": true
+          },
+          "village": {
+            "type": "object",
+            "nullable": true
+          },
+          "eligible": {
+            "type": "boolean",
+            "description": "An active registered family member (only they can be given access)"
+          },
+          "hasAccess": {
+            "type": "boolean",
+            "description": "Already has admin access"
+          }
+        },
+        "required": [
+          "userId",
+          "name",
+          "email",
+          "phone",
+          "familyId",
+          "village",
+          "eligible",
+          "hasAccess"
+        ]
+      },
+      "AdminAccessDto": {
+        "type": "object",
+        "properties": {
+          "areas": {
+            "type": "array",
+            "description": "The admin work this member may do",
+            "items": {
+              "type": "string",
+              "enum": [
+                "REGISTRATIONS",
+                "STUDENT_REGISTRATIONS",
+                "PAYMENTS",
+                "FAMILIES"
+              ]
+            }
+          },
+          "allVillages": {
+            "type": "boolean",
+            "description": "All villages (also needed for student registrations, which carry no village)"
+          },
+          "villages": {
+            "example": [
+              "Rampura",
+              "Ghegaon"
+            ],
+            "description": "Villages, when not all",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "active": {
+            "type": "boolean",
+            "default": true
+          },
+          "note": {
+            "type": "string",
+            "example": "Village coordinator"
+          }
+        },
+        "required": [
+          "areas",
+          "allVillages",
+          "villages"
+        ]
       },
       "HomeHighlightVo": {
         "type": "object",
@@ -17229,6 +18042,14 @@
             "type": "string",
             "description": "URL returned by POST /uploads"
           },
+          "photoUrls": {
+            "maxItems": 6,
+            "description": "Several URLs returned by POST /uploads; the first is the cover photo",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "contactName": {
             "type": "string"
           },
@@ -17418,6 +18239,21 @@
           }
         }
       },
+      "EventMemberOrderDto": {
+        "type": "object",
+        "properties": {
+          "ids": {
+            "description": "The team's members in the order the website shows them (first = 1)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "ids"
+        ]
+      },
       "EventMemberApplyDto": {
         "type": "object",
         "properties": {
@@ -17482,6 +18318,26 @@
           "recaptchaToken": {
             "type": "string",
             "description": "reCAPTCHA token (required when not logged in)"
+          },
+          "approveNow": {
+            "type": "boolean",
+            "description": "Admins only: add the person to the team at once (APPROVED). An admin adding someone without a linked record needs only the name and village; mobile, email and area are optional."
+          },
+          "nameHi": {
+            "type": "string",
+            "description": "Admins only: the name in Hindi, shown when the site is in Hindi"
+          },
+          "villageHi": {
+            "type": "string",
+            "description": "Admins only: the village in Hindi, shown when the site is in Hindi"
+          },
+          "designation": {
+            "type": "string",
+            "description": "Admins only: role shown on the card, e.g. Coordinator"
+          },
+          "designationHi": {
+            "type": "string",
+            "description": "Admins only: the role in Hindi"
           }
         },
         "required": [
@@ -17526,6 +18382,14 @@
           },
           "village": {
             "type": "string"
+          },
+          "nameHi": {
+            "type": "string",
+            "description": "Name in Hindi"
+          },
+          "villageHi": {
+            "type": "string",
+            "description": "Village in Hindi"
           },
           "area": {
             "type": "string"
@@ -17572,21 +18436,10 @@
           "ok": {
             "type": "boolean",
             "example": true
-          },
-          "database": {
-            "type": "string",
-            "example": "mysql"
-          },
-          "env": {
-            "type": "string",
-            "example": "production",
-            "description": "APP_ENV, or `development` when unset"
           }
         },
         "required": [
-          "ok",
-          "database",
-          "env"
+          "ok"
         ]
       },
       "HealthErrorVo": {
@@ -17598,7 +18451,7 @@
           },
           "error": {
             "type": "string",
-            "example": "connect ECONNREFUSED 127.0.0.1:3306"
+            "example": "Service unavailable."
           }
         },
         "required": [
@@ -17890,6 +18743,51 @@
           "submittedDate",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "MyOpenTransferRequestVo": {
+        "type": "object",
+        "properties": {
+          "requestId": {
+            "type": "string",
+            "example": "TRF-000012"
+          },
+          "requestType": {
+            "type": "string",
+            "example": "family_to_family"
+          },
+          "status": {
+            "type": "string",
+            "example": "PENDING"
+          },
+          "sourceMembershipId": {
+            "type": "object",
+            "example": "NPSI-MEM-000034",
+            "nullable": true
+          },
+          "sourceStudentId": {
+            "type": "object",
+            "example": "NPSI-STU-000003",
+            "nullable": true
+          },
+          "targetFamilyId": {
+            "type": "object",
+            "example": "NPSI-FAM-000002",
+            "nullable": true
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-11-18T10:00:00.000Z"
+          }
+        },
+        "required": [
+          "requestId",
+          "requestType",
+          "status",
+          "sourceMembershipId",
+          "sourceStudentId",
+          "targetFamilyId",
+          "createdAt"
         ]
       },
       "EventRegistrationVo": {

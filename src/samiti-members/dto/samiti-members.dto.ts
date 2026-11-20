@@ -32,7 +32,7 @@ export const SAMITIMEMBER_ORDERS = orderValues(["id", "samitiId", "name", "posit
 export class SamitiMemberListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: SAMITIMEMBER_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(SAMITIMEMBER_ORDERS)
+  @IsIn(SAMITIMEMBER_ORDERS, { message: "Invalid sort field." })
   order?: (typeof SAMITIMEMBER_ORDERS)[number];
 
   @ApiPropertyOptional({ description: "Exact match" })

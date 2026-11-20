@@ -20,6 +20,9 @@ export const toErrorResponse = (exception: unknown): { status: number; body: Err
   }
   // A write that points at a family/samiti that doesn't exist (foreign key, Prisma P2003).
   if ((exception as { code?: unknown } | null)?.code === "P2003") return { status: 400, body: { error: "A referenced record does not exist." } };
+  // A write that a unique key refused (Prisma P2002), e.g. a duplicate the service didn't already report: a 409,
+  // without the index name.
+  if ((exception as { code?: unknown } | null)?.code === "P2002") return { status: 409, body: { error: "This record already exists." } };
   const { status, type } = (exception ?? {}) as { status?: unknown; type?: unknown };
   const code = typeof status === "number" && status >= 400 && status < 600 ? status : 500;
   if (code >= 500) return { status: code, body: { error: INTERNAL_ERROR } };

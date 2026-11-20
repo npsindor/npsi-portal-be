@@ -20,8 +20,10 @@ export class MeRepository {
     return this.prisma.family.findFirst({ where: { email, status: "ACTIVE" } });
   }
 
+  // Only an admin-approved (ACTIVE) member links an account to a family; a member a head added on their own is PENDING.
   async memberFamilyIdByEmail(email: string): Promise<string | null> {
-    return (await this.prisma.familyMember.findFirst({ where: { email }, select: { familyId: true } }))?.familyId ?? null;
+    const member = await this.prisma.familyMember.findFirst({ where: { email, status: { in: ["ACTIVE", "Active", "APPROVED"] } }, select: { familyId: true } });
+    return member?.familyId ?? null;
   }
 
   familyByFamilyId(familyId: string): Promise<Family | null> {
@@ -35,6 +37,15 @@ export class MeRepository {
   // A student record that hasn't been transferred away (a NULL status doesn't count either).
   studentByEmail(email: string): Promise<Student | null> {
     return this.prisma.student.findFirst({ where: { email, AND: [{ status: { not: "TRANSFERRED" } }, { status: { not: null } }] } });
+  }
+
+  openTransferRequestsBy(requesterId: string) {
+    return this.prisma.transferRequest.findMany({
+      where: { requesterId, status: { in: ["PENDING", "CORRECTION_REQUIRED"] } },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: { requestId: true, requestType: true, status: true, sourceMembershipId: true, sourceStudentId: true, targetFamilyId: true, createdAt: true },
+    });
   }
 
   feedbackByEmail(email: string): Promise<Feedback[]> {

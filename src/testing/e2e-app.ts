@@ -29,10 +29,17 @@ const connect = async () => {
 };
 
 export const startApp = async (): Promise<void> => {
+  // Always close the connection: an open socket after a failed CREATE (no rights) kept the run hanging silently.
   const admin = await connect();
-  await admin.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
-  await admin.query(`CREATE DATABASE \`${DB_NAME}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
-  await admin.end();
+  try {
+    await admin.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
+    await admin.query(`CREATE DATABASE \`${DB_NAME}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(`e2e: cannot create the throwaway database ${DB_NAME} (${reason}). The MySQL user needs CREATE/DROP on it.`);
+  } finally {
+    await admin.end();
+  }
   Object.assign(process.env, {
     MYSQL_DATABASE: DB_NAME,
     SKIP_DB_BOOTSTRAP: "true",
@@ -44,6 +51,7 @@ export const startApp = async (): Promise<void> => {
     SMTP_USER: "",
     SMTP_PASS: "",
     RECAPTCHA_SECRET_KEY: "",
+    ADMIN_LOGIN_CODE: "false",
   });
   const [{ AppModule }, { configureApp }, { PrismaService }] = await Promise.all([
     import("../app.module.js"),
@@ -74,8 +82,11 @@ export const stopApp = async (): Promise<void> => {
   const uploads = process.env.UPLOADS_DIR;
   await app?.close();
   const admin = await connect();
-  await admin.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
-  await admin.end();
+  try {
+    await admin.query(`DROP DATABASE IF EXISTS \`${DB_NAME}\``);
+  } finally {
+    await admin.end();
+  }
   if (uploads) fs.rmSync(uploads, { recursive: true, force: true });
 };
 
@@ -102,7 +113,7 @@ const seed = async (db: Db): Promise<void> => {
     "INSERT INTO family_members (id, family_id, membership_id, name, relationship, gender, mobile, email, status, created_at) VALUES ('fm-1', ?, 'NPSI-MEM-000001', 'Member One', 'Self', 'Male', '9300000001', 'member@e2e.local', 'ACTIVE', '2026-01-01')",
     [FAMILY],
   );
-  await db.execute("INSERT INTO events (id, title, date, venue, fee, status) VALUES ('ev-1', 'Event', '2026-12-01', 'Hall', 50, 'PUBLISHED')");
+  await db.execute("INSERT INTO events (id, title, date, venue, fee, status) VALUES ('ev-1', 'Event', '2099-12-01', 'Hall', 50, 'PUBLISHED')");
   await db.execute(
     "INSERT INTO applications (id, application_id, family_head_name, mobile, email, family_name, address, city, district) VALUES ('app-1', 'NPSI-APP-2026-000001', 'Applicant', '9400000001', 'applicant@e2e.local', 'Fam', 'Addr', 'Indore', 'Indore')",
   );
@@ -114,5 +125,5 @@ export const api = (method: "get" | "post" | "put" | "patch" | "delete", url: st
   const req = request(app.getHttpServer())
     [method](url)
     .set("X-Forwarded-For", `10.1.${(ipCounter >> 8) & 255}.${ipCounter & 255}`);
-  return token ? req.set("Authorization", `Bearer ${token}`) : req;
+  return token ? req.set("Cookie", `npsi_session=${token}`) : req;
 };

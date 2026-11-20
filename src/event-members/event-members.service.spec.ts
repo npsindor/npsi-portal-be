@@ -50,7 +50,7 @@ const appRow = (o: Partial<EventMemberApplication> = {}) =>
     ...o,
   }) as EventMemberApplication;
 
-const build = ({ recaptcha = true, open = null as { id: string } | null, row = appRow() } = {}) => {
+const build = ({ recaptcha = true, open = null as { id: string } | null, row = appRow(), listed = [] as { name: string; village: string | null }[] } = {}) => {
   const created: unknown[] = [];
   const updates: unknown[] = [];
   const db = {
@@ -61,6 +61,8 @@ const build = ({ recaptcha = true, open = null as { id: string } | null, row = a
     eventMemberApplication: {
       findFirst: mock.fn(async (args: { where: { id?: string; status?: unknown } }) => (args.where.id ? { ...row, section: SECTION } : open)),
       findUnique: mock.fn(async () => row),
+      findMany: mock.fn(async () => listed),
+      aggregate: mock.fn(async () => ({ _max: { sortOrder: 7 } })),
       create: mock.fn(async (args: { data: Record<string, unknown> }) => {
         created.push(args.data);
         return { ...appRow(), ...args.data };
@@ -70,6 +72,7 @@ const build = ({ recaptcha = true, open = null as { id: string } | null, row = a
         return { ...row, ...args.data };
       }),
       updateMany: mock.fn(async () => ({ count: 0 })),
+      delete: mock.fn(async (_args: { where: { id: string } }) => row),
     },
     eventMemberApplicationLog: { create: mock.fn(async () => ({})) },
     eventRoster: { updateMany: mock.fn(async () => ({ count: 1 })) },
@@ -92,12 +95,51 @@ const form = (o: Partial<EventMemberApplyDto> = {}): EventMemberApplyDto => ({
 });
 
 describe("EventMembersService", () => {
+  test("arrange order: the given order becomes 1, 2, 3…; members left out keep their place after them; strangers refused", async () => {
+    const team = [
+      { id: "a", sortOrder: 1 },
+      { id: "b", sortOrder: 2 },
+      { id: "c", sortOrder: 3 },
+      { id: "d", sortOrder: 4 },
+    ];
+    const updates: { id: string; sortOrder: number }[] = [];
+    const db = {
+      eventMemberSection: { findUnique: mock.fn(async (args: { where: { id: string } }) => (args.where.id === "ems-core" ? { id: "ems-core" } : null)) },
+      eventMemberApplication: {
+        findMany: mock.fn(async () => team),
+        update: mock.fn(async (args: { where: { id: string }; data: { sortOrder: number } }) =>
+          updates.push({ id: args.where.id, sortOrder: args.data.sortOrder }),
+        ),
+      },
+      eventMemberApplicationLog: { create: mock.fn(async () => ({})) },
+      $transaction: mock.fn(async <T>(work: (tx: unknown) => Promise<T>) => work(db)),
+    };
+    const service = new EventMembersService(as<PrismaService>(db), fakeRecaptcha(true).service);
+    // "Move d to number 2"
+    assert.deepEqual((await service.reorderSection("ems-core", ["a", "d", "b"], admin())).ids, ["a", "d", "b", "c"]);
+    assert.deepEqual(
+      updates,
+      [
+        { id: "d", sortOrder: 2 },
+        { id: "b", sortOrder: 3 },
+        { id: "c", sortOrder: 4 },
+      ],
+      "only the rows whose number changed are written",
+    );
+    await rejectsWith(service.reorderSection("ems-core", ["a", "zz"], admin()), 400, "EM_ORDER");
+    await rejectsWith(service.reorderSection("nope", [], admin()), 404, "EM_SECTION");
+    await rejectsWith(service.reorderSection("ems-core", ["a"], user()), 403, /.*/);
+  });
   test("public card: no record ids, mobile and email only with consent", () => {
     const card = toPublicCard(appRow({ memberId: "m-1", studentId: "NPSI-STU-1", familyId: "NPSI-FAM-1" }));
     assert.equal(card.mobile, null);
     assert.equal(card.email, null);
     assert.ok(!JSON.stringify(card).includes("NPSI-"));
     assert.equal(toPublicCard(appRow({ mobilePublic: true, emailPublic: true })).mobile, "9876543210");
+  });
+  test("public card carries the Hindi name and village for the Hindi site", () => {
+    const card = toPublicCard(appRow({ nameHi: "आशा", villageHi: "कसरावद" } as Partial<EventMemberApplication>));
+    assert.deepEqual([card.name, card.nameHi, card.village, card.villageHi], ["Asha", "आशा", "Kasrawad", "कसरावद"]);
   });
   test("active key: one open application per person per section", () => {
     assert.equal(activeKeyOf("s", null, { memberId: "m", studentId: "S", mobileDigits: "9" }, "x"), "s|M:m");
@@ -129,6 +171,63 @@ describe("EventMembersService", () => {
     await rejectsWith(build().service.apply(form({ village: undefined }), null), 400, "EM_VILLAGE");
     await rejectsWith(build().service.apply(form({ area: undefined }), null), 400, "EM_AREA");
   });
+  test("an admin lists someone on a team with just name and village, approved at once (e.g. the Core Team list)", async () => {
+    const { service, created } = build();
+    const listing = {
+      sectionKey: "HOLI",
+      name: "Mahesh Patidar",
+      nameHi: "महेश पाटीदार",
+      village: "Ghegava",
+      villageHi: "घेगांव",
+      consent: true,
+      approveNow: true,
+      designation: "Coordinator",
+      designationHi: "समन्वयक",
+    } as EventMemberApplyDto;
+    const result = await service.apply(listing, admin());
+    const data = created[0] as Record<string, unknown>;
+    assert.equal(result.status, "APPROVED");
+    assert.deepEqual([data.mobileDigits, data.email, data.area, data.source, data.designation], [null, null, null, "ADMIN", "Coordinator"]);
+    assert.deepEqual([data.nameHi, data.villageHi, data.designationHi], ["महेश पाटीदार", "घेगांव", "समन्वयक"]);
+    assert.equal(data.approvedById, "u-admin");
+    assert.equal(data.sortOrder, 8, "a new team member goes after the last one (7)");
+    // A typed mobile must still be a real 10-digit number; without approveNow the entry waits like any other.
+    await rejectsWith(build().service.apply({ ...listing, mobile: "123" }, admin()), 400, "EM_MOBILE");
+    await rejectsWith(build().service.apply({ ...listing, village: undefined }, admin()), 400, "EM_VILLAGE");
+    assert.equal((await build().service.apply({ ...listing, approveNow: undefined }, admin())).status, "PENDING");
+  });
+  test("an admin can add a registered member whose record has no mobile", async () => {
+    const { service, db, created } = build();
+    (db as unknown as { familyMember: unknown }).familyMember = {
+      findFirst: mock.fn(async () => ({
+        id: "m-9",
+        linkedStudentId: null,
+        familyId: "NPSI-FAM-9",
+        photoUrl: null,
+        name: "Kamal Patidar",
+        mobile: null,
+        email: null,
+        family: { village: "Rampura", nativePlace: null },
+      })),
+    };
+    const result = await service.apply(
+      { sectionKey: "HOLI", personKind: "MEMBER", personId: "m-9", consent: true, approveNow: true } as EventMemberApplyDto,
+      admin(),
+    );
+    assert.equal(result.status, "APPROVED");
+    const data = created[0] as Record<string, unknown>;
+    assert.deepEqual([data.memberId, data.name, data.village, data.mobileDigits], ["m-9", "Kamal Patidar", "Rampura", null]);
+  });
+  test("the same name and village already on the team is a duplicate; members can't use the admin shortcut", async () => {
+    const listing = { sectionKey: "HOLI", name: "Mahesh  Patidar", village: "ghegava", consent: true, approveNow: true } as EventMemberApplyDto;
+    await rejectsWith(build({ listed: [{ name: "Mahesh Patidar", village: "Ghegava" }] }).service.apply(listing, admin()), 409, "EM_DUPLICATE");
+    assert.equal(
+      (await build({ listed: [{ name: "Mahesh Patidar", village: "Rampura" }] }).service.apply(listing, admin())).status,
+      "APPROVED",
+      "same name, other village",
+    );
+    await rejectsWith(build().service.apply(listing, user()), 400, "EM_MOBILE");
+  });
   test("a logged-out visitor can not attach an existing record", async () => {
     await rejectsWith(build().service.apply(form({ personKind: "MEMBER", personId: "m-1" }), null), 403, "EM_PERSON");
   });
@@ -158,5 +257,17 @@ describe("EventMembersService", () => {
     const { service, updates } = build();
     await service.remove("a-1", { reason: "Moved away" }, admin());
     assert.deepEqual(updates[0], { status: "REMOVED", activeKey: null, rejectionReason: "Moved away" });
+  });
+  test("delete: admin only, 404 when missing, takes the member off the roster, then deletes the row", async () => {
+    await rejectsWith(build().service.purge("a-1", user()), 403, "Admin access required.");
+    const missing = build();
+    (missing.db.eventMemberApplication.findFirst as unknown as { mock: { mockImplementation: (f: () => unknown) => void } }).mock.mockImplementation(
+      async () => null,
+    );
+    await rejectsWith(missing.service.purge("a-1", admin()), 404, "EM_NOT_FOUND");
+    const { service, db } = build({ row: appRow({ status: "APPROVED", rosterId: "r-1" }) });
+    await service.purge("a-1", admin());
+    assert.equal(db.eventRoster.updateMany.mock.callCount(), 1);
+    assert.deepEqual((db.eventMemberApplication.delete.mock.calls[0].arguments as unknown[])[0], { where: { id: "a-1" } });
   });
 });

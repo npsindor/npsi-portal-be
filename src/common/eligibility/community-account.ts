@@ -27,12 +27,14 @@ export async function communityAccount(db: Db, user: UserRow | null): Promise<Co
       ? await db.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { familyId: true, contactNumber: true } })
       : null;
   const family = owned || byEmail;
-  const member = user.email
-    ? await db.familyMember.findFirst({
-        where: { email: user.email, status: { in: ACTIVE_MEMBER }, family: { status: "ACTIVE" } },
-        select: { id: true, familyId: true, mobile: true },
-      })
-    : null;
+  // Administrators are never linked to a family through a member record.
+  const member =
+    user.email && user.role !== "admin"
+      ? await db.familyMember.findFirst({
+          where: { email: user.email, status: { in: ACTIVE_MEMBER }, family: { status: "ACTIVE" } },
+          select: { id: true, familyId: true, mobile: true },
+        })
+      : null;
   const mobiles = (extra: (string | null | undefined)[]) => [...new Set([user.phone, ...extra].map(digits).filter((value) => value.length === 10))];
   if (family || member)
     return {

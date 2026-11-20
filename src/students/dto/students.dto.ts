@@ -107,6 +107,6 @@ export const STUDENT_ORDERS = orderValues([
 export class StudentListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: STUDENT_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(STUDENT_ORDERS)
+  @IsIn(STUDENT_ORDERS, { message: "Invalid sort field." })
   order?: (typeof STUDENT_ORDERS)[number];
 }

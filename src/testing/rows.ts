@@ -73,6 +73,7 @@ export const eventRegistrationRow = (overrides: Partial<Models.EventRegistration
   registrantEmail: null,
   createdAt: AT,
   updatedAt: AT,
+  activeKey: null,
   ...overrides,
 });
 
@@ -363,6 +364,7 @@ export const transferRequestRow = (overrides: Partial<Models.TransferRequest> = 
   requesterMobile: null,
   targetFamilyName: null,
   requestedDate: null,
+  openKey: null,
   ...overrides,
 });
 
@@ -384,5 +386,6 @@ export const userRow = (overrides: Partial<Models.User> = {}): Models.User => ({
   otpHash: null,
   otpExpiresAt: null,
   photoUrl: null,
+  phoneVerified: true,
   ...overrides,
 });

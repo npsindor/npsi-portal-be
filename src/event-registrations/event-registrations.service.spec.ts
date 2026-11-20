@@ -75,6 +75,39 @@ describe("EventRegistrationsService.create (members)", () => {
   });
 });
 
+describe("EventRegistrationsService: what members can't decide", () => {
+  test("status is always REGISTERED (attendance is the organisers'), whatever the client sends", async () => {
+    const { service } = build();
+    const created = await service.create(registration({ eventId: "free", status: "ATTENDED" }), member());
+    assert.equal(created.status, "REGISTERED");
+  });
+  test("closed, past and not-yet-open events refuse registrations", async () => {
+    const { service, repo } = build();
+    await rejectsWith(service.create(registration({ eventId: "closed" }), member()), 409, "Registration for this event is closed.");
+    await rejectsWith(service.create(registration({ eventId: "past" }), member()), 409, "Registration for this event is closed.");
+    await rejectsWith(service.create(registration({ eventId: "later" }), member()), 409, "Registration for this event has not opened yet.");
+    assert.equal(repo.stored.length, 0);
+  });
+  test("at least one attendee", async () => {
+    const { service } = build();
+    await rejectsWith(service.create(registration({ memberIds: [] }), member()), 400, "Choose at least one family member to register.");
+  });
+  test("a simultaneous duplicate refused by the unique key is the same 409", async () => {
+    const { service, repo } = build();
+    repo.create.mock.mockImplementation(async () => {
+      throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    });
+    await rejectsWith(service.create(registration({ eventId: "free" }), member()), 409, "Your family is already registered for this event.");
+  });
+  test("the live-registration key: set on create, cleared on cancel", async () => {
+    const { service, repo } = build();
+    const created = await service.create(registration({ eventId: "free" }), member());
+    assert.equal(repo.stored[0].activeKey, `free:${FAM}`);
+    await service.update(created.id, { status: "CANCELLED" });
+    assert.equal(repo.stored[0].activeKey, null);
+  });
+});
+
 describe("EventRegistrationsService: one registration per family per event", () => {
   test("a family that is already registered (and hasn't cancelled) gets a 409, nothing is written", async () => {
     const { service, repo, transactions } = build();

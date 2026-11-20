@@ -102,6 +102,6 @@ export const TRANSFERREQUEST_ORDERS = orderValues([
 export class TransferRequestListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: TRANSFERREQUEST_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(TRANSFERREQUEST_ORDERS)
+  @IsIn(TRANSFERREQUEST_ORDERS, { message: "Invalid sort field." })
   order?: (typeof TRANSFERREQUEST_ORDERS)[number];
 }

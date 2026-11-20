@@ -35,6 +35,13 @@ export const REQUIREMENT_STATUSES = ["PENDING", "APPROVED", "REJECTED", "CLOSED"
 export const LISTING_DAYS = 90;
 export const REQUIREMENT_DAYS = 60;
 export const MAX_RENT = 1_000_000;
+export const MAX_LISTING_PHOTOS = 6;
+
+// A listing's photographs: the stored list, or the single older photo_url; never duplicates or non-strings.
+export const listingPhotos = (photoUrl: string | null, photoUrls: unknown): string[] => {
+  const list = Array.isArray(photoUrls) ? photoUrls.filter((url): url is string => typeof url === "string" && url.length > 0) : [];
+  return [...new Set(list.length ? list : photoUrl ? [photoUrl] : [])];
+};
 
 // "1-BHK", "1 bhk" and "1BHK" are the same type; "Vijay  Nagar" and "vijay nagar" the same area.
 export const normalKey = (value: string): string =>

@@ -13,6 +13,8 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from "@nestjs/swagger";
+import { AdminAreaGuard, AdminAreaRoute, CurrentAdminScope } from "../common/admin-access/admin-area.guard.js";
+import { type AdminScope } from "../common/admin-access/admin-scope.js";
 import { OptionalUser } from "../common/decorators/current-user.decorator.js";
 import { ReviewDto } from "../common/dto/review.dto.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
@@ -34,14 +36,15 @@ export class StudentApplicationsController {
   ) {}
 
   @Get()
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminAreaGuard)
+  @AdminAreaRoute("STUDENT_REGISTRATIONS")
   @ApiOperation({ summary: "List student applications", description: "Admin only." })
   @ApiOkResponse({ type: StudentApplicationVo, isArray: true })
   @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid order, limit or filter" })
   @ApiUnauthorizedResponse({ type: ErrorVo })
   @ApiForbiddenResponse({ type: ErrorVo })
-  list(@Query() query: StudentApplicationListQueryDto): Promise<StudentApplicationVo[]> {
-    return this.studentApplications.list(query);
+  list(@Query() query: StudentApplicationListQueryDto, @CurrentAdminScope() scope: AdminScope): Promise<StudentApplicationVo[]> {
+    return this.studentApplications.list(query, scope);
   }
 
   @Post()
@@ -55,7 +58,8 @@ export class StudentApplicationsController {
 
   @Post(":id/review")
   @HttpCode(200)
-  @UseGuards(AdminGuard)
+  @UseGuards(AdminAreaGuard)
+  @AdminAreaRoute("STUDENT_REGISTRATIONS")
   @ApiOperation({
     summary: "Approve, reject or ask for a correction",
     description:
@@ -69,8 +73,8 @@ export class StudentApplicationsController {
   @ApiForbiddenResponse({ type: ErrorVo })
   @ApiNotFoundResponse({ type: ErrorVo, description: "Application not found" })
   @ApiConflictResponse({ type: ErrorVo, description: "Already approved" })
-  review(@Param("id") id: string, @Body() body: ReviewDto): Promise<StudentApplicationReviewVo> {
-    return this.reviews.review(id, body);
+  review(@Param("id") id: string, @Body() body: ReviewDto, @CurrentAdminScope() scope: AdminScope): Promise<StudentApplicationReviewVo> {
+    return this.reviews.review(id, body, scope);
   }
 
   @Patch(":id")

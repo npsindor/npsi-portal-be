@@ -16,8 +16,11 @@ export class RegisterDto {
 }
 
 export class VerifyOtpDto {
-  @ApiPropertyOptional({ example: "member@example.com" }) @IsOptional() email?: string;
+  @ApiPropertyOptional({ example: "member@example.com", description: "The account's email (an administrator may give the mobile they logged in with)" })
+  @IsOptional()
+  email?: string;
   @ApiPropertyOptional({ example: "123456" }) @IsOptional() otpCode?: string;
+  @ApiPropertyOptional({ description: "Google reCAPTCHA v3 token (required when the server has a secret configured)" }) @IsOptional() recaptchaToken?: string;
   @ApiPropertyOptional({
     enum: ["FAMILY", "STUDENT"],
     default: "FAMILY",

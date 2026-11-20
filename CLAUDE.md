@@ -13,7 +13,7 @@ Backend API for the NPS Indore portal: NestJS 12 + TypeScript (strict, ESM) + My
 - Contract tests: `npm run test:contract` (builds, then black-box tests every endpoint of `dist/main.js` on throwaway DB `npsi_contract_test`)
 - Lint/format (Biome): `npm run check` (lint + format check), `npm run lint`, `npm run format`; fix with `npx biome check --write`
 - Migrations: `npm run db:migrate` (creates the DB if missing, baselines a legacy database, runs `prisma migrate deploy`). New migration: edit `prisma/schema.prisma`, then `npx prisma migrate dev --name <change>` against a local database.
-- Health check: `curl http://localhost:4000/api/v1/health` (reports `env` from `APP_ENV`)
+- Health check: `curl http://localhost:4000/api/v1/health` (public, returns only `{ "ok": true }`)
 - API description: `npm run openapi` writes `docs/openapi.json` (CI fails when it is stale); copy it to the frontend with `npm run openapi -- ../npsi-portal-fe/src/api/openapi.json`, whose tests check every endpoint it calls exists
 - Swagger: `http://localhost:4000/api/docs` (JSON: `/api/docs-json`)
 
@@ -101,7 +101,7 @@ New table: add the model to `prisma/schema.prisma` (camelCase fields with `@map`
 - Legacy baseline: a database built by the old sequelize-cli migrations (has `SequelizeMeta` with all 8, no `_prisma_migrations`) gets `0_init` marked applied without running it, on first boot or `npm run db:migrate`. Fresh databases run `0_init`, which also seeds the principles.
 - Schema changes: edit `prisma/schema.prisma`, run `npx prisma migrate dev --name <change>` locally, commit the new `prisma/migrations/<timestamp>_<change>/` folder. Never edit a migration that has run in production. `db/migrations-sequelize/` is frozen history (already contained in `0_init`).
 - MySQL can't index `TEXT` columns without a prefix length; in Prisma use `@@index([col(length: 255)])`.
-- Env vars (names unchanged from the legacy app): `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `API_PORT`, `FRONTEND_URL`, `UPLOADS_DIR`, `TRUST_PROXY`, `APP_ENV`, `RECAPTCHA_SECRET_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `ADMIN_NOTIFICATION_EMAILS`. Validated in `config/env.validation.ts`; defaults in `AppConfigService`.
+- Env vars (names unchanged from the legacy app): `MYSQL_HOST`, `MYSQL_PORT`, `MYSQL_DATABASE`, `MYSQL_USER`, `MYSQL_PASSWORD`, `API_PORT`, `FRONTEND_URL`, `UPLOADS_DIR`, `TRUST_PROXY`, `APP_ENV`, `RECAPTCHA_SECRET_KEY`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`, `ADMIN_NOTIFICATION_EMAILS`, `ADMIN_LOGIN_CODE` (administrators sign in with password + an emailed code; `false` turns the code step off, for the e2e/contract suites only). Validated in `config/env.validation.ts`; defaults in `AppConfigService`.
 - `src/config/load-env.ts`, `prisma.config.ts` and `scripts/migrate.mjs` load `.env.local` then `.env` (the process environment wins); the Prisma connection URL is built from the `MYSQL_*` variables (or `DATABASE_URL` if set). The import scripts read only `.env`.
 - Hostinger runs Node 22.18.0, the minimum for Prisma 7; keep Prisma on 7.x unless the Node version there goes up.
 - Passwords are scrypt hashes stored as `salt:hash` (`common/utils/crypto.ts`); new passwords need at least 8 characters (existing shorter ones still log in). Changing the account mobile needs a mobile-OTP verification token for the new number; anonymous `POST /uploads` and `POST /contact-info` need a reCAPTCHA token.

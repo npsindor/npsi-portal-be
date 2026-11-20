@@ -1,5 +1,7 @@
 import { Module } from "@nestjs/common";
 import { AddressOptionsModule } from "./address-options/address-options.controller.js";
+import { AdminAccessModule } from "./admin-access/admin-access.controller.js";
+import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.controller.js";
 import { AnnouncementsModule } from "./announcements/announcements.module.js";
 import { ApplicationsModule } from "./applications/applications.module.js";
 import { AuthModule } from "./auth/auth.module.js";
@@ -33,6 +35,7 @@ import { SamitisModule } from "./samitis/samitis.module.js";
 import { SearchModule } from "./search/search.controller.js";
 import { SehatModule } from "./sehat-saathi/sehat.controller.js";
 import { SeniorDisciplineCommitteeModule } from "./senior-discipline-committee/senior-discipline-committee.module.js";
+import { SiteVisibilityModule } from "./site-visibility/site-visibility.controller.js";
 import { StudentApplicationsModule } from "./student-applications/student-applications.module.js";
 import { StudentsModule } from "./students/students.module.js";
 import { TransactionsModule } from "./transactions/transactions.module.js";
@@ -45,6 +48,9 @@ import { UploadsModule } from "./uploads/uploads.module.js";
     SagunModule,
     RegistrationsModule,
     AddressOptionsModule,
+    SiteVisibilityModule,
+    AdminDashboardModule,
+    AdminAccessModule,
     HomeHighlightsModule,
     CommunityPostsModule,
     PageBlocksModule,

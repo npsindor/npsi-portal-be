@@ -26,8 +26,10 @@ export class EventRegistrationsRepository {
 
   // null when the id doesn't exist.
   async update(id: string, data: Prisma.EventRegistrationUncheckedUpdateInput, db: Db = this.prisma): Promise<EventRegistration | null> {
-    const { count } = await db.eventRegistration.updateMany({ where: { id }, data });
-    return count ? this.findById(id, db) : null;
+    // MySQL reports 0 changed rows when nothing changes (e.g. only ignored fields were sent), so the row's existence
+    // decides the 404, not the count.
+    await db.eventRegistration.updateMany({ where: { id }, data });
+    return this.findById(id, db);
   }
 
   // Deleting an id that doesn't exist is not an error.

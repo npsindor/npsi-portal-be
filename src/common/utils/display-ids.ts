@@ -2,13 +2,15 @@
 const WIDTH = 6;
 const MAX_ATTEMPTS = 3;
 
-// Ids that start with the prefix followed by a digit ('0' .. '9'; ':' is the next ASCII character),
-// without Prisma's LIKE expression (which fails with a collation error on the hosted MariaDB server).
+// Ids that start with the prefix followed by a digit, without Prisma's LIKE expression (which fails with a
+// collation error on the hosted MariaDB server). The upper bound is "<prefix>A": letters sort after digits in
+// binary and in the *_ci collations alike. (The earlier bound, ':', sorts BEFORE digits in utf8mb4_unicode_ci,
+// so on such tables the range was empty and every new id collided with …000001.)
 // Hand-made ids such as "TXN-MBX3K9F2" sort after the numbered ones and are left out, so they can't
 // crowd the numbered ids out of the "latest few" window and make the next id collide.
 export const displayIdPrefixRange = (prefix: string): { gte: string; lt: string } => {
   if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*-$/.test(prefix)) throw new Error("Invalid display-ID prefix");
-  return { gte: `${prefix}0`, lt: `${prefix}:` };
+  return { gte: `${prefix}0`, lt: `${prefix}A` };
 };
 
 // The next id after the highest numbered one among `existing` (ids sharing the

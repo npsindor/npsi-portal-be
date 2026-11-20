@@ -27,3 +27,7 @@ test("display-ID ranges reject unsupported prefixes", () => {
     assert.throws(() => displayIdPrefixRange(prefix), /Invalid display-ID prefix/);
   }
 });
+
+test("the range's upper bound is a letter, which sorts after digits in binary and unicode_ci collations", () => {
+  assert.deepEqual(displayIdPrefixRange("NPSI-FAM-"), { gte: "NPSI-FAM-0", lt: "NPSI-FAM-A" });
+});

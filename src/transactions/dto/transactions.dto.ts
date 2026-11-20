@@ -64,6 +64,6 @@ export const TRANSACTION_ORDERS = orderValues([
 export class TransactionListQueryDto extends ListQueryDto {
   @ApiPropertyOptional({ enum: TRANSACTION_ORDERS, default: "-createdAt" })
   @IsOptional()
-  @IsIn(TRANSACTION_ORDERS)
+  @IsIn(TRANSACTION_ORDERS, { message: "Invalid sort field." })
   order?: (typeof TRANSACTION_ORDERS)[number];
 }
