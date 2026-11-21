@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { isPastBirthDate } from "../common/validation/fields.js";
-import { assertFeeSettled, birthDateError, canResubmit, DOB_ERRORS, paymentDecisionAllowed, profileCompletion } from "./registration.rules.js";
+import { assertFeeSettled, birthDateError, canResubmit, DOB_ERRORS, isSchoolClass, paymentDecisionAllowed, profileCompletion } from "./registration.rules.js";
 
 test("payment decisions follow the payment status", () => {
   assert.equal(paymentDecisionAllowed("SUBMITTED", "VERIFIED"), true);
@@ -76,7 +76,9 @@ test("birthDateError: a real past date with the minimum age for the registration
   assert.equal(birthDateError("2008-11-15", "FAMILY", today), DOB_ERRORS.FAMILY, "one day short of 18");
   assert.equal(birthDateError("2008-11-14", "FAMILY", today), null, "18 today");
   assert.equal(birthDateError("2023-11-15", "STUDENT", today), DOB_ERRORS.STUDENT);
-  assert.equal(birthDateError("2010-05-01", "STUDENT", today), null);
+  assert.equal(birthDateError("2010-05-01", "STUDENT", today), DOB_ERRORS.STUDENT, "a 16-year-old can't register as a student");
+  assert.equal(birthDateError("2008-11-15", "STUDENT", today), DOB_ERRORS.STUDENT, "one day short of 18");
+  assert.equal(birthDateError("2008-11-14", "STUDENT", today), null, "18 today");
 });
 
 test("a member/student birth date must be a real date before today (India time)", () => {
@@ -92,4 +94,17 @@ test("the mobile step is done only for a proven mobile number (not an admin with
   const base = { hasEmail: true, hasPhoto: false, registration: null, approved: false, familyMembers: null, headDetails: false };
   assert.equal(profileCompletion({ ...base, mobileVerified: false }).steps[0].done, false);
   assert.equal(profileCompletion({ ...base, mobileVerified: true }).steps[0].done, true);
+  // No WhatsApp / SMS provider: the step can't be done, so it isn't asked for.
+  const noProvider = profileCompletion({ ...base, mobileVerified: null });
+  assert.equal(
+    noProvider.steps.some((step) => step.key === "mobileVerified"),
+    false,
+  );
+  assert.notEqual(noProvider.next?.key, "mobileVerified");
+});
+
+test("student education: school classes are refused, courses after 12th pass", () => {
+  for (const value of ["LKG", "ukg", "1st", "10th", "12th", "12", "12th Science", "Class 9", "nursery"]) assert.equal(isSchoolClass(value), true, value);
+  for (const value of ["B.Tech / B.E. (Computer Science)", "MBBS", "Graduate (Pursuing)", "ITI", "B.Sc.", "", null, undefined])
+    assert.equal(isSchoolClass(value), false, String(value));
 });

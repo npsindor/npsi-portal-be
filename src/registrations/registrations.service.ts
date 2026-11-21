@@ -7,6 +7,7 @@ import { ApiError } from "../common/filters/api-error.js";
 import { adminNewApplicationEmail } from "../common/mail/email-templates.js";
 import { MailService } from "../common/mail/mail.service.js";
 import { ApplicantNotifier, type Outbound } from "../common/messaging/applicant-notifier.service.js";
+import { MessagingService } from "../common/messaging/messaging.service.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { createWithDisplayId } from "../common/utils/display-ids.js";
@@ -29,10 +30,14 @@ import {
   FEE_TYPES,
   FEES,
   isoDateOnly,
+  isSchoolClass,
   type PaymentDecision,
   paymentDecisionAllowed,
   profileCompletion,
   type RegistrationType,
+  SCHOOL_CLASS_ERROR,
+  STUDENT_CITY,
+  STUDENT_INDORE_ERROR,
 } from "./registration.rules.js";
 
 type AnyApplication = { type: "FAMILY"; row: Application } | { type: "STUDENT"; row: StudentApplication };
@@ -56,6 +61,7 @@ export class RegistrationsService {
     private readonly notifier: ApplicantNotifier,
     private readonly mail: MailService,
     private readonly config: AppConfigService,
+    private readonly messaging: MessagingService,
   ) {}
 
   async uploadScreenshot(user: UserRow, file: Express.Multer.File | undefined): Promise<{ fileId: string }> {
@@ -78,6 +84,7 @@ export class RegistrationsService {
     const type = dto.type as RegistrationType;
     const mobile = this.mobileOf(user);
     const dob = this.birthDate(dto.dob, dto.type as RegistrationType);
+    if (type === "STUDENT" && dto.city !== STUDENT_CITY) throw new ApiError(400, STUDENT_INDORE_ERROR);
     // A Family Member account can't also become a student: the student needs their own Student Login. (A student who
     // registers as a family member is the supported upgrade: approval moves them into the family.)
     if (type === "STUDENT" && bindsToFamily(await loginAccount(this.prisma, user))) throw new ApiError(409, FAMILY_ACCOUNT_STUDENT_REGISTRATION);
@@ -340,7 +347,8 @@ export class RegistrationsService {
     const head = members.find((member) => member.relationship.toLowerCase() === "head") ?? members[0];
     const isFamily = Boolean(family) || latest?.type === "FAMILY" || (!latest && !student);
     return profileCompletion({
-      mobileVerified: Boolean(user.phone && user.phoneVerified),
+      // Without WhatsApp / SMS configured no code can reach a mobile, so the step is left out instead of never finishing.
+      mobileVerified: this.messaging.otpConfigured() ? Boolean(user.phone && user.phoneVerified) : null,
       hasEmail: Boolean(user.email),
       hasPhoto: Boolean(user.photoUrl),
       registration: latest ? { status: latest.row.status, paymentStatus: fee?.paymentStatus ?? null } : null,
@@ -381,13 +389,25 @@ export class RegistrationsService {
       return {
         ...common,
         resultId: app.row.resultingFamilyId,
-        form: { ...splitName(app.row.familyHeadName, app.row.familyName), gender: head?.gender ?? "", dob: head?.dob ?? "", ...this.formAddress(app.row) },
+        form: {
+          ...splitName(app.row.familyHeadName, app.row.familyName),
+          gender: head?.gender ?? "",
+          dob: head?.dob ?? "",
+          maritalStatus: head?.maritalStatus ?? "",
+          ...this.formAddress(app.row),
+        },
       };
     }
     return {
       ...common,
       resultId: app.row.resultingStudentId,
-      form: { ...splitName(app.row.studentName), gender: app.row.gender ?? "", dob: isoDateOnly(app.row.dob) ?? "", ...this.formAddress(app.row) },
+      form: {
+        ...splitName(app.row.studentName),
+        gender: app.row.gender ?? "",
+        dob: isoDateOnly(app.row.dob) ?? "",
+        education: app.row.educationLevel ?? "",
+        ...this.formAddress(app.row),
+      },
     };
   }
 
@@ -470,13 +490,17 @@ export class RegistrationsService {
       ...this.address(dto),
       nativePlace: village,
       village,
-      membersData: [{ name, relationship: "Head", gender: dto.gender, dob: isoDateOnly(dob), mobile, email: user.email ?? "" }],
+      membersData: [
+        { name, relationship: "Head", gender: dto.gender, dob: isoDateOnly(dob), mobile, email: user.email ?? "", maritalStatus: dto.maritalStatus ?? "" },
+      ],
       submittedDate: new Date(),
       userId: user.id,
     };
   }
 
   private studentData(user: UserRow, mobile: string, dto: RegistrationDto, dob: Date) {
+    if (isSchoolClass(dto.education)) throw new ApiError(400, SCHOOL_CLASS_ERROR);
+    if (dto.city !== STUDENT_CITY) throw new ApiError(400, STUDENT_INDORE_ERROR);
     const base = this.address(dto);
     return {
       status: "PENDING_VERIFICATION",
@@ -485,6 +509,7 @@ export class RegistrationsService {
       email: user.email,
       dob,
       gender: dto.gender,
+      educationLevel: dto.education?.trim() || null,
       ...base,
       // Student records have no village column; the native village is kept with the address.
       address: `${base.address} (${NATIVE_LABEL} ${dto.nativeVillage.trim()})`,

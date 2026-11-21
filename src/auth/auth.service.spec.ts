@@ -103,7 +103,10 @@ describe("AuthService.register", () => {
     assert.equal(fullName, "New");
     assert.equal(phone, "9876543210");
     assert.match(hash, /^[0-9a-f]{32}:[0-9a-f]{128}$/);
-    assert.deepEqual(result, { user: { id, email: "new@example.com", fullName: "New", phone: "9876543210", role: "user", photoUrl: null }, requiresOtp: true });
+    assert.deepEqual(result, {
+      user: { id, email: "new@example.com", fullName: "New", phone: "9876543210", phoneVerified: true, role: "user", photoUrl: null },
+      requiresOtp: true,
+    });
     await flush();
     assert.equal(users.setOtp.mock.callCount(), 1);
     assert.equal((mail.send.mock.calls[0].arguments[0] as { subject: string }).subject, "Your verification code");
@@ -209,7 +212,15 @@ describe("AuthService.login", () => {
     users.findForLogin.mock.mockImplementation(async () => account());
     const result = await service.login({ phone: " +91 98765 43210 ", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[0].arguments, ["+91 98765 43210", "9876543210"]);
-    assert.deepEqual(result.user, { id: "u-1", email: "member@example.com", fullName: "Member", phone: "9876543210", role: "user", photoUrl: null });
+    assert.deepEqual(result.user, {
+      id: "u-1",
+      email: "member@example.com",
+      fullName: "Member",
+      phone: "9876543210",
+      phoneVerified: true,
+      role: "user",
+      photoUrl: null,
+    });
     assert.equal(users.startSession.mock.calls[0].arguments[1], sha256(result.accessToken), "only the hash is stored");
     await service.login({ username: "member@example.com", password: PASSWORD });
     assert.deepEqual(users.findForLogin.mock.calls[1].arguments, ["member@example.com", "member@example.com"]);
@@ -463,6 +474,7 @@ describe("AuthService password change, me and logout", () => {
       email: "member@example.com",
       fullName: "Member",
       phone: "9876543210",
+      phoneVerified: true,
       role: "user",
       photoUrl: null,
     });
@@ -505,6 +517,19 @@ describe("AuthService.updateMe", () => {
     assert.deepEqual(mobileOtp.consume.mock.calls.at(-1)?.arguments, ["9000000077", "REGISTER", "verification-token"]);
     await service.updateMe(user({ id: "u-1", phone: "+91 98765 43210" }), { phone: "9876543210", fullName: "Same" });
     assert.equal(mobileOtp.consume.mock.callCount(), 2);
+  });
+  test("the number already on the account can be verified with its code; an emailed code never un-verifies it", async () => {
+    await service.updateMe(user({ id: "u-1", phone: "9876500001", phoneVerified: false }), {
+      phone: "9876500001",
+      phoneVerificationToken: "verification-token",
+    });
+    assert.deepEqual(mobileOtp.consume.mock.calls.at(-1)?.arguments, ["9876500001", "REGISTER", "verification-token"]);
+    assert.equal(users.updateProfile.mock.calls.at(-1)?.arguments[1].phoneVerified, true);
+    mobileOtp.consume.mock.mockImplementation(async () => false);
+    await service.updateMe(user({ id: "u-1", phone: "9876500001", phoneVerified: true }), { phone: "9876500001", phoneVerificationToken: "emailed-token" });
+    assert.equal(users.updateProfile.mock.calls.at(-1)?.arguments[1].phoneVerified, true);
+    await service.updateMe(user({ id: "u-1", phone: "9876500001", phoneVerified: false }), { phone: "9876500001", phoneVerificationToken: "emailed-token" });
+    assert.equal(users.updateProfile.mock.calls.at(-1)?.arguments[1].phoneVerified, false);
   });
   test("rejects a bad mobile, someone else's mobile, outside images and markup", async () => {
     await rejectsWith(service.updateMe(user(), { phone: "12345" }), 400, "A valid 10-digit mobile number is required.");

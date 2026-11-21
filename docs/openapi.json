@@ -3131,6 +3131,8 @@
                 "-education",
                 "occupation",
                 "-occupation",
+                "maritalStatus",
+                "-maritalStatus",
                 "address",
                 "-address",
                 "photoUrl",
@@ -13090,6 +13092,20 @@
           "dob": {
             "type": "string"
           },
+          "maritalStatus": {
+            "type": "string",
+            "enum": [
+              "MARRIED",
+              "UNMARRIED"
+            ],
+            "nullable": true,
+            "description": "Family registration: the head's marital status (asked by the form)"
+          },
+          "education": {
+            "type": "string",
+            "nullable": true,
+            "description": "Student registration: class or course, e.g. \"12th\" or \"B.Tech (Computer Science)\""
+          },
           "city": {
             "type": "string",
             "enum": [
@@ -13708,6 +13724,14 @@
             "type": "string",
             "nullable": true
           },
+          "maritalStatus": {
+            "type": "string",
+            "enum": [
+              "MARRIED",
+              "UNMARRIED"
+            ],
+            "nullable": true
+          },
           "address": {
             "type": "string",
             "nullable": true
@@ -13745,6 +13769,7 @@
           "email",
           "education",
           "occupation",
+          "maritalStatus",
           "address",
           "photoUrl",
           "status",
@@ -14090,6 +14115,10 @@
             "example": "9876543210",
             "nullable": true
           },
+          "phoneVerified": {
+            "type": "boolean",
+            "description": "The mobile number was proven with a code sent to it (WhatsApp / SMS)"
+          },
           "role": {
             "type": "string",
             "example": "user",
@@ -14110,6 +14139,7 @@
           "email",
           "fullName",
           "phone",
+          "phoneVerified",
           "role",
           "photoUrl"
         ]
@@ -14520,6 +14550,10 @@
             "example": "9876543210",
             "nullable": true
           },
+          "phoneVerified": {
+            "type": "boolean",
+            "description": "The mobile number was proven with a code sent to it (WhatsApp / SMS)"
+          },
           "role": {
             "type": "string",
             "example": "user",
@@ -14552,6 +14586,7 @@
           "email",
           "fullName",
           "phone",
+          "phoneVerified",
           "role",
           "photoUrl",
           "account",
@@ -14786,6 +14821,14 @@
             "type": "string",
             "nullable": true
           },
+          "maritalStatus": {
+            "type": "string",
+            "enum": [
+              "MARRIED",
+              "UNMARRIED"
+            ],
+            "nullable": true
+          },
           "address": {
             "type": "string",
             "nullable": true
@@ -14865,6 +14908,14 @@
           },
           "occupation": {
             "type": "string",
+            "nullable": true
+          },
+          "maritalStatus": {
+            "type": "string",
+            "enum": [
+              "MARRIED",
+              "UNMARRIED"
+            ],
             "nullable": true
           },
           "address": {
@@ -15524,6 +15575,45 @@
           }
         }
       },
+      "StudentApplicationPaymentVo": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Transaction id (POST /registration-payments/:id/review)"
+          },
+          "transactionId": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number"
+          },
+          "status": {
+            "type": "string",
+            "nullable": true
+          },
+          "utr": {
+            "type": "string",
+            "nullable": true
+          },
+          "hasScreenshot": {
+            "type": "boolean"
+          },
+          "adminRemarks": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "transactionId",
+          "amount",
+          "status",
+          "utr",
+          "hasScreenshot",
+          "adminRemarks"
+        ]
+      },
       "StudentApplicationVo": {
         "type": "object",
         "properties": {
@@ -15645,6 +15735,16 @@
           "linkedMembershipId": {
             "type": "string",
             "nullable": true
+          },
+          "payment": {
+            "nullable": true,
+            "description": "Registration fee (admin list only)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/StudentApplicationPaymentVo"
+              }
+            ]
           }
         },
         "required": [

@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsNumber, IsOptional, Matches, Min } from "class-validator";
 import { ListQueryDto } from "../../common/dto/list-query.dto.js";
-import { OptionalText, RequiredChoice, RequiredText } from "../../common/validation/fields.js";
+import { OptionalChoice, OptionalText, RequiredChoice, RequiredText } from "../../common/validation/fields.js";
+import { MARITAL_STATUSES } from "../../family-members/dto/family-members.dto.js";
 import { LANGS, type Lang } from "../../notifications/notification-texts.js";
 import { CITIES, GENDERS, PAYMENT_DECISIONS, REGISTRATION_TYPES } from "../registration.rules.js";
 
@@ -23,6 +24,12 @@ export class RegistrationDto {
   @RequiredText("Date of birth is required.", 10)
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: "Date of birth must be YYYY-MM-DD." })
   dob!: string;
+
+  @OptionalChoice(MARITAL_STATUSES, { description: "Family registration: the head's marital status (asked by the form)" })
+  maritalStatus?: string | null;
+
+  @OptionalText(150, { description: 'Student registration: class or course, e.g. "12th" or "B.Tech (Computer Science)"' })
+  education?: string | null;
 
   @RequiredChoice(CITIES, "City is required.")
   city!: string;

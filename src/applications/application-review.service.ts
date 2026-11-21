@@ -18,7 +18,7 @@ import { assertFeeSettled } from "../registrations/registration.rules.js";
 import { StudentsRepository } from "../students/students.repository.js";
 import { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { ApplicationsRepository } from "./applications.repository.js";
-import { applicationMembers, dateOnly, text } from "./members-data.js";
+import { applicationMembers, dateOnly, maritalStatus, text } from "./members-data.js";
 import type { ApplicationReviewVo } from "./vo/application-review.vo.js";
 import { toApplicationVo } from "./vo/applications.vo.js";
 
@@ -152,6 +152,7 @@ export class ApplicationReviewService {
         email: text(member.email),
         education: text(member.education),
         occupation: text(member.occupation),
+        maritalStatus: maritalStatus(member.maritalStatus),
         address: text(member.address),
         photoUrl: text(member.photoUrl),
         status: "ACTIVE",

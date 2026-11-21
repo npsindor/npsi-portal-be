@@ -5,6 +5,7 @@ import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
 import { OptionalBirthDate, OptionalChoice, OptionalEmail, OptionalText, RequiredText } from "../../common/validation/fields.js";
 
 export const FAMILY_MEMBER_STATUSES = ["PENDING", "ACTIVE", "INACTIVE"] as const;
+export const MARITAL_STATUSES = ["MARRIED", "UNMARRIED"] as const;
 
 export class CreateFamilyMemberDto {
   @RequiredText("Family id is required.", 64)
@@ -33,6 +34,9 @@ export class CreateFamilyMemberDto {
 
   @OptionalText(255)
   occupation?: string | null;
+
+  @OptionalChoice(MARITAL_STATUSES)
+  maritalStatus?: string | null;
 
   @OptionalText()
   address?: string | null;
@@ -70,6 +74,7 @@ export const FAMILYMEMBER_ORDERS = orderValues([
   "email",
   "education",
   "occupation",
+  "maritalStatus",
   "address",
   "photoUrl",
   "status",

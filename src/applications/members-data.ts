@@ -9,6 +9,7 @@ export interface ApplicationMember {
   email?: unknown;
   education?: unknown;
   occupation?: unknown;
+  maritalStatus?: unknown;
   address?: unknown;
   photoUrl?: unknown;
 }
@@ -32,6 +33,12 @@ export const applicationMembers = (value: unknown): ApplicationMember[] => {
 
 // Text fields as stored: trimmed, empty as null.
 export const text = (value: unknown): string | null => (typeof value === "string" || typeof value === "number" ? String(value).trim() || null : null);
+
+// MARRIED / UNMARRIED as stored on a member; anything else is left empty.
+export const maritalStatus = (value: unknown): string | null => {
+  const status = text(value)?.toUpperCase() ?? null;
+  return status === "MARRIED" || status === "UNMARRIED" ? status : null;
+};
 
 // A "YYYY-MM-DD" date of birth, or null.
 export const dateOnly = (value: unknown): Date | null => {

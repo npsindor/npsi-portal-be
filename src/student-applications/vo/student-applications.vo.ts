@@ -1,6 +1,30 @@
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty, ApiPropertyOptional } from "@nestjs/swagger";
 import { toDateOnly } from "../../common/utils/dates.js";
-import type { StudentApplication } from "../../generated/prisma/client.js";
+import type { StudentApplication, Transaction } from "../../generated/prisma/client.js";
+
+// The application's registration fee, for the admin review (null: none recorded, e.g. older free registrations).
+export class StudentApplicationPaymentVo {
+  @ApiProperty({ type: "string", description: "Transaction id (POST /registration-payments/:id/review)" }) id!: string;
+  @ApiProperty({ type: "string" }) transactionId!: string;
+  @ApiProperty({ type: "number" }) amount!: number;
+  @ApiProperty({ type: "string", nullable: true }) status!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) utr!: string | null;
+  @ApiProperty({ type: "boolean" }) hasScreenshot!: boolean;
+  @ApiProperty({ type: "string", nullable: true }) adminRemarks!: string | null;
+}
+
+export const toStudentPaymentVo = (fee: Transaction | undefined | null): StudentApplicationPaymentVo | null =>
+  fee
+    ? {
+        id: fee.id,
+        transactionId: fee.transactionId,
+        amount: fee.amount.toNumber(),
+        status: fee.paymentStatus,
+        utr: fee.utr,
+        hasScreenshot: Boolean(fee.screenshotFile),
+        adminRemarks: fee.adminRemarks,
+      }
+    : null;
 
 export class StudentApplicationVo {
   @ApiProperty({ type: "string" }) id!: string;
@@ -33,6 +57,8 @@ export class StudentApplicationVo {
   @ApiProperty({ type: "string", nullable: true }) educationLevel!: string | null;
   @ApiProperty({ type: "string", nullable: true }) linkedFamilyId!: string | null;
   @ApiProperty({ type: "string", nullable: true }) linkedMembershipId!: string | null;
+  @ApiPropertyOptional({ type: StudentApplicationPaymentVo, nullable: true, description: "Registration fee (admin list only)" })
+  payment?: StudentApplicationPaymentVo | null;
 }
 
 export const toStudentApplicationVo = (row: StudentApplication): StudentApplicationVo => ({

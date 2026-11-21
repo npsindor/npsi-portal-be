@@ -1,6 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { type AdminScope, adminScopeOf, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
+import { loginAccount } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
@@ -18,7 +19,7 @@ import { type FamilyMemberVo, toFamilyMemberVo } from "./vo/family-members.vo.js
 const PREFIX = "NPSI-MEM-";
 
 // The fields the member's "my family" screen edits; the rest (status above all) is admin-only.
-const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "address"] as const;
+const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "maritalStatus", "address"] as const;
 
 export const MEMBER_ELSEWHERE =
   "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
@@ -36,6 +37,9 @@ const sameText = (a: string | null | undefined, b: string | null | undefined) =>
 // it: only ACTIVE members count for event registration, Shagun, the verification card, and for linking a login
 // account to the family by email. So a head can neither activate unverified people nor pull someone else's account
 // into their family.
+// A Student account is only the student: it has no family, so it can't add family members.
+export const STUDENT_NO_MEMBERS = "A student account can't add family members. Student registration is for the student only.";
+
 @Injectable()
 export class FamilyMembersService {
   constructor(
@@ -61,6 +65,7 @@ export class FamilyMembersService {
     let input = dto;
     if (user.role !== "admin") {
       const ownFamilyId = await this.membership.ownFamilyId(user);
+      if (!ownFamilyId && (await loginAccount(this.prisma, user)).type === "STUDENT") throw new ApiError(403, STUDENT_NO_MEMBERS);
       if (!ownFamilyId || dto.familyId !== ownFamilyId) throw new ApiError(403, "You can only add members to your own family.");
       input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId, status: "PENDING" } as CreateFamilyMemberDto;
       assertNoMarkup(input);
@@ -181,6 +186,7 @@ const toCreateData = (input: CreateFamilyMemberDto): Omit<Prisma.FamilyMemberUnc
   email: input.email,
   education: input.education,
   occupation: input.occupation,
+  maritalStatus: input.maritalStatus,
   address: input.address,
   photoUrl: input.photoUrl,
   status: input.status,
@@ -197,6 +203,7 @@ const toUpdateData = (input: UpdateFamilyMemberDto): Prisma.FamilyMemberUnchecke
   email: input.email,
   education: input.education,
   occupation: input.occupation,
+  maritalStatus: input.maritalStatus,
   address: input.address,
   photoUrl: input.photoUrl,
   status: input.status,

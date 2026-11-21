@@ -145,6 +145,7 @@ export const familyMemberRow = (overrides: Partial<Models.FamilyMember> = {}): M
   email: null,
   education: null,
   occupation: null,
+  maritalStatus: null,
   address: null,
   photoUrl: null,
   status: null,

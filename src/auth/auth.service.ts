@@ -396,6 +396,10 @@ export class AuthService {
       if (phone && phone !== normalizeMobile(user.phone ?? "")) {
         if (!body.phoneVerificationToken) throw new ApiError(400, PHONE_NOT_VERIFIED);
         phoneVerified = await this.mobileOtp.consume(phone, "REGISTER", body.phoneVerificationToken);
+      } else if (phone && body.phoneVerificationToken) {
+        // Verifying the number already on the account (e.g. registered while the code could only go by email).
+        // An emailed code still doesn't prove the mobile, so it never turns a verified number back to unverified.
+        phoneVerified = (await this.mobileOtp.consume(phone, "REGISTER", body.phoneVerificationToken)) || Boolean(user.phoneVerified);
       }
     }
     let photoUrl: string | null | undefined;

@@ -17,12 +17,15 @@ import { AvailabilityService } from "../lookups/availability.service.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
 import { workflowNotification } from "../notifications/notification-texts.js";
 import { NotificationsRepository } from "../notifications/notifications.repository.js";
+import { FEE_TYPES, FEES } from "../registrations/registration.rules.js";
+import { TransactionsRepository } from "../transactions/transactions.repository.js";
 import type { CreateStudentApplicationDto, StudentApplicationListQueryDto, UpdateStudentApplicationDto } from "./dto/student-applications.dto.js";
 import { StudentApplicationsRepository } from "./student-applications.repository.js";
-import { type StudentApplicationVo, toStudentApplicationVo } from "./vo/student-applications.vo.js";
+import { type StudentApplicationVo, toStudentApplicationVo, toStudentPaymentVo } from "./vo/student-applications.vo.js";
 
 // Student registration applications: public form with reCAPTCHA, always
 // starting PENDING_VERIFICATION for admins to review. A public submission also
+// records the ₹100 registration fee (PENDING, like the family form: approval waits for an admin to verify it) and
 // sends the "submitted" notification, in the same transaction.
 @Injectable()
 export class StudentApplicationsService {
@@ -33,13 +36,16 @@ export class StudentApplicationsService {
     private readonly availability: AvailabilityService,
     private readonly membership: MembershipRepository,
     private readonly recaptcha: RecaptchaService,
+    private readonly transactions: TransactionsRepository,
   ) {}
 
   // Student applications carry no village: a staff member limited to some villages sees none.
   async list(query: StudentApplicationListQueryDto, scope: AdminScope = SUPER_ADMIN_SCOPE): Promise<StudentApplicationVo[]> {
     if (!scope.allVillages) return [];
     const rows = await this.repo.list({}, toOrderBy(query.order ?? "-createdAt"), query.limit ?? DEFAULT_LIMIT, query.offset);
-    return rows.map(toStudentApplicationVo);
+    // Each application with its registration fee (newest first, so the first match is the current one).
+    const fees = await this.transactions.feesFor(rows.map((row) => row.applicationId));
+    return rows.map((row) => ({ ...toStudentApplicationVo(row), payment: toStudentPaymentVo(fees.find((fee) => fee.referenceId === row.applicationId)) }));
   }
 
   async create(dto: CreateStudentApplicationDto, user: UserRow | null): Promise<StudentApplicationVo> {
@@ -91,6 +97,25 @@ export class StudentApplicationsService {
       );
       if (isPublic) {
         const { applicationId } = application;
+        await createWithDisplayId(
+          "TXN-",
+          (prefix) => this.transactions.latestDisplayIds(prefix, tx),
+          (transactionId) =>
+            this.transactions.create(
+              {
+                id: randomId(),
+                transactionId,
+                type: FEE_TYPES.STUDENT,
+                amount: FEES.STUDENT,
+                paymentMethod: "UPI",
+                paymentStatus: "PENDING",
+                referenceId: applicationId,
+                date: new Date(),
+                remarks: "Student registration fee",
+              },
+              tx,
+            ),
+        );
         await this.notifications.create(workflowNotification("studentApplicationSubmitted", applicationId, { applicationId }, lang), tx);
       }
       return application;
