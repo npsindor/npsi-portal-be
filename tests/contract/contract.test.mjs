@@ -11,7 +11,7 @@ const api = (key, args = [], opts = {}) => {
   return call(method, url, opts);
 };
 const YEAR = new Date().getFullYear();
-const PUBLIC_USER_KEYS = ["email", "fullName", "id", "phone", "photoUrl", "role"];
+const PUBLIC_USER_KEYS = ["email", "fullName", "id", "phone", "phoneVerified", "photoUrl", "role"];
 const keys = (obj) => Object.keys(obj).sort();
 const assertError = (res, status, message) => {
   assert.equal(res.status, status, `expected ${status}, got ${res.status}: ${JSON.stringify(res.body)}`);
@@ -129,7 +129,7 @@ describe("auth: register", () => {
     assert.deepEqual(keys(res.body.user), PUBLIC_USER_KEYS);
     assert.deepEqual(
       { ...res.body.user, id: undefined },
-      { id: undefined, email: "new.user@test.local", fullName: "New User", phone: "9811111111", role: "user", photoUrl: null },
+      { id: undefined, email: "new.user@test.local", fullName: "New User", phone: "9811111111", phoneVerified: false, role: "user", photoUrl: null },
     );
     const [row] = await query("SELECT is_verified, otp_hash FROM users WHERE id = ?", [res.body.user.id]);
     assert.equal(row.is_verified, 0);
@@ -239,6 +239,7 @@ describe("auth: me and logout", () => {
       email: "member@test.local",
       fullName: "member",
       phone: "9100000002",
+      phoneVerified: true,
       role: "user",
       photoUrl: null,
       account: { type: "FAMILY", status: "ACTIVE" },
@@ -1184,6 +1185,18 @@ describe("reviews (end to end, last: they create families and move members)", ()
       lang: "hi",
     });
     assert.deepEqual([corrected.body.application.status, corrected.body.student], ["CORRECTION_REQUIRED", null]);
+    // The public form records a PENDING ₹100 fee (like the family form): approval waits until an admin verifies it.
+    const listed = (await api("list", ["StudentApplication", "?limit=500"], { token: TOKENS.admin })).body.find((a) => a.id === created.body.id);
+    assert.deepEqual([listed.payment.amount, listed.payment.status, listed.payment.hasScreenshot, listed.payment.utr], [100, "PENDING", false, null]);
+    assertError(
+      await api("review", ["StudentApplication", created.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" }),
+      409,
+      "Verify the registration payment before approving this application.",
+    );
+    const fee = (await api("registrationPayments", ["?limit=500"], { token: TOKENS.admin })).body.find((row) => row.referenceId === created.body.applicationId);
+    assert.deepEqual([fee.type, fee.amount, fee.paymentStatus, fee.applicant.type], ["Student Registration", 100, "PENDING", "STUDENT"]);
+    const verified = await api("reviewRegistrationPayment", [listed.payment.id], { token: TOKENS.admin }).send({ decision: "VERIFIED" });
+    assert.equal(verified.status, 200, JSON.stringify(verified.body));
     const approved = await api("review", ["StudentApplication", created.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" });
     assert.equal(approved.status, 200);
     assert.match(approved.body.student.studentId, /^NPSI-STU-\d{6}$/);
@@ -1427,5 +1440,88 @@ describe("contact info: admin list", () => {
   });
   test("400 for an invalid limit", async () => {
     assert.equal((await api("listContactInfo", ["?limit=501"], { token: TOKENS.admin })).status, 400);
+  });
+});
+
+describe("member details: marital status (family form, add member) and education (student form)", () => {
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAADElEQVR4nGP4//8/AAX+Av4N70a4AAAAAElFTkSuQmCC", "base64");
+  const form = {
+    firstName: "Marital",
+    lastName: "Check",
+    gender: "Male",
+    dob: "1990-04-05",
+    city: "Indore",
+    area: "Rau",
+    address: "1 Main Road",
+    pincode: "452001",
+    nativeVillage: "Borawan",
+  };
+  test("a family member keeps MARRIED / UNMARRIED; anything else is refused", async () => {
+    assertError(
+      await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+        familyId: FAMILY1,
+        name: "Bad Status",
+        relationship: "Son",
+        maritalStatus: "SINGLE",
+      }),
+      400,
+      /maritalStatus/,
+    );
+    const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Unmarried Son",
+      relationship: "Son",
+      dob: "2000-01-02",
+      maritalStatus: "UNMARRIED",
+    });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.deepEqual([added.body.maritalStatus, added.body.status], ["UNMARRIED", "PENDING"]);
+    const edited = await api("update", ["FamilyMember", added.body.id], { token: TOKENS.member }).send({ maritalStatus: "MARRIED" });
+    assert.equal(edited.body.maritalStatus, "MARRIED");
+    assert.equal((await api("remove", ["FamilyMember", added.body.id], { token: TOKENS.member })).status, 204);
+  });
+  test("student registration: the local address must be in Indore (district Indore)", async () => {
+    const student = { ...form, type: "STUDENT", dob: "2004-05-06", education: "B.Sc." };
+    for (const city of ["Ujjain", "Other"])
+      assertError(
+        await api("submitRegistration", [], { token: TOKENS.noFamily }).send({ ...student, city }),
+        400,
+        "Student registration needs your local address in Indore (district Indore).",
+      );
+    assertError(await api("submitRegistration", [], { token: TOKENS.noFamily }).send(student), 400, "Please upload the payment screenshot again.");
+  });
+  test("a Student account can't add family members", async () => {
+    await query(
+      "INSERT INTO student_applications (id, application_id, status, student_name, mobile, user_id, created_at, updated_at) VALUES ('sa-contract-1', 'NPSI-STU-APP-CONTRACT-1', 'PENDING_VERIFICATION', 'No Family', '9100000007', ?, NOW(), NOW())",
+      [IDS.noFamilyUser],
+    );
+    try {
+      assertError(
+        await api("create", ["FamilyMember"], { token: TOKENS.noFamily }).send({ familyId: FAMILY1, name: "X", relationship: "Son" }),
+        403,
+        "A student account can't add family members. Student registration is for the student only.",
+      );
+    } finally {
+      await query("DELETE FROM student_applications WHERE id = 'sa-contract-1'");
+    }
+  });
+  test("the family registration form records the head's marital status and shows it back", async () => {
+    const upload = await api("paymentScreenshot", [], { token: TOKENS.noFamily }).attach("file", png, { filename: "pay.png", contentType: "image/png" });
+    assert.equal(upload.status, 201, JSON.stringify(upload.body));
+    const base = { type: "FAMILY", ...form, screenshotFileId: upload.body.fileId };
+    assertError(await api("submitRegistration", [], { token: TOKENS.noFamily }).send({ ...base, maritalStatus: "SINGLE" }), 400, /maritalStatus/);
+    const sent = await api("submitRegistration", [], { token: TOKENS.noFamily }).send({
+      ...base,
+      maritalStatus: "UNMARRIED",
+      education: "ignored for a family",
+    });
+    assert.equal(sent.status, 201, JSON.stringify(sent.body));
+    const mine = await api("myRegistrations", [], { token: TOKENS.noFamily });
+    assert.equal(mine.status, 200);
+    const own = mine.body.registrations.find((row) => row.type === "FAMILY");
+    assert.equal(own.form.maritalStatus, "UNMARRIED");
+    const [row] = await query("SELECT members_data FROM applications WHERE user_id = ?", [IDS.noFamilyUser]);
+    const head = (typeof row.members_data === "string" ? JSON.parse(row.members_data) : row.members_data)[0];
+    assert.equal(head.maritalStatus, "UNMARRIED");
   });
 });

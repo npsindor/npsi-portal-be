@@ -8,11 +8,20 @@ export class PublicUserVo {
   @ApiProperty({ example: "member@example.com", nullable: true }) email: string | null;
   @ApiProperty({ type: "string", example: "Ram Patidar", nullable: true }) fullName: string | null;
   @ApiProperty({ example: "9876543210", nullable: true }) phone: string | null;
+  @ApiProperty({ description: "The mobile number was proven with a code sent to it (WhatsApp / SMS)" }) phoneVerified: boolean;
   @ApiProperty({ example: "user", enum: ["user", "admin"], nullable: true }) role: string | null;
   @ApiProperty({ type: "string", nullable: true, description: "Profile photo URL" }) photoUrl: string | null;
 
   static from(user: UserRow): PublicUserVo {
-    return { id: user.id, email: user.email, fullName: user.fullName, phone: user.phone, role: user.role, photoUrl: user.photoUrl };
+    return {
+      id: user.id,
+      email: user.email,
+      fullName: user.fullName,
+      phone: user.phone,
+      phoneVerified: Boolean(user.phone && user.phoneVerified),
+      role: user.role,
+      photoUrl: user.photoUrl,
+    };
   }
 }
 

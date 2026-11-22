@@ -24,8 +24,8 @@ const pending = applicationRow({
   email: "ram@example.com",
   city: "Indore",
   membersData: JSON.stringify([
-    { name: "Ram", relationship: "Self", dob: "1980-02-03", photoUrl: "/uploads/r.png" },
-    { name: "Sita", relationship: "Wife", dob: "" },
+    { name: "Ram", relationship: "Self", dob: "1980-02-03", photoUrl: "/uploads/r.png", maritalStatus: "MARRIED" },
+    { name: "Sita", relationship: "Wife", dob: "", maritalStatus: "single?" },
   ]),
 });
 
@@ -76,6 +76,11 @@ describe("ApplicationReviewService", () => {
         ["NPSI-MEM-000052", "NPSI-FAM-000024", "Ram", "1980-02-03", "/uploads/r.png", "ACTIVE"],
         ["NPSI-MEM-000053", "NPSI-FAM-000024", "Sita", null, null, "ACTIVE"],
       ],
+    );
+    // The marital status asked on the form goes to the member; an unknown value is left empty.
+    assert.deepEqual(
+      result.members.map((m) => m.maritalStatus),
+      ["MARRIED", null],
     );
     assert.deepEqual([result.application.status, result.application.resultingFamilyId], ["APPROVED", "NPSI-FAM-000024"]);
     assert.equal(families.stored.length, 1);

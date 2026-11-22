@@ -131,6 +131,7 @@ describe("auth", () => {
       email: "member@e2e.local",
       fullName: "Member",
       phone: "9100000002",
+      phoneVerified: true,
       role: "user",
       photoUrl: null,
       account: { type: "FAMILY", status: "ACTIVE" },

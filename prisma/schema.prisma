@@ -182,6 +182,7 @@ model FamilyMember {
   email              String?             @db.VarChar(255)
   education          String?             @db.VarChar(255)
   occupation         String?             @db.VarChar(255)
+  maritalStatus      String?             @map("marital_status") @db.VarChar(20)
   address            String?             @db.Text
   photoUrl           String?             @map("photo_url") @db.Text
   status             String?             @default("PENDING") @db.VarChar(64)

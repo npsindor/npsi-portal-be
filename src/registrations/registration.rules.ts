@@ -37,15 +37,15 @@ export const canResubmit = (applicationStatus: string | null, paymentStatus: str
 export const isoDateOnly = (value: Date | null | undefined): string | null => (value ? value.toISOString().slice(0, 10) : null);
 
 // Date-of-birth rules: a real past date (never today or later, at most 120 years ago), and a minimum age
-// per registration (the member who registers a family is an adult; a student is at least 3).
-export const MIN_AGE: Record<RegistrationType, number> = { FAMILY: 18, STUDENT: 3 };
+// per registration (the member who registers a family is an adult; a student registers after 12th, at 18 or older).
+export const MIN_AGE: Record<RegistrationType, number> = { FAMILY: 18, STUDENT: 18 };
 export const MAX_AGE = 120;
 export const DOB_ERRORS = {
   invalid: "A valid date of birth is required.",
   notPast: "Date of birth must be before today.",
   tooOld: "Please enter a real date of birth.",
   FAMILY: "The registering member must be at least 18 years old.",
-  STUDENT: "The student must be at least 3 years old.",
+  STUDENT: "The student must be at least 18 years old.",
 } as const;
 const yearsBefore = (date: string, years: number): string => `${String(Number(date.slice(0, 4)) - years).padStart(4, "0")}${date.slice(4)}`;
 // `today` is YYYY-MM-DD (UTC); returns the error message, or null when the date is acceptable.
@@ -58,9 +58,19 @@ export const birthDateError = (value: string, type: RegistrationType, today = in
   return null;
 };
 
+// Student registration needs where the student lives in Indore (district Indore); a student from another district
+// (Khargone, say) enters their local Indore address, and their home village under Native village.
+export const STUDENT_CITY = "Indore";
+export const STUDENT_INDORE_ERROR = "Student registration needs your local address in Indore (district Indore).";
+export const SCHOOL_CLASS_ERROR = "Student registration is for courses after 12th.";
+// LKG, UKG, 1st–12th, "class 10", nursery: school classes, not a course for a student registration (18+, after 12th).
+export const isSchoolClass = (value: string | null | undefined): boolean =>
+  /^\s*(nursery|lkg|ukg|(class\s*)?\d{1,2}\s*(st|nd|rd|th)?(\b|\s|$)|class\s*\d)/i.test(value ?? "");
+
 export interface CompletionInput {
-  // The account has a mobile number proven with a code sent to it (an admin without a mobile has not).
-  mobileVerified?: boolean;
+  // The account has a mobile number proven with a code sent to it (an admin without a mobile has not);
+  // null leaves the step out (no WhatsApp / SMS provider, so it could never be done).
+  mobileVerified?: boolean | null;
   hasEmail: boolean;
   hasPhoto: boolean;
   registration: { status: string | null; paymentStatus: string | null } | null;
@@ -79,7 +89,7 @@ export interface CompletionStep {
 export const profileCompletion = (input: CompletionInput): { percent: number; steps: CompletionStep[]; next: CompletionStep | null } => {
   const registered = Boolean(input.registration && input.registration.status !== "REJECTED");
   const steps: CompletionStep[] = [
-    { key: "mobileVerified", done: input.mobileVerified ?? true, weight: 10, link: "/portal/settings" },
+    ...(input.mobileVerified === null ? [] : [{ key: "mobileVerified", done: input.mobileVerified ?? true, weight: 10, link: "/portal/settings#mobile" }]),
     { key: "registrationSubmitted", done: registered || input.approved, weight: 25, link: "/portal/registration" },
     { key: "paymentVerified", done: input.approved || PAID.includes(input.registration?.paymentStatus || ""), weight: 15, link: "/portal/registration" },
     { key: "approved", done: input.approved, weight: 15, link: "/portal/registration" },

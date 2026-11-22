@@ -6,7 +6,8 @@ import type { MembershipRepository } from "../membership/membership.repository.j
 import type { NotificationsRepository } from "../notifications/notifications.repository.js";
 import { type FakeAccountRecords, fakeMembership, fakeModelRepo, fakePrisma } from "../testing/fake-repo.js";
 import { admin, as, fakeRecaptcha, rejectsWith } from "../testing/fakes.js";
-import { notificationRow, studentApplicationRow } from "../testing/rows.js";
+import { notificationRow, studentApplicationRow, transactionRow } from "../testing/rows.js";
+import type { TransactionsRepository } from "../transactions/transactions.repository.js";
 import type { CreateStudentApplicationDto } from "./dto/student-applications.dto.js";
 import type { StudentApplicationsRepository } from "./student-applications.repository.js";
 import { StudentApplicationsService } from "./student-applications.service.js";
@@ -19,6 +20,10 @@ const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false, acco
     isEmailTaken: mock.fn(async () => emailTaken),
   };
   const notifications = fakeModelRepo(notificationRow);
+  const fees = fakeModelRepo(transactionRow);
+  const transactions = Object.assign(fees, {
+    feesFor: mock.fn(async (ids: string[]) => fees.stored.filter((fee) => ids.includes(fee.referenceId ?? ""))),
+  });
   const service = new StudentApplicationsService(
     as<PrismaService>(fakePrisma(accounts)),
     as<StudentApplicationsRepository>(repo),
@@ -26,8 +31,9 @@ const build = ({ recaptcha = true, mobileTaken = false, emailTaken = false, acco
     as<AvailabilityService>(availability),
     as<MembershipRepository>(fakeMembership()),
     fakeRecaptcha(recaptcha).service,
+    as<TransactionsRepository>(transactions),
   );
-  return { service, repo, notifications };
+  return { service, repo, notifications, transactions };
 };
 const student = (overrides: Partial<CreateStudentApplicationDto> = {}): CreateStudentApplicationDto => ({
   studentName: "S",
@@ -71,6 +77,29 @@ describe("StudentApplicationsService", () => {
     const asAdmin = build();
     await asAdmin.service.create(student(), admin());
     assert.equal(asAdmin.notifications.stored.length, 0);
+  });
+  test("public submission records the PENDING ₹100 student fee (approval waits for it); admin entries don't", async () => {
+    const pub = build();
+    const created = await pub.service.create(student(), null);
+    const [fee] = pub.transactions.stored;
+    assert.deepEqual(
+      [fee.type, fee.amount.toNumber(), fee.paymentStatus, fee.referenceId, fee.transactionId],
+      ["Student Registration", 100, "PENDING", created.applicationId, "TXN-000001"],
+    );
+    const [listed] = await pub.service.list({});
+    assert.deepEqual(listed.payment, {
+      id: fee.id,
+      transactionId: "TXN-000001",
+      amount: 100,
+      status: "PENDING",
+      utr: null,
+      hasScreenshot: false,
+      adminRemarks: null,
+    });
+    const asAdmin = build();
+    await asAdmin.service.create(student(), admin());
+    assert.equal(asAdmin.transactions.stored.length, 0);
+    assert.equal((await asAdmin.service.list({}))[0].payment, null);
   });
   test("validation messages, in order; reCAPTCHA; duplicates", async () => {
     const { service } = build();
