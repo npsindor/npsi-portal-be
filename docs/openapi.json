@@ -8351,6 +8351,107 @@
         ]
       }
     },
+    "/api/v1/audit-logs": {
+      "get": {
+        "operationId": "AuditLogsController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search name, id, actor or path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resource",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "families",
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SUPER_ADMIN",
+                "ADMIN_STAFF",
+                "MEMBER"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-11-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-11-30",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ rows, total, resources }"
+          },
+          "403": {
+            "description": "Not the super admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: every deletion — who, when, what, and a copy of the deleted record (read only)",
+        "tags": [
+          "Audit log"
+        ]
+      }
+    },
     "/api/v1/home-members/family-heads": {
       "get": {
         "operationId": "HomeMembersController_familyHeads",

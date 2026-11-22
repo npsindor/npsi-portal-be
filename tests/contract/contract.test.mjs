@@ -1135,6 +1135,47 @@ describe("notifications module", () => {
   });
 });
 
+describe("audit log: every deletion is recorded; only the super admin reads it", () => {
+  test("a member deleting their family member is logged with who, what and a copy of the record", async () => {
+    const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Audit  Kid",
+      relationship: "Son",
+      dob: "2015-01-02",
+    });
+    assert.equal(added.status, 201, JSON.stringify(added.body));
+    assert.equal((await api("remove", ["FamilyMember", added.body.id], { token: TOKENS.member })).status, 204);
+    const log = await api("auditLogs", [`?q=${added.body.id}`], { token: TOKENS.admin });
+    assert.equal(log.status, 200, JSON.stringify(log.body));
+    const [entry] = log.body.rows;
+    assert.deepEqual(
+      [entry.action, entry.resource, entry.recordId, entry.label, entry.actorUserId, entry.actorRole, entry.path],
+      ["DELETE", "family-members", added.body.id, "Audit Kid", IDS.memberUser, "MEMBER", `/api/v1/family-members/${added.body.id}`],
+    );
+    assert.deepEqual([entry.snapshot.name, entry.snapshot.relationship, entry.snapshot.familyId], ["Audit Kid", "Son", FAMILY1]);
+    assert.ok(log.body.resources.includes("family-members"));
+  });
+  test("admin deletions are logged as super admin; failed deletes and logouts are not", async () => {
+    const note = await api("create", ["Notification"], { token: TOKENS.admin }).send({ title: "Audit note", message: "M", type: "Event" });
+    assert.equal((await api("remove", ["Notification", note.body.id], { token: TOKENS.admin })).status, 204);
+    const [entry] = (await api("auditLogs", [`?q=${note.body.id}`], { token: TOKENS.admin })).body.rows;
+    assert.deepEqual([entry.resource, entry.label, entry.actorRole], ["notifications", "Audit note", "SUPER_ADMIN"]);
+    const before = (await api("auditLogs", [], { token: TOKENS.admin })).body.total;
+    assert.equal((await api("remove", ["FamilyMember", "fm-not-mine"], { token: TOKENS.other })).status >= 400, true);
+    const filtered = await api("auditLogs", ["?resource=notifications&role=SUPER_ADMIN"], { token: TOKENS.admin });
+    assert.ok(filtered.body.rows.every((row) => row.resource === "notifications" && row.actorRole === "SUPER_ADMIN"));
+    assert.equal((await api("auditLogs", [], { token: TOKENS.admin })).body.total, before, "a refused delete is not logged");
+    const [{ n }] = await query("SELECT COUNT(*) AS n FROM audit_logs WHERE path LIKE '/api/v1/auth/%'");
+    assert.equal(Number(n), 0, "logging out is not a deletion");
+  });
+  test("only the super admin can read it, and it can't be changed or deleted", async () => {
+    assertError(await api("auditLogs"), 401, "Authentication required.");
+    assertError(await api("auditLogs", [], { token: TOKENS.member }), 403, "Admin access required.");
+    for (const method of ["DELETE", "PATCH", "POST", "PUT"])
+      assert.equal((await call(method, "/api/v1/audit-logs", { token: TOKENS.admin })).status, 404, method);
+  });
+});
+
 describe("home page: family heads carousel and today's birthdays (admin-chosen families only)", () => {
   test("nothing is shown until an admin switches a family on; members can't switch it", async () => {
     assert.deepEqual((await api("homeFamilyHeads")).body, []);

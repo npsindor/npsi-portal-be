@@ -1552,3 +1552,25 @@ model BloodRequest {
   @@index([userId, createdAt])
   @@map("blood_requests")
 }
+
+/// Every deletion made through the API (any member or administrator): who did it, when, what, and a copy of the deleted
+/// record (secrets removed). Read by the super admin only; never edited or deleted through the API.
+model AuditLog {
+  id          String   @id @db.VarChar(64)
+  action      String   @db.VarChar(16)
+  resource    String   @db.VarChar(80)
+  recordId    String?  @map("record_id") @db.VarChar(255)
+  label       String?  @db.VarChar(255)
+  path        String   @db.VarChar(500)
+  actorUserId String?  @map("actor_user_id") @db.VarChar(64)
+  actorName   String?  @map("actor_name") @db.VarChar(255)
+  actorEmail  String?  @map("actor_email") @db.VarChar(255)
+  actorRole   String?  @map("actor_role") @db.VarChar(24)
+  snapshot    Json?
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(0)
+
+  @@index([createdAt])
+  @@index([resource, createdAt])
+  @@index([actorUserId])
+  @@map("audit_logs")
+}

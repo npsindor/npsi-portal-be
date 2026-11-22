@@ -4,6 +4,7 @@ import { AdminAccessModule } from "./admin-access/admin-access.controller.js";
 import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.controller.js";
 import { AnnouncementsModule } from "./announcements/announcements.module.js";
 import { ApplicationsModule } from "./applications/applications.module.js";
+import { AuditLogsModule } from "./audit-logs/audit-logs.controller.js";
 import { AuthModule } from "./auth/auth.module.js";
 import { BloodHelpModule } from "./blood-help/blood-help.controller.js";
 import { CommonModule } from "./common/common.module.js";
@@ -60,6 +61,7 @@ import { UploadsModule } from "./uploads/uploads.module.js";
     SafarModule,
     RoomHuntingModule,
     BloodHelpModule,
+    AuditLogsModule,
     HomeMembersModule,
     SagunCardsModule,
     EventMembersModule,
