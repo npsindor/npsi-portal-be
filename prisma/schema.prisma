@@ -159,6 +159,8 @@ model Family {
   memberCount      Int?           @default(0) @map("member_count")
   applicationId    String?        @map("application_id") @db.VarChar(255)
   ownerUserId      String?        @map("owner_user_id") @db.VarChar(64)
+  /// The head's photo in the home page carousel and the family's birthday wishes; set only by an administrator.
+  showOnHome       Boolean        @default(false) @map("show_on_home")
   createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt        DateTime       @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
   members          FamilyMember[]
@@ -1505,4 +1507,48 @@ model AdminAccess {
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 
   @@map("admin_access")
+}
+
+/// Blood Help Network: a member who offered to donate blood (one row per login). Name, mobile and city come from the
+/// member's own account and family record, never stored again here. `available` is the donor's own switch for being
+/// suggested and notified. user_id is a plain column (no FK to the legacy users table), as in rental_listings.
+model BloodDonor {
+  id               String    @id @db.VarChar(64)
+  userId           String    @unique @map("user_id") @db.VarChar(64)
+  bloodGroup       String    @map("blood_group") @db.VarChar(3)
+  lastDonationDate DateTime? @map("last_donation_date") @db.Date
+  available        Boolean   @default(true)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@index([bloodGroup, available])
+  @@map("blood_donors")
+}
+
+/// Blood Help Network: a blood requirement for a patient, with the person donors should contact. Only two states:
+/// IN_PROGRESS and COMPLETED. Completion records who confirmed it (the requester, or an administrator who verified it)
+/// and `history` keeps every status change as an audit trail.
+model BloodRequest {
+  id               String    @id @db.VarChar(64)
+  reference        String    @unique @db.VarChar(20)
+  userId           String    @map("user_id") @db.VarChar(64)
+  patientName      String    @map("patient_name") @db.VarChar(150)
+  bloodGroup       String    @map("blood_group") @db.VarChar(3)
+  units            Int
+  hospital         String    @db.VarChar(200)
+  city             String    @db.VarChar(150)
+  contactName      String    @map("contact_name") @db.VarChar(150)
+  contactPhone     String    @map("contact_phone") @db.VarChar(10)
+  status           String    @default("IN_PROGRESS") @db.VarChar(16)
+  completedAt      DateTime? @map("completed_at") @db.DateTime(0)
+  completedById    String?   @map("completed_by_id") @db.VarChar(64)
+  completionSource String?   @map("completion_source") @db.VarChar(16)
+  lastPromptedAt   DateTime? @map("last_prompted_at") @db.DateTime(0)
+  history          Json?
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
+  @@map("blood_requests")
 }

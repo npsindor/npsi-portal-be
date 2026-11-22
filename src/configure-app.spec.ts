@@ -12,13 +12,23 @@ describe("CORS origins", () => {
     for (const origin of [
       "https://test.npsindore.org",
       "https://anything.npsindore.org",
+      "http://app.npsindore.org",
+      "https://www.app.npsindore.org",
       "https://a.b.npsindore.org",
       "http://localhost:5173",
       "http://npsindore.org",
     ])
       assert.equal(isAllowedOrigin(origin, allowed, "production"), false, origin);
   });
-  test("test server: only its own frontend, no localhost", () => {
+  test("the mobile app's origin, on every environment", () => {
+    for (const [frontend, env] of [
+      ["https://npsindore.org/", "production"],
+      ["https://test.npsindore.org", "test"],
+      ["http://localhost:5173", "development"],
+    ])
+      assert.equal(isAllowedOrigin("https://app.npsindore.org", allowedOrigins(frontend, undefined), env), true, env);
+  });
+  test("test server: only its own frontend (and the app), no localhost", () => {
     const allowed = allowedOrigins("https://test.npsindore.org", undefined);
     assert.equal(isAllowedOrigin("https://test.npsindore.org", allowed, "test"), true);
     assert.equal(isAllowedOrigin("https://npsindore.org", allowed, "test"), false);

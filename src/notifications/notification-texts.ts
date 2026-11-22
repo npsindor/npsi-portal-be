@@ -10,6 +10,17 @@ export type Lang = (typeof LANGS)[number];
 type Template = { type: string; title: string; message: string };
 const TEMPLATES: Record<Lang, Record<string, Template>> = {
   en: {
+    bloodDonorAlert: {
+      type: "Blood Request",
+      title: "Blood needed: {bloodGroup}",
+      message:
+        "{patientName} needs {units} unit(s) of {bloodGroup} blood at {hospital}, {city}. If you can donate, please contact {contactName} on {contactPhone}.",
+    },
+    bloodRequestCompleted: {
+      type: "Blood Request",
+      title: "Blood request completed",
+      message: "Your blood request {reference} for {patientName} is marked as completed. Thank you to every donor who helped.",
+    },
     applicationSubmitted: {
       type: "Registration",
       title: "Application Submitted",
@@ -54,6 +65,17 @@ const TEMPLATES: Record<Lang, Record<string, Template>> = {
     },
   },
   hi: {
+    bloodDonorAlert: {
+      type: "Blood Request",
+      title: "रक्त की आवश्यकता: {bloodGroup}",
+      message:
+        "{patientName} को {hospital}, {city} में {bloodGroup} रक्त की {units} यूनिट चाहिए। यदि आप रक्तदान कर सकते हैं तो कृपया {contactName} से {contactPhone} पर संपर्क करें।",
+    },
+    bloodRequestCompleted: {
+      type: "Blood Request",
+      title: "रक्त अनुरोध पूरा हुआ",
+      message: "{patientName} के लिए आपका रक्त अनुरोध {reference} पूरा दर्ज किया गया है। मदद करने वाले सभी रक्तदाताओं का धन्यवाद।",
+    },
     applicationSubmitted: {
       type: "Registration",
       title: "आवेदन जमा हुआ",

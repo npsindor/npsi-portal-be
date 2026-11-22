@@ -20,6 +20,7 @@ export class FamilyVo {
   @ApiProperty({ type: "string", format: "date-time", nullable: true }) registrationDate!: Date | null;
   @ApiProperty({ type: "integer", nullable: true }) memberCount!: number | null;
   @ApiProperty({ type: "string", nullable: true }) applicationId!: string | null;
+  @ApiProperty({ type: "boolean", description: "Head photo and birthday wishes shown on the home page" }) showOnHome!: boolean;
   @ApiProperty({ type: "string", format: "date-time" }) createdAt!: Date;
   @ApiProperty({ type: "string", format: "date-time" }) updatedAt!: Date;
 }
@@ -43,6 +44,7 @@ export const toFamilyVo = (row: Family): FamilyVo => ({
   registrationDate: row.registrationDate,
   memberCount: row.memberCount,
   applicationId: row.applicationId,
+  showOnHome: row.showOnHome,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });

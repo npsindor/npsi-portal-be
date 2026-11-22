@@ -43,11 +43,13 @@ export const minimumAgeFor = (gender: Gender, settings: SagunSettingsValues): nu
 export const memberIsActive = (status: string | null | undefined): boolean => ["ACTIVE", "APPROVED"].includes((status || "").trim().toUpperCase());
 export const isoDate = (value: Date | null | undefined): string | null => (value ? value.toISOString().slice(0, 10) : null);
 
-export type IneligibleReason = "MEMBER_INACTIVE" | "NO_DOB" | "NO_GENDER" | "UNDERAGE";
+export type IneligibleReason = "MEMBER_INACTIVE" | "MARRIED" | "NO_DOB" | "NO_GENDER" | "UNDERAGE";
 export interface MemberFacts {
   gender: string | null;
   dob: Date | null;
   status: string | null;
+  // Shagun Bandhan is for unmarried members; a member the family marked MARRIED is not offered it.
+  maritalStatus?: string | null;
 }
 export interface Eligibility {
   eligible: boolean;
@@ -64,13 +66,15 @@ export const evaluateMember = (member: MemberFacts, settings: SagunSettingsValue
   const minimumAge = gender ? minimumAgeFor(gender, settings) : null;
   const reason: IneligibleReason | null = !memberIsActive(member.status)
     ? "MEMBER_INACTIVE"
-    : !dob || age === null || age < 0
-      ? "NO_DOB"
-      : !gender || minimumAge === null
-        ? "NO_GENDER"
-        : age < minimumAge
-          ? "UNDERAGE"
-          : null;
+    : (member.maritalStatus || "").trim().toUpperCase() === "MARRIED"
+      ? "MARRIED"
+      : !dob || age === null || age < 0
+        ? "NO_DOB"
+        : !gender || minimumAge === null
+          ? "NO_GENDER"
+          : age < minimumAge
+            ? "UNDERAGE"
+            : null;
   return { eligible: reason === null, reason, gender, age, minimumAge };
 };
 export const eligibilityError = (reason: IneligibleReason): ApiError =>
@@ -78,7 +82,9 @@ export const eligibilityError = (reason: IneligibleReason): ApiError =>
     ? new ApiError(400, "SAGUN_ELIGIBILITY")
     : reason === "MEMBER_INACTIVE"
       ? new ApiError(403, "SAGUN_MEMBER_INACTIVE")
-      : new ApiError(400, "SAGUN_MEMBER_DATA_INCOMPLETE");
+      : reason === "MARRIED"
+        ? new ApiError(400, "SAGUN_MEMBER_MARRIED")
+        : new ApiError(400, "SAGUN_MEMBER_DATA_INCOMPLETE");
 
 // What the member's owner may do with an existing profile, given the admin settings.
 // `inactivatedByOwner` is false when an admin set the profile INACTIVE: only an admin may reopen it.

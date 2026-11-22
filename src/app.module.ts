@@ -5,6 +5,7 @@ import { AdminDashboardModule } from "./admin-dashboard/admin-dashboard.controll
 import { AnnouncementsModule } from "./announcements/announcements.module.js";
 import { ApplicationsModule } from "./applications/applications.module.js";
 import { AuthModule } from "./auth/auth.module.js";
+import { BloodHelpModule } from "./blood-help/blood-help.controller.js";
 import { CommonModule } from "./common/common.module.js";
 import { CommunityPostsModule } from "./community-posts/community-posts.module.js";
 import { AppConfigModule } from "./config/config.module.js";
@@ -19,6 +20,7 @@ import { FamilyMembersModule } from "./family-members/family-members.module.js";
 import { FeedbackModule } from "./feedback/feedback.module.js";
 import { HealthModule } from "./health/health.module.js";
 import { HomeHighlightsModule } from "./home-highlights/home-highlights.module.js";
+import { HomeMembersModule } from "./home-members/home-members.controller.js";
 import { LookupsModule } from "./lookups/lookups.module.js";
 import { MeModule } from "./me/me.module.js";
 import { NotificationsModule } from "./notifications/notifications.module.js";
@@ -57,6 +59,8 @@ import { UploadsModule } from "./uploads/uploads.module.js";
     SehatModule,
     SafarModule,
     RoomHuntingModule,
+    BloodHelpModule,
+    HomeMembersModule,
     SagunCardsModule,
     EventMembersModule,
     SearchModule,

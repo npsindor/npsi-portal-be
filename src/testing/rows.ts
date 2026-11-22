@@ -127,6 +127,7 @@ export const familyRow = (overrides: Partial<Models.Family> = {}): Models.Family
   memberCount: null,
   applicationId: null,
   ownerUserId: null,
+  showOnHome: false,
   createdAt: AT,
   updatedAt: AT,
   ...overrides,
