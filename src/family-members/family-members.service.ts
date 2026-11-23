@@ -33,10 +33,10 @@ const sameText = (a: string | null | undefined, b: string | null | undefined) =>
 // Members of a family. Admins manage all of them; a member may add, edit and
 // remove the members of their own family. Every change recounts the families'
 // member counts in the same transaction.
-// A member added (or whose mobile / email is changed) by the family head waits as PENDING until an admin approves
-// it: only ACTIVE members count for event registration, Shagun, the verification card, and for linking a login
-// account to the family by email. So a head can neither activate unverified people nor pull someone else's account
-// into their family.
+// A registered family (approved, so its ₹500 fee was verified) adds and edits its own members without an admin: they
+// are ACTIVE at once (events, the card; Shagun only when the family ticks it for an eligible member). One exception
+// stays with an admin: an email that is already another person's login. An ACTIVE member's email links that login to
+// the family, so such a member waits as PENDING; a head can never pull someone else's account into their family.
 // A Student account is only the student: it has no family, so it can't add family members.
 export const STUDENT_NO_MEMBERS = "A student account can't add family members. Student registration is for the student only.";
 
@@ -67,9 +67,10 @@ export class FamilyMembersService {
       const ownFamilyId = await this.membership.ownFamilyId(user);
       if (!ownFamilyId && (await loginAccount(this.prisma, user)).type === "STUDENT") throw new ApiError(403, STUDENT_NO_MEMBERS);
       if (!ownFamilyId || dto.familyId !== ownFamilyId) throw new ApiError(403, "You can only add members to your own family.");
-      input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId, status: "PENDING" } as CreateFamilyMemberDto;
+      input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId } as CreateFamilyMemberDto;
       assertNoMarkup(input);
       await this.assertContactsFree(ownFamilyId, input, null);
+      input.status = (await this.emailIsAnotherLogin(input.email, user)) ? "PENDING" : "ACTIVE";
     }
     const row = await this.prisma.$transaction(async (tx) => {
       const created = await createWithDisplayId(
@@ -114,11 +115,9 @@ export class FamilyMembersService {
       input = pick(dto, MEMBER_FIELDS);
       assertNoMarkup(input);
       await this.assertContactsFree(ownFamilyId, input, member.id);
-      // A new mobile or email on an approved member goes back to an admin before it counts again.
-      const contactChanged =
-        (input.mobile !== undefined && tenDigits(input.mobile) !== tenDigits(member.mobile)) ||
-        (input.email !== undefined && !sameText(input.email, member.email));
-      if (contactChanged && member.status !== "PENDING") input = { ...input, status: "PENDING" };
+      // A new email that is already another person's login goes to an admin before the member counts again.
+      const emailChanged = input.email !== undefined && !sameText(input.email, member.email);
+      if (emailChanged && member.status !== "PENDING" && (await this.emailIsAnotherLogin(input.email, user))) input = { ...input, status: "PENDING" };
     }
     const row = await this.prisma.$transaction(async (tx) => {
       const fromFamilyId = (await this.repo.findById(id, tx))?.familyId;
@@ -149,6 +148,13 @@ export class FamilyMembersService {
 
   // A head may not add a person who is already an active member of another family (that is a transfer), nor an
   // administrator's email.
+  // Whether this email already signs in to an account other than the one making the change.
+  private async emailIsAnotherLogin(email: string | null | undefined, user: UserRow): Promise<boolean> {
+    const value = email?.trim();
+    if (!value || sameText(value, user.email)) return false;
+    return Boolean(await this.prisma.user.findFirst({ where: { email: value, id: { not: user.id } }, select: { id: true } }));
+  }
+
   private async assertContactsFree(familyId: string, input: { mobile?: string | null; email?: string | null }, memberId: string | null): Promise<void> {
     const mobile = tenDigits(input.mobile);
     const email = input.email?.trim() || null;

@@ -18,6 +18,10 @@ export const DOCS_PATH = "api/docs";
 // developer machines only. Never a wildcard: sibling subdomains are "same-site", so SameSite=Strict
 // would not protect members from a script on a forgotten or third-party-hosted *.npsindore.org page.
 const LOCAL_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i;
+// The NPS Indore mobile app (Capacitor) serves its pages from this origin inside the app, so it is same-site with
+// the API and uses the same httpOnly session cookie as the website (no token in page scripts). The name is never
+// served on the internet: never create a real site at app.npsindore.org.
+export const MOBILE_APP_ORIGIN = "https://app.npsindore.org";
 export const CORS_REJECTED = "Not allowed by CORS";
 
 const originOf = (url: string): string | null => {
@@ -29,7 +33,7 @@ const originOf = (url: string): string | null => {
 };
 
 export const allowedOrigins = (frontendUrl: string, extra: string | undefined): Set<string> => {
-  const origins = new Set<string>();
+  const origins = new Set<string>([MOBILE_APP_ORIGIN]);
   for (const url of [frontendUrl, ...(extra ?? "").split(",")]) {
     const origin = originOf(url.trim());
     if (!origin) continue;

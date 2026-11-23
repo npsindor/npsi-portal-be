@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   DEFAULT_SETTINGS,
+  eligibilityError,
   evaluateMember,
   type FamilyFacts,
   genderOf,
@@ -78,6 +79,14 @@ test("members without birth date or gender, inactive members and future birth da
   assert.equal(evaluateMember(member({ status: "INACTIVE" }), DEFAULT_SETTINGS, TODAY).reason, "MEMBER_INACTIVE");
   assert.equal(evaluateMember(member({ status: "Active" }), DEFAULT_SETTINGS, TODAY).eligible, true);
   assert.equal(evaluateMember(member({ dob: date("2030-01-01") }), DEFAULT_SETTINGS, TODAY).reason, "NO_DOB");
+});
+
+test("a member marked MARRIED is not offered Shagun Bandhan; unmarried or not yet given still is", () => {
+  const married = evaluateMember(member({ maritalStatus: "MARRIED" }), DEFAULT_SETTINGS, TODAY);
+  assert.deepEqual([married.eligible, married.reason], [false, "MARRIED"]);
+  assert.equal(evaluateMember(member({ maritalStatus: "UNMARRIED" }), DEFAULT_SETTINGS, TODAY).eligible, true);
+  assert.equal(evaluateMember(member({ maritalStatus: null }), DEFAULT_SETTINGS, TODAY).eligible, true);
+  assert.deepEqual([eligibilityError("MARRIED").getStatus(), eligibilityError("MARRIED").getResponse()], [400, { error: "SAGUN_MEMBER_MARRIED" }]);
 });
 
 test("pre-fill maps the family record and finds parents of a son", () => {

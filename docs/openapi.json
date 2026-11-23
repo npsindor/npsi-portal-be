@@ -7686,6 +7686,802 @@
         ]
       }
     },
+    "/api/v1/blood-help/summary": {
+      "get": {
+        "operationId": "BloodHelpController_summary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Public: registered donors, blood requests, and requests fulfilled (confirmed or admin-verified)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/me/profile": {
+      "get": {
+        "operationId": "BloodHelpController_profile",
+        "parameters": [],
+        "responses": {
+          "403": {
+            "description": "BLOOD_MEMBERS_ONLY: not a registered community member",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The member's name, mobile and city (read-only, from their records) and their donor details",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/me/donor": {
+      "put": {
+        "operationId": "BloodHelpController_saveDonor",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DonorDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "Invalid blood group / date, or BLOOD_DONOR_MOBILE (no mobile on the account)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Register as a blood donor (or update blood group, last donation date and availability)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/requests": {
+      "get": {
+        "operationId": "BloodHelpController_list",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "community",
+              "type": "string",
+              "enum": [
+                "mine",
+                "community"
+              ]
+            }
+          },
+          {
+            "name": "bloodGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "A+",
+                "A-",
+                "B+",
+                "B-",
+                "AB+",
+                "AB-",
+                "O+",
+                "O-"
+              ]
+            }
+          },
+          {
+            "name": "city",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "IN_PROGRESS",
+                "COMPLETED"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Patient or hospital name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "-createdAt",
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "-createdAt",
+                "patientName",
+                "-patientName",
+                "bloodGroup",
+                "-bloodGroup",
+                "units",
+                "-units",
+                "status",
+                "-status"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "description": "Language of the WhatsApp message",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "hi"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My requests or community requests: filters, sort, pages and both tab counts",
+        "tags": [
+          "Blood Help Network"
+        ]
+      },
+      "post": {
+        "operationId": "BloodHelpController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BloodRequestDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Submit a blood request; returns it with the eligible matching donors",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/requests/recent": {
+      "get": {
+        "operationId": "BloodHelpController_recent",
+        "parameters": [
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "hi"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "The latest requests still looking for blood (home page)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/requests/{id}/suggestions": {
+      "get": {
+        "operationId": "BloodHelpController_suggestions",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "hi"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Eligible matching donors for one of my requests (WhatsApp links; no numbers listed)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/requests/{id}/donor-notifications": {
+      "post": {
+        "operationId": "BloodHelpController_notify",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotifyDonorsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Send my request to selected suggested donors (in-app notification)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/me/confirmations": {
+      "get": {
+        "operationId": "BloodHelpController_pending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "My in-progress requests to ask \"Did you receive the required blood?\" about",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/requests/{id}/confirmation": {
+      "post": {
+        "operationId": "BloodHelpController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Requester: blood received (completed) or not yet (stays in progress)",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/admin/requests": {
+      "get": {
+        "operationId": "BloodHelpController_adminList",
+        "parameters": [
+          {
+            "name": "scope",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "community",
+              "type": "string",
+              "enum": [
+                "mine",
+                "community"
+              ]
+            }
+          },
+          {
+            "name": "bloodGroup",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "A+",
+                "A-",
+                "B+",
+                "B-",
+                "AB+",
+                "AB-",
+                "O+",
+                "O-"
+              ]
+            }
+          },
+          {
+            "name": "city",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "IN_PROGRESS",
+                "COMPLETED"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Patient or hospital name",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "sort",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "-createdAt",
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "-createdAt",
+                "patientName",
+                "-patientName",
+                "bloodGroup",
+                "-bloodGroup",
+                "units",
+                "-units",
+                "status",
+                "-status"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 50,
+              "default": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "lang",
+            "required": false,
+            "in": "query",
+            "description": "Language of the WhatsApp message",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "en",
+                "hi"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Admin: every blood request with the requester's contact and the audit trail",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/blood-help/admin/requests/{id}/status": {
+      "patch": {
+        "operationId": "BloodHelpController_adminStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdminStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The request with its audit trail"
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Admin: after calling / messaging the requester, mark the request Completed or In Progress",
+        "tags": [
+          "Blood Help Network"
+        ]
+      }
+    },
+    "/api/v1/audit-logs": {
+      "get": {
+        "operationId": "AuditLogsController_list",
+        "parameters": [
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Search name, id, actor or path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "resource",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "families",
+              "type": "string"
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SUPER_ADMIN",
+                "ADMIN_STAFF",
+                "MEMBER"
+              ]
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-11-01",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "example": "2026-11-30",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 200,
+              "default": 50,
+              "type": "number"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ rows, total, resources }"
+          },
+          "403": {
+            "description": "Not the super admin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: every deletion — who, when, what, and a copy of the deleted record (read only)",
+        "tags": [
+          "Audit log"
+        ]
+      }
+    },
+    "/api/v1/home-members/family-heads": {
+      "get": {
+        "operationId": "HomeMembersController_familyHeads",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "[{ id, name, place, photoUrl }]"
+          }
+        },
+        "summary": "Public: name, village and photo of the family heads an administrator chose to show (no ids or contacts)",
+        "tags": [
+          "Home page"
+        ]
+      }
+    },
+    "/api/v1/home-members/birthdays": {
+      "get": {
+        "operationId": "HomeMembersController_birthdays",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "[{ id, name, place, photoUrl }] — no birth date or age"
+          }
+        },
+        "summary": "Public: today's birthdays (India time) of adult members of the families shown on the home page",
+        "tags": [
+          "Home page"
+        ]
+      }
+    },
     "/api/v1/sagun-cards/stats": {
       "get": {
         "operationId": "SagunCardsController_stats",
@@ -13648,6 +14444,10 @@
             "type": "string",
             "nullable": true
           },
+          "showOnHome": {
+            "type": "boolean",
+            "description": "Head photo and birthday wishes shown on the home page"
+          },
           "createdAt": {
             "type": "string",
             "format": "date-time"
@@ -13676,6 +14476,7 @@
           "registrationDate",
           "memberCount",
           "applicationId",
+          "showOnHome",
           "createdAt",
           "updatedAt"
         ]
@@ -14706,6 +15507,11 @@
           "applicationId": {
             "type": "string",
             "nullable": true
+          },
+          "showOnHome": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Show the head's photo in the home page carousel and the family's birthday wishes"
           }
         }
       },
@@ -14779,6 +15585,11 @@
           "applicationId": {
             "type": "string",
             "nullable": true
+          },
+          "showOnHome": {
+            "type": "boolean",
+            "nullable": true,
+            "description": "Show the head's photo in the home page carousel and the family's birthday wishes"
           }
         }
       },
@@ -18217,6 +19028,144 @@
         "required": [
           "message",
           "consent"
+        ]
+      },
+      "DonorDto": {
+        "type": "object",
+        "properties": {
+          "bloodGroup": {
+            "type": "string",
+            "enum": [
+              "A+",
+              "A-",
+              "B+",
+              "B-",
+              "AB+",
+              "AB-",
+              "O+",
+              "O-"
+            ]
+          },
+          "lastDonationDate": {
+            "type": "string",
+            "example": "2024-04-15",
+            "description": "Last blood donation (YYYY-MM-DD); empty if never donated"
+          },
+          "available": {
+            "type": "boolean",
+            "default": true,
+            "description": "Suggest me and send me blood requests"
+          }
+        },
+        "required": [
+          "bloodGroup"
+        ]
+      },
+      "BloodRequestDto": {
+        "type": "object",
+        "properties": {
+          "patientName": {
+            "type": "string"
+          },
+          "bloodGroup": {
+            "type": "string",
+            "enum": [
+              "A+",
+              "A-",
+              "B+",
+              "B-",
+              "AB+",
+              "AB-",
+              "O+",
+              "O-"
+            ]
+          },
+          "units": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 10
+          },
+          "hospital": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "contactName": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string"
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "hi"
+            ]
+          }
+        },
+        "required": [
+          "patientName",
+          "bloodGroup",
+          "units",
+          "hospital",
+          "city",
+          "contactName",
+          "contactPhone"
+        ]
+      },
+      "NotifyDonorsDto": {
+        "type": "object",
+        "properties": {
+          "donorIds": {
+            "description": "Donor ids from this request's suggestions",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "en",
+              "hi"
+            ]
+          }
+        },
+        "required": [
+          "donorIds"
+        ]
+      },
+      "ConfirmationDto": {
+        "type": "object",
+        "properties": {
+          "received": {
+            "type": "boolean",
+            "description": "true: the blood was received (request completed); false: still needed"
+          }
+        },
+        "required": [
+          "received"
+        ]
+      },
+      "AdminStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "IN_PROGRESS",
+              "COMPLETED"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "description": "How it was verified (call / WhatsApp with the requester)"
+          }
+        },
+        "required": [
+          "status"
         ]
       },
       "SagunCardSelectionDto": {

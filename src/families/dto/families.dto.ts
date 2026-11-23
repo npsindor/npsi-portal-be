@@ -1,7 +1,7 @@
 import { ApiPropertyOptional, PartialType } from "@nestjs/swagger";
 import { IsIn, IsOptional, IsString } from "class-validator";
 import { ListQueryDto, orderValues } from "../../common/dto/list-query.dto.js";
-import { OptionalChoice, OptionalDate, OptionalEmail, OptionalText } from "../../common/validation/fields.js";
+import { OptionalBoolean, OptionalChoice, OptionalDate, OptionalEmail, OptionalText } from "../../common/validation/fields.js";
 
 export const FAMILY_STATUSES = ["PENDING", "ACTIVE", "SUSPENDED", "DEACTIVATED"] as const;
 
@@ -50,6 +50,9 @@ export class CreateFamilyDto {
 
   @OptionalText(255)
   applicationId?: string | null;
+
+  @OptionalBoolean({ description: "Show the head's photo in the home page carousel and the family's birthday wishes" })
+  showOnHome?: boolean | null;
 }
 
 export class UpdateFamilyDto extends PartialType(CreateFamilyDto) {}

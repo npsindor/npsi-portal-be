@@ -33,7 +33,9 @@ export const SITE_PAGES = [
 export const HOME_SECTIONS = [
   "counters",
   "services",
+  "familyHeads",
   "getStarted",
+  "birthdays",
   "participation",
   "updates",
   "pillars",

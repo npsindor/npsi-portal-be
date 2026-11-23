@@ -59,6 +59,7 @@ const toCreateData = (input: CreateFamilyDto): Omit<Prisma.FamilyUncheckedCreate
   email: input.email,
   registrationDate: parseDate(input.registrationDate),
   applicationId: input.applicationId,
+  showOnHome: input.showOnHome ?? undefined,
 });
 
 const toUpdateData = (input: UpdateFamilyDto): Prisma.FamilyUncheckedUpdateInput => ({
@@ -77,4 +78,5 @@ const toUpdateData = (input: UpdateFamilyDto): Prisma.FamilyUncheckedUpdateInput
   email: input.email,
   registrationDate: parseDate(input.registrationDate),
   applicationId: input.applicationId,
+  showOnHome: input.showOnHome ?? undefined,
 });
