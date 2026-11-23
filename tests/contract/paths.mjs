@@ -55,6 +55,8 @@ const v1 = {
   bloodAdminRequests: (query = "") => ["GET", `/api/v1/blood-help/admin/requests${query}`],
   bloodAdminStatus: (id) => ["PATCH", `/api/v1/blood-help/admin/requests/${id}/status`],
   reviewRegistrationPayment: (id) => ["POST", `/api/v1/registration-payments/${id}/review`],
+  editRegistrationPayment: (id) => ["PATCH", `/api/v1/registration-payments/${id}`],
+  deleteRegistrationPayment: (id) => ["DELETE", `/api/v1/registration-payments/${id}`],
   myFeedback: () => ["GET", "/api/v1/me/feedback"],
   myEventRegistrations: () => ["GET", "/api/v1/me/event-registrations"],
   myTransferRequests: () => ["GET", "/api/v1/me/transfer-requests"],

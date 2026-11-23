@@ -1135,6 +1135,67 @@ describe("notifications module", () => {
   });
 });
 
+describe("registration payments: super admin edit and delete", () => {
+  const setup = async (appId, status) => {
+    await query(
+      "INSERT INTO applications (id, application_id, family_head_name, family_name, mobile, status) VALUES (?, ?, 'Pay Edit', 'Edit', '9000000099', ?)",
+      [`app-${appId}`, appId, status],
+    );
+    await query(
+      "INSERT INTO transactions (id, transaction_id, type, amount, payment_method, payment_status, reference_id, utr) VALUES (?, ?, 'Family Registration', 500, 'UPI', 'SUBMITTED', ?, '111')",
+      [`txn-${appId}`, `TXN-${appId}`, appId],
+    );
+    return `txn-${appId}`;
+  };
+  const cleanup = (appId) =>
+    query("DELETE FROM transactions WHERE reference_id = ?", [appId]).then(() => query("DELETE FROM applications WHERE application_id = ?", [appId]));
+  test("edit: amount, UTR and remarks only; the status never changes here; members and staff can't", async () => {
+    const id = await setup("PAYEDIT-1", "PENDING_VERIFICATION");
+    try {
+      assertError(await api("editRegistrationPayment", [id], { token: TOKENS.member }).send({ amount: 1 }), 403, "Admin access required.");
+      assertError(await api("editRegistrationPayment", [id], { token: TOKENS.admin }).send({ amount: 0 }), 400, "Amount must be at least ₹1.");
+      const edited = await api("editRegistrationPayment", [id], { token: TOKENS.admin }).send({
+        amount: 100,
+        utr: " 412345678901 ",
+        adminRemarks: "Student fee, not family",
+        paymentStatus: "VERIFIED",
+      });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.deepEqual(
+        [edited.body.amount, edited.body.utr, edited.body.adminRemarks, edited.body.paymentStatus],
+        [100, "412345678901", "Student fee, not family", "SUBMITTED"],
+      );
+      assertError(await api("editRegistrationPayment", ["missing"], { token: TOKENS.admin }).send({ amount: 5 }), 404, "Registration payment not found.");
+    } finally {
+      await cleanup("PAYEDIT-1");
+    }
+  });
+  test("delete: refused while the application awaits a decision; once decided it's deleted and audited", async () => {
+    const pending = await setup("PAYDEL-1", "PENDING_VERIFICATION");
+    const decided = await setup("PAYDEL-2", "REJECTED");
+    try {
+      assertError(await api("deleteRegistrationPayment", [decided], { token: TOKENS.member }), 403, "Admin access required.");
+      assertError(
+        await api("deleteRegistrationPayment", [pending], { token: TOKENS.admin }),
+        409,
+        "This application is still waiting for a decision. Reject the payment (or decide the application) instead of deleting it.",
+      );
+      assert.equal((await api("deleteRegistrationPayment", [decided], { token: TOKENS.admin })).status, 204);
+      const [{ n }] = await query("SELECT COUNT(*) AS n FROM transactions WHERE id = ?", [decided]);
+      assert.equal(Number(n), 0);
+      const [entry] = (await api("auditLogs", [`?q=${decided}`], { token: TOKENS.admin })).body.rows;
+      assert.deepEqual(
+        [entry.resource, entry.label, entry.snapshot.referenceId, entry.snapshot.amount],
+        ["registration-payments", "TXN-PAYDEL-2", "PAYDEL-2", "500"],
+      );
+      assertError(await api("deleteRegistrationPayment", ["missing"], { token: TOKENS.admin }), 404, "Registration payment not found.");
+    } finally {
+      await cleanup("PAYDEL-1");
+      await cleanup("PAYDEL-2");
+    }
+  });
+});
+
 describe("audit log: every deletion is recorded; only the super admin reads it", () => {
   test("a member deleting their family member is logged with who, what and a copy of the record", async () => {
     const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({

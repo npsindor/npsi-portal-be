@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
-import { IsIn, IsNumber, IsOptional, Matches, Min } from "class-validator";
+import { IsIn, IsNumber, IsOptional, Matches, Max, Min } from "class-validator";
 import { ListQueryDto } from "../../common/dto/list-query.dto.js";
 import { OptionalChoice, OptionalText, RequiredChoice, RequiredText } from "../../common/validation/fields.js";
 import { MARITAL_STATUSES } from "../../family-members/dto/family-members.dto.js";
@@ -86,4 +86,20 @@ export class RegistrationPaymentsQueryDto extends ListQueryDto {
   @IsOptional()
   @IsIn(["PENDING", "SUBMITTED", "VERIFIED", "REJECTED", "REFUND_REQUESTED", "REFUND_PROCESSING", "REFUNDED", "REFUND_REJECTED"])
   status?: string;
+}
+
+// Super admin: correct a registration payment's amount, UTR or remarks. The status only changes through the review.
+export class PaymentEditDto {
+  @ApiPropertyOptional({ minimum: 1, maximum: 100000, example: 500 })
+  @IsOptional()
+  @IsNumber({}, { message: "Amount must be a number." })
+  @Min(1, { message: "Amount must be at least ₹1." })
+  @Max(100000, { message: "Amount must be at most ₹1,00,000." })
+  amount?: number;
+
+  @OptionalText(40, { description: "UPI transaction reference (UTR)" })
+  utr?: string | null;
+
+  @OptionalText(1000, { description: "Admin remarks" })
+  adminRemarks?: string | null;
 }

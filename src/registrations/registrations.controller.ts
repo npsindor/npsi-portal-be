@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   type MiddlewareConsumer,
   Module,
   type NestModule,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -24,6 +26,7 @@ import {
   ApiConsumes,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiNoContentResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -37,7 +40,7 @@ import { AdminAreaGuard, AdminAreaRoute, CurrentAdminScope } from "../common/adm
 import { type AdminScope } from "../common/admin-access/admin-scope.js";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
-import { UserGuard } from "../common/guards/auth.guards.js";
+import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import { uploadDailyLimiter, uploadLimiter } from "../common/rate-limit/limiters.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { LookupsModule } from "../lookups/lookups.module.js";
@@ -45,7 +48,7 @@ import { NotificationsModule } from "../notifications/notifications.module.js";
 import { StudentApplicationsModule } from "../student-applications/student-applications.module.js";
 import { TransactionsModule } from "../transactions/transactions.module.js";
 import { TransactionVo } from "../transactions/vo/transactions.vo.js";
-import { PaymentReviewDto, RegistrationDto, RegistrationPaymentsQueryDto } from "./dto/registrations.dto.js";
+import { PaymentEditDto, PaymentReviewDto, RegistrationDto, RegistrationPaymentsQueryDto } from "./dto/registrations.dto.js";
 import { MAX_SCREENSHOT_BYTES, PaymentFilesService } from "./payment-files.service.js";
 import { RegistrationsService } from "./registrations.service.js";
 
@@ -127,6 +130,34 @@ export class RegistrationsController {
   @ApiForbiddenResponse({ type: ErrorVo })
   review(@Param("id") id: string, @Body() dto: PaymentReviewDto, @CurrentUser() user: UserRow, @CurrentAdminScope() scope: AdminScope) {
     return this.service.reviewPayment(id, dto, user, scope);
+  }
+
+  @Patch("registration-payments/:id")
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Super admin: correct a registration payment's amount, UTR or remarks (the status changes only through the review)" })
+  @ApiOkResponse({ type: TransactionVo })
+  @ApiBadRequestResponse({ type: ErrorVo })
+  @ApiNotFoundResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  editPayment(@Param("id") id: string, @Body() dto: PaymentEditDto) {
+    return this.service.editPayment(id, dto);
+  }
+
+  @Delete("registration-payments/:id")
+  @HttpCode(204)
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: "Super admin: delete a registration payment (recorded in the audit log)",
+    description: "Refused while its application still awaits a decision: deleting the fee would let it be approved without payment.",
+  })
+  @ApiNoContentResponse({ description: "Deleted" })
+  @ApiNotFoundResponse({ type: ErrorVo })
+  @ApiConflictResponse({ type: ErrorVo, description: "The application still awaits a decision" })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  async deletePayment(@Param("id") id: string): Promise<void> {
+    await this.service.deletePayment(id);
   }
 
   @Get("registration-payments/:id/screenshot")
