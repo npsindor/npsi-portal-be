@@ -48,7 +48,7 @@ export class BloodHelpController {
   @UseGuards(UserGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: "Register as a blood donor (or update blood group, last donation date and availability)" })
-  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid blood group / date, or BLOOD_DONOR_MOBILE (no mobile on the account)" })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Missing name / mobile / city, invalid mobile, blood group or date" })
   @ApiForbiddenResponse({ type: ErrorVo })
   saveDonor(@CurrentUser() user: UserRow, @Body() dto: DonorDto) {
     return this.service.saveDonor(user, dto);

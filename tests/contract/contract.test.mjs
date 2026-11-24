@@ -1295,24 +1295,34 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assertError(await api("bloodProfile", [], { token: TOKENS.noFamily }), 403, "BLOOD_MEMBERS_ONLY");
     assertError(await api("bloodCreate", [], { token: TOKENS.noFamily }).send(request), 403, "BLOOD_MEMBERS_ONLY");
   });
-  test("become a donor: details come from the account; only blood group and last donation date are entered", async () => {
+  test("become a donor: name, mobile and city start from the account, can be edited, and are saved with the donor", async () => {
     const profile = await api("bloodProfile", [], { token: TOKENS.other });
     assert.equal(profile.status, 200, JSON.stringify(profile.body));
     assert.deepEqual([profile.body.mobile, profile.body.donor, profile.body.gapDays], ["9100000003", null, 90]);
-    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "Z+" }), 400, /bloodGroup must be one of/);
+    const contact = { name: "  Ravi   Donor ", mobile: "+91 98260 55555", city: "Vijay Nagar, Indore" };
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, name: "", bloodGroup: "O-" }), 400, "Name is required.");
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, city: " ", bloodGroup: "O-" }), 400, "City / Address is required.");
     assertError(
-      await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2999-01-01" }),
+      await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, mobile: "12345", bloodGroup: "O-" }),
+      400,
+      "Enter a valid 10-digit mobile number.",
+    );
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "Z+" }), 400, /bloodGroup must be one of/);
+    assertError(
+      await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2999-01-01" }),
       400,
       "Last donation date can't be in the future.",
     );
-    const donor = await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2024-04-15" });
+    const donor = await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2024-04-15" });
     assert.equal(donor.status, 200, JSON.stringify(donor.body));
     assert.deepEqual(
       [donor.body.bloodGroup, donor.body.lastDonationDate, donor.body.nextEligibleDate, donor.body.available],
       ["O-", "2024-04-15", "2024-07-14", true],
     );
     state.donorId = donor.body.id;
-    const again = await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2024-04-15" });
+    const saved = (await api("bloodProfile", [], { token: TOKENS.other })).body;
+    assert.deepEqual([saved.name, saved.mobile, saved.city], ["Ravi Donor", "9826055555", "Vijay Nagar, Indore"], "the form shows what was saved");
+    const again = await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2024-04-15" });
     assert.equal(again.body.id, state.donorId, "one donor row per member, updated in place");
   });
   test("request blood: validation, then the request with matching donors (WhatsApp, no number listed)", async () => {
@@ -1329,7 +1339,8 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assert.deepEqual([res.body.request.status, res.body.request.mine, res.body.request.contactPhone], ["IN_PROGRESS", true, "9826012345"]);
     const [suggested] = res.body.suggestions;
     assert.deepEqual([suggested.donorId, suggested.bloodGroup, suggested.lastDonationDate], [state.donorId, "O-", "2024-04-15"]);
-    assert.match(suggested.whatsapp, /^https:\/\/wa\.me\/919100000003\?text=/);
+    assert.match(suggested.whatsapp, /^https:\/\/wa\.me\/919826055555\?text=/, "the mobile the donor gave");
+    assert.equal(suggested.name, "Ravi Donor");
     assert.ok(!("mobile" in suggested) && !("phone" in suggested));
     state.requestId = res.body.request.id;
     const own = await api("bloodSuggestions", [state.requestId], { token: TOKENS.other });

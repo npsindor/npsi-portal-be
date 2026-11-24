@@ -9,6 +9,15 @@ const blankToUndefined = ({ value }: { value: unknown }) =>
   typeof value === "string" && !value.trim() ? undefined : typeof value === "string" ? value.trim() : value;
 
 export class DonorDto {
+  @RequiredText("Name is required.", 150)
+  name!: string;
+
+  @RequiredText("Mobile number is required.", 20)
+  mobile!: string;
+
+  @RequiredText("City / Address is required.", 150)
+  city!: string;
+
   @RequiredChoice(BLOOD_GROUPS, "Blood group is required.")
   bloodGroup!: string;
 

@@ -7904,7 +7904,7 @@
         },
         "responses": {
           "400": {
-            "description": "Invalid blood group / date, or BLOOD_DONOR_MOBILE (no mobile on the account)",
+            "description": "Missing name / mobile / city, invalid mobile, blood group or date",
             "content": {
               "application/json": {
                 "schema": {
@@ -19214,6 +19214,15 @@
       "DonorDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string"
+          },
+          "mobile": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
           "bloodGroup": {
             "type": "string",
             "enum": [
@@ -19239,6 +19248,9 @@
           }
         },
         "required": [
+          "name",
+          "mobile",
+          "city",
           "bloodGroup"
         ]
       },
