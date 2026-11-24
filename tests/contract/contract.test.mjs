@@ -1235,6 +1235,54 @@ describe("email checks ignore case; students are recognised by their login email
   });
 });
 
+describe("a registered member is recognised everywhere (never asked to register again)", () => {
+  const eligible = async () => (await api("roomMine", [], { token: TOKENS.noFamily })).body.eligible;
+  const sehat = async () => (await call("GET", "/api/v1/sehat-saathi/me", { token: TOKENS.noFamily })).status;
+  test("an invited account (made by an admin approval) is a member while signed in, and signing in activates it", async () => {
+    await query("UPDATE users SET status = 'invited' WHERE id = ?", [IDS.noFamilyUser]);
+    const res = await api("login").send({ email: "nofamily@test.local", password: PASSWORDS.member });
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const [row] = await query("SELECT status FROM users WHERE id = ?", [IDS.noFamilyUser]);
+    assert.equal(row.status, "active", "signing in accepts the invitation");
+    await query("UPDATE users SET status = 'invited' WHERE id = ?", [IDS.noFamilyUser]);
+    await query(
+      "INSERT INTO family_members (id, family_id, name, relationship, email, status) VALUES ('inv-m', ?, 'Invited Member', 'Brother', 'nofamily@test.local', 'ACTIVE')",
+      [FAMILY1],
+    );
+    try {
+      assert.equal(await eligible(), true);
+      assert.equal(await sehat(), 200);
+    } finally {
+      await query("DELETE FROM family_members WHERE id = 'inv-m'");
+      await query("UPDATE users SET status = 'active' WHERE id = ?", [IDS.noFamilyUser]);
+    }
+  });
+  test("a family member recorded with a differently-cased email, or only with the verified login mobile, is a member", async () => {
+    assert.equal(await eligible(), false);
+    for (const [email, mobile] of [
+      ["NoFamily@Test.Local", null],
+      [null, "9100000007"],
+    ]) {
+      await query(
+        "INSERT INTO family_members (id, family_id, name, relationship, email, mobile, mobile_digits, status) VALUES ('case-m', ?, 'Case Member', 'Brother', ?, ?, ?, 'ACTIVE')",
+        [FAMILY1, email, mobile, mobile],
+      );
+      try {
+        assert.equal(await eligible(), true, `${email || mobile}`);
+        assert.equal(await sehat(), 200);
+        if (mobile) {
+          await query("UPDATE users SET phone_verified = 0 WHERE id = ?", [IDS.noFamilyUser]);
+          assert.equal(await eligible(), false, "an unconfirmed mobile proves nothing");
+        }
+      } finally {
+        await query("UPDATE users SET phone_verified = 1 WHERE id = ?", [IDS.noFamilyUser]);
+        await query("DELETE FROM family_members WHERE id = 'case-m'");
+      }
+    }
+    await query("UPDATE families SET member_count = (SELECT COUNT(*) FROM family_members WHERE family_id = ?) WHERE family_id = ?", [FAMILY1, FAMILY1]);
+  });
+});
+
 describe("audit log: every deletion is recorded; only the super admin reads it", () => {
   test("a member deleting their family member is logged with who, what and a copy of the record", async () => {
     const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({

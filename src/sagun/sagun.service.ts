@@ -1,6 +1,7 @@
 import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { Injectable } from "@nestjs/common";
+import { communityAccount } from "../common/eligibility/community-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
@@ -67,17 +68,10 @@ export class SagunService {
   private admin(user: UserRow) {
     if (user.role !== "admin" || user.status !== "active" || !user.isVerified) throw new ApiError(403, "SAGUN_ADMIN_REQUIRED");
   }
+  // Members of a registered family (found the same way as for every other member service) and administrators.
   private async member(user: UserRow) {
-    if (user.status !== "active" || !user.isVerified) throw new ApiError(403, "SAGUN_MEMBER_REQUIRED");
-    if (user.role === "admin") return;
-    if (await this.db.family.findFirst({ where: { ownerUserId: user.id, status: "ACTIVE" }, select: { id: true } })) return;
-    if (!user.email) throw new ApiError(403, "SAGUN_MEMBER_REQUIRED");
-    const head = await this.db.family.findFirst({ where: { email: user.email, status: "ACTIVE" }, select: { id: true } });
-    const member = await this.db.familyMember.findFirst({
-      where: { email: user.email, status: { in: ["ACTIVE", "Active", "APPROVED"] }, family: { status: "ACTIVE" } },
-      select: { id: true },
-    });
-    if (!head && !member) throw new ApiError(403, "SAGUN_MEMBER_REQUIRED");
+    const account = await communityAccount(this.db, user);
+    if (!account || account.kind === "STUDENT") throw new ApiError(403, "SAGUN_MEMBER_REQUIRED");
   }
   private async tx<T>(work: (tx: Db) => Promise<T>): Promise<T> {
     for (let n = 0; ; n++) {

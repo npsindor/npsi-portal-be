@@ -102,8 +102,15 @@ export class UsersRepository {
   async verifyAndStartSession(userId: string, tokenHash: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.user.update({ where: { id: userId }, data: { isVerified: true, otpHash: null, otpExpiresAt: null } }),
+      this.activateInvited(userId),
       this.prisma.session.create({ data: { id: tokenHash, userId, expiresAt: fromNow(await this.ttlOf(userId)), lastSeenAt: new Date() } }),
     ]);
+  }
+
+  // An invited account (made when an administrator approved a registration) has accepted its invitation once its owner
+  // signs in; from then on it is an ordinary active account for every member service.
+  private activateInvited(userId: string) {
+    return this.prisma.user.updateMany({ where: { id: userId, status: "invited" }, data: { status: "active" } });
   }
 
   private async ttlOf(userId: string): Promise<number> {
@@ -115,6 +122,7 @@ export class UsersRepository {
   async startSession(userId: string, tokenHash: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.session.deleteMany({ where: { userId, expiresAt: { lte: new Date() } } }),
+      this.activateInvited(userId),
       this.prisma.session.create({ data: { id: tokenHash, userId, expiresAt: fromNow(await this.ttlOf(userId)), lastSeenAt: new Date() } }),
     ]);
   }
