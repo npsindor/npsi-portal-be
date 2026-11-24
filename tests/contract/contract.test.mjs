@@ -1218,14 +1218,17 @@ describe("email checks ignore case; students are recognised by their login email
     assert.deepEqual([other.body.email, other.body.status], ["nofamily@test.local", "PENDING"], "stored lower-case; someone else's login waits for an admin");
     assert.equal((await api("remove", ["FamilyMember", other.body.id], { token: TOKENS.member })).status, 204);
   });
-  test("an active student whose record has no user id is a registered member through their login email (room hunting)", async () => {
+  test("an active student whose record has no user id is a registered member through their login email (room hunting, Sehat Saathi)", async () => {
     assert.equal((await api("roomMine", [], { token: TOKENS.noFamily })).body.eligible, false);
+    assert.equal((await call("GET", "/api/v1/sehat-saathi/me", { token: TOKENS.noFamily })).status, 403);
     await query(
       "INSERT INTO students (id, student_id, student_name, mobile, email, status, user_id) VALUES ('st-case', 'NPSI-STU-CASE-1', 'Email Student', '9100000077', 'nofamily@test.local', 'ACTIVE', NULL)",
     );
     try {
       const mine = await api("roomMine", [], { token: TOKENS.noFamily });
       assert.deepEqual([mine.status, mine.body.eligible, mine.body.accountKind], [200, true, "STUDENT"]);
+      const sehat = await call("GET", "/api/v1/sehat-saathi/me", { token: TOKENS.noFamily });
+      assert.equal(sehat.status, 200, `a registered student also uses Sehat Saathi: ${JSON.stringify(sehat.body)}`);
     } finally {
       await query("DELETE FROM students WHERE id = 'st-case'");
     }
@@ -1273,11 +1276,19 @@ describe("audit log: every deletion is recorded; only the super admin reads it",
   });
 });
 
-describe("home page: family heads carousel and today's birthdays (admin-chosen families only)", () => {
-  test("nothing is shown until an admin switches a family on; members can't switch it", async () => {
-    assert.deepEqual((await api("homeFamilyHeads")).body, []);
-    const denied = await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ showOnHome: true });
+describe("home page: family heads carousel and today's birthdays (registered families, unless an admin hides one)", () => {
+  const shownCount = async () => Number((await query("SELECT COUNT(*) AS n FROM families WHERE status = 'ACTIVE' AND show_on_home = 1"))[0].n);
+  test("every registered family is shown by default; an admin hides or shows it, members can't", async () => {
+    const heads = await api("homeFamilyHeads");
+    assert.equal(heads.status, 200);
+    assert.ok(heads.body.length >= 1, "a registered family is on the home page without any admin step");
+    assert.equal(heads.body.length, await shownCount());
+    const denied = await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ showOnHome: false });
     assert.equal(denied.status, 403);
+    const off = await api("update", ["Family", IDS.family1], { token: TOKENS.admin }).send({ showOnHome: false });
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.showOnHome, false);
+    assert.equal((await api("homeFamilyHeads")).body.length, heads.body.length - 1);
     const on = await api("update", ["Family", IDS.family1], { token: TOKENS.admin }).send({ showOnHome: true });
     assert.equal(on.status, 200, JSON.stringify(on.body));
     assert.equal(on.body.showOnHome, true);
@@ -1293,19 +1304,20 @@ describe("home page: family heads carousel and today's birthdays (admin-chosen f
     try {
       const heads = await api("homeFamilyHeads");
       assert.equal(heads.status, 200);
-      assert.equal(heads.body.length, 1);
+      assert.equal(heads.body.length, await shownCount());
       assert.deepEqual(Object.keys(heads.body[0]).sort(), ["id", "name", "photoUrl", "place"]);
       const birthdays = (await api("homeBirthdays")).body;
       assert.deepEqual(
-        birthdays.map((b) => b.name),
+        birthdays.map((b) => b.name).filter((name) => name.startsWith("Birthday")),
         ["Birthday Adult"],
         "a child's birthday is never published",
       );
       assert.deepEqual(Object.keys(birthdays[0]).sort(), ["id", "name", "photoUrl", "place"]);
       await api("update", ["Family", IDS.family1], { token: TOKENS.admin }).send({ showOnHome: false });
-      assert.deepEqual((await api("homeBirthdays")).body, []);
-      assert.deepEqual((await api("homeFamilyHeads")).body, []);
+      assert.ok(!(await api("homeBirthdays")).body.some((b) => b.name === "Birthday Adult"), "a hidden family's birthdays are not shown");
+      assert.equal((await api("homeFamilyHeads")).body.length, heads.body.length - 1);
     } finally {
+      await api("update", ["Family", IDS.family1], { token: TOKENS.admin }).send({ showOnHome: true });
       await query("DELETE FROM family_members WHERE id IN ('bd-adult', 'bd-child')");
       await query("UPDATE families SET member_count = (SELECT COUNT(*) FROM family_members WHERE family_id = ?) WHERE family_id = ?", [FAMILY1, FAMILY1]);
     }
