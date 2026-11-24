@@ -64,8 +64,14 @@ export const whatsappLink = (mobile: string | null, text: string): string | null
 export interface HistoryEntry {
   at: string;
   status: RequestStatus;
-  source: "REQUESTER" | "ADMIN" | "CREATED";
+  source: "REQUESTER" | "ADMIN" | "CREATED" | "NOTIFIED";
   byId: string;
   note?: string;
+  // NOTIFIED: the donors this request was sent to (each donor is sent a request once).
+  donorIds?: string[];
 }
+// A member may have this many requests in progress at once; it also limits collecting donor contacts with requests.
+export const MAX_OPEN_REQUESTS = 3;
+export const notifiedDonors = (history: unknown): Set<string> =>
+  new Set(historyOf(history).flatMap((entry) => (entry.source === "NOTIFIED" ? (entry.donorIds ?? []) : [])));
 export const historyOf = (value: unknown): HistoryEntry[] => (Array.isArray(value) ? (value as HistoryEntry[]) : []);

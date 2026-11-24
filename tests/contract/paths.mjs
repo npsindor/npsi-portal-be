@@ -40,6 +40,7 @@ const v1 = {
   submitRegistration: () => ["POST", "/api/v1/me/registrations"],
   registrationPayments: (query = "") => ["GET", `/api/v1/registration-payments${query}`],
   auditLogs: (query = "") => ["GET", `/api/v1/audit-logs${query}`],
+  roomMine: () => ["GET", "/api/v1/room-hunting/me"],
   homeFamilyHeads: () => ["GET", "/api/v1/home-members/family-heads"],
   homeBirthdays: () => ["GET", "/api/v1/home-members/birthdays"],
   bloodSummary: () => ["GET", "/api/v1/blood-help/summary"],

@@ -24,7 +24,9 @@ export const withContactFields = <T extends object>(data: T, mobileField: string
   const out = { ...data } as Record<string, unknown>;
   const mobile = out[mobileField];
   if (mobile === null || typeof mobile === "string") out[digitsField] = mobileDigits(mobile);
-  if (typeof out.email === "string") out.email = out.email.trim();
+  // Emails are stored lower-case: the database compares them byte for byte (utf8mb4_bin on the hosted server), so
+  // "A@X.COM" and "a@x.com" must be one address for every duplicate and account check.
+  if (typeof out.email === "string") out.email = out.email.trim().toLowerCase();
   for (const field of NAME_FIELDS) {
     const value = out[field];
     if (typeof value === "string") out[field] = normalizeName(value);
