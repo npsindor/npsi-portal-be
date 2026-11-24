@@ -1518,6 +1518,11 @@ model BloodDonor {
   bloodGroup       String    @map("blood_group") @db.VarChar(3)
   lastDonationDate DateTime? @map("last_donation_date") @db.Date
   available        Boolean   @default(true)
+  /// The donor's own name, mobile and city from the Become a Donor form (pre-filled from the profile, editable).
+  /// Null for donors registered before the form asked: their account's name and mobile are used.
+  name             String?   @db.VarChar(150)
+  mobile           String?   @db.VarChar(10)
+  city             String?   @db.VarChar(150)
   createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(0)
   updatedAt        DateTime  @default(now()) @updatedAt @map("updated_at") @db.DateTime(0)
 

@@ -1135,6 +1135,103 @@ describe("notifications module", () => {
   });
 });
 
+describe("registration payments: super admin edit and delete", () => {
+  const setup = async (appId, status) => {
+    await query(
+      "INSERT INTO applications (id, application_id, family_head_name, family_name, mobile, status) VALUES (?, ?, 'Pay Edit', 'Edit', '9000000099', ?)",
+      [`app-${appId}`, appId, status],
+    );
+    await query(
+      "INSERT INTO transactions (id, transaction_id, type, amount, payment_method, payment_status, reference_id, utr) VALUES (?, ?, 'Family Registration', 500, 'UPI', 'SUBMITTED', ?, '111')",
+      [`txn-${appId}`, `TXN-${appId}`, appId],
+    );
+    return `txn-${appId}`;
+  };
+  const cleanup = (appId) =>
+    query("DELETE FROM transactions WHERE reference_id = ?", [appId]).then(() => query("DELETE FROM applications WHERE application_id = ?", [appId]));
+  test("edit: amount, UTR and remarks only; the status never changes here; members and staff can't", async () => {
+    const id = await setup("PAYEDIT-1", "PENDING_VERIFICATION");
+    try {
+      assertError(await api("editRegistrationPayment", [id], { token: TOKENS.member }).send({ amount: 1 }), 403, "Admin access required.");
+      assertError(await api("editRegistrationPayment", [id], { token: TOKENS.admin }).send({ amount: 0 }), 400, "Amount must be at least ₹1.");
+      const edited = await api("editRegistrationPayment", [id], { token: TOKENS.admin }).send({
+        amount: 100,
+        utr: " 412345678901 ",
+        adminRemarks: "Student fee, not family",
+        paymentStatus: "VERIFIED",
+      });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.deepEqual(
+        [edited.body.amount, edited.body.utr, edited.body.adminRemarks, edited.body.paymentStatus],
+        [100, "412345678901", "Student fee, not family", "SUBMITTED"],
+      );
+      assertError(await api("editRegistrationPayment", ["missing"], { token: TOKENS.admin }).send({ amount: 5 }), 404, "Registration payment not found.");
+    } finally {
+      await cleanup("PAYEDIT-1");
+    }
+  });
+  test("delete: refused while the application awaits a decision; once decided it's deleted and audited", async () => {
+    const pending = await setup("PAYDEL-1", "PENDING_VERIFICATION");
+    const decided = await setup("PAYDEL-2", "REJECTED");
+    try {
+      assertError(await api("deleteRegistrationPayment", [decided], { token: TOKENS.member }), 403, "Admin access required.");
+      assertError(
+        await api("deleteRegistrationPayment", [pending], { token: TOKENS.admin }),
+        409,
+        "This application is still waiting for a decision. Reject the payment (or decide the application) instead of deleting it.",
+      );
+      assert.equal((await api("deleteRegistrationPayment", [decided], { token: TOKENS.admin })).status, 204);
+      const [{ n }] = await query("SELECT COUNT(*) AS n FROM transactions WHERE id = ?", [decided]);
+      assert.equal(Number(n), 0);
+      const [entry] = (await api("auditLogs", [`?q=${decided}`], { token: TOKENS.admin })).body.rows;
+      assert.deepEqual(
+        [entry.resource, entry.label, entry.snapshot.referenceId, entry.snapshot.amount],
+        ["registration-payments", "TXN-PAYDEL-2", "PAYDEL-2", "500"],
+      );
+      assertError(await api("deleteRegistrationPayment", ["missing"], { token: TOKENS.admin }), 404, "Registration payment not found.");
+    } finally {
+      await cleanup("PAYDEL-1");
+      await cleanup("PAYDEL-2");
+    }
+  });
+});
+
+describe("email checks ignore case; students are recognised by their login email", () => {
+  test("an upper-case copy of an admin's or another login's email can't get past the family-member checks", async () => {
+    assertError(
+      await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+        familyId: FAMILY1,
+        name: "Case Admin",
+        relationship: "Brother",
+        email: "ADMIN@TEST.LOCAL",
+      }),
+      409,
+      "This email belongs to an administrator account and can't be added as a family member.",
+    );
+    const other = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Case Login",
+      relationship: "Brother",
+      email: " NoFamily@Test.Local ",
+    });
+    assert.equal(other.status, 201, JSON.stringify(other.body));
+    assert.deepEqual([other.body.email, other.body.status], ["nofamily@test.local", "PENDING"], "stored lower-case; someone else's login waits for an admin");
+    assert.equal((await api("remove", ["FamilyMember", other.body.id], { token: TOKENS.member })).status, 204);
+  });
+  test("an active student whose record has no user id is a registered member through their login email (room hunting)", async () => {
+    assert.equal((await api("roomMine", [], { token: TOKENS.noFamily })).body.eligible, false);
+    await query(
+      "INSERT INTO students (id, student_id, student_name, mobile, email, status, user_id) VALUES ('st-case', 'NPSI-STU-CASE-1', 'Email Student', '9100000077', 'nofamily@test.local', 'ACTIVE', NULL)",
+    );
+    try {
+      const mine = await api("roomMine", [], { token: TOKENS.noFamily });
+      assert.deepEqual([mine.status, mine.body.eligible, mine.body.accountKind], [200, true, "STUDENT"]);
+    } finally {
+      await query("DELETE FROM students WHERE id = 'st-case'");
+    }
+  });
+});
+
 describe("audit log: every deletion is recorded; only the super admin reads it", () => {
   test("a member deleting their family member is logged with who, what and a copy of the record", async () => {
     const added = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
@@ -1234,24 +1331,34 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assertError(await api("bloodProfile", [], { token: TOKENS.noFamily }), 403, "BLOOD_MEMBERS_ONLY");
     assertError(await api("bloodCreate", [], { token: TOKENS.noFamily }).send(request), 403, "BLOOD_MEMBERS_ONLY");
   });
-  test("become a donor: details come from the account; only blood group and last donation date are entered", async () => {
+  test("become a donor: name, mobile and city start from the account, can be edited, and are saved with the donor", async () => {
     const profile = await api("bloodProfile", [], { token: TOKENS.other });
     assert.equal(profile.status, 200, JSON.stringify(profile.body));
     assert.deepEqual([profile.body.mobile, profile.body.donor, profile.body.gapDays], ["9100000003", null, 90]);
-    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "Z+" }), 400, /bloodGroup must be one of/);
+    const contact = { name: "  Ravi   Donor ", mobile: "+91 98260 55555", city: "Vijay Nagar, Indore" };
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, name: "", bloodGroup: "O-" }), 400, "Name is required.");
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, city: " ", bloodGroup: "O-" }), 400, "City / Address is required.");
     assertError(
-      await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2999-01-01" }),
+      await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, mobile: "12345", bloodGroup: "O-" }),
+      400,
+      "Enter a valid 10-digit mobile number.",
+    );
+    assertError(await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "Z+" }), 400, /bloodGroup must be one of/);
+    assertError(
+      await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2999-01-01" }),
       400,
       "Last donation date can't be in the future.",
     );
-    const donor = await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2024-04-15" });
+    const donor = await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2024-04-15" });
     assert.equal(donor.status, 200, JSON.stringify(donor.body));
     assert.deepEqual(
       [donor.body.bloodGroup, donor.body.lastDonationDate, donor.body.nextEligibleDate, donor.body.available],
       ["O-", "2024-04-15", "2024-07-14", true],
     );
     state.donorId = donor.body.id;
-    const again = await api("bloodDonor", [], { token: TOKENS.other }).send({ bloodGroup: "O-", lastDonationDate: "2024-04-15" });
+    const saved = (await api("bloodProfile", [], { token: TOKENS.other })).body;
+    assert.deepEqual([saved.name, saved.mobile, saved.city], ["Ravi Donor", "9826055555", "Vijay Nagar, Indore"], "the form shows what was saved");
+    const again = await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2024-04-15" });
     assert.equal(again.body.id, state.donorId, "one donor row per member, updated in place");
   });
   test("request blood: validation, then the request with matching donors (WhatsApp, no number listed)", async () => {
@@ -1268,7 +1375,8 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assert.deepEqual([res.body.request.status, res.body.request.mine, res.body.request.contactPhone], ["IN_PROGRESS", true, "9826012345"]);
     const [suggested] = res.body.suggestions;
     assert.deepEqual([suggested.donorId, suggested.bloodGroup, suggested.lastDonationDate], [state.donorId, "O-", "2024-04-15"]);
-    assert.match(suggested.whatsapp, /^https:\/\/wa\.me\/919100000003\?text=/);
+    assert.match(suggested.whatsapp, /^https:\/\/wa\.me\/919826055555\?text=/, "the mobile the donor gave");
+    assert.equal(suggested.name, "Ravi Donor");
     assert.ok(!("mobile" in suggested) && !("phone" in suggested));
     state.requestId = res.body.request.id;
     const own = await api("bloodSuggestions", [state.requestId], { token: TOKENS.other });
@@ -1281,7 +1389,14 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
       "Select at least one suggested donor.",
     );
     const sent = await api("bloodNotify", [state.requestId], { token: TOKENS.member }).send({ donorIds: [state.donorId, state.donorId] });
-    assert.deepEqual([sent.status, sent.body], [200, { sent: 1 }]);
+    assert.deepEqual([sent.status, sent.body], [200, { sent: 1, skipped: 0 }]);
+    assertError(
+      await api("bloodNotify", [state.requestId], { token: TOKENS.member }).send({ donorIds: [state.donorId] }),
+      409,
+      "This request was already sent to the selected donors.",
+    );
+    const [{ n }] = await query("SELECT COUNT(*) AS n FROM notifications WHERE recipient_user_id = ? AND title = 'Blood needed: B+'", [IDS.otherUser]);
+    assert.equal(Number(n), 1, "a donor is sent a request once");
     const [note] = await query("SELECT title, message FROM notifications WHERE recipient_user_id = ? AND title = 'Blood needed: B+'", [IDS.otherUser]);
     assert.match(note.message, /Suresh Patidar needs 2 unit\(s\) of B\+ blood at Aurobindo Hospital, Indore/);
   });
@@ -1292,7 +1407,7 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     const community = await api("bloodRequests", ["?scope=community&bloodGroup=B%2B&city=Indore&q=aurobindo"], { token: TOKENS.other });
     assert.deepEqual([community.body.total, community.body.counts.community, community.body.cities], [1, 1, ["Indore"]]);
     const row = community.body.rows[0];
-    assert.equal(row.contactPhone, null, "the number itself is only shown to the requester");
+    assert.equal(row.contactPhone, "9826012345", "the contact person's number is shown while blood is needed (same as in the WhatsApp link)");
     assert.match(row.whatsapp, /^https:\/\/wa\.me\/919826012345\?text=/);
     assert.equal((await api("bloodRequests", ["?scope=community&status=COMPLETED"], { token: TOKENS.other })).body.total, 0);
     assert.equal((await api("bloodRequests", ["?scope=community&sort=sideways"], { token: TOKENS.other })).status, 400);
@@ -1322,7 +1437,7 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     const row = list.body.find((r) => r.id === state.requestId);
     assert.deepEqual(
       [row.requester.phone, row.contactPhone, row.history.map((h) => h.source)],
-      ["9100000002", "9826012345", ["CREATED", "REQUESTER", "REQUESTER"]],
+      ["9100000002", "9826012345", ["CREATED", "NOTIFIED", "REQUESTER", "REQUESTER"]],
     );
     assertError(
       await api("bloodAdminStatus", [state.requestId], { token: TOKENS.admin }).send({ status: "DONE" }),
@@ -1338,6 +1453,16 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assert.deepEqual([verified.body.status, verified.body.completionSource, verified.body.history.at(-1).source], ["COMPLETED", "ADMIN", "ADMIN"]);
     const [note] = await query("SELECT title FROM notifications WHERE recipient_user_id = ? AND title = 'Blood request completed'", [IDS.memberUser]);
     assert.ok(note);
+  });
+  test("a member can have at most 3 requests in progress", async () => {
+    const extra = { patientName: "Limit Check", bloodGroup: "A+", units: 1, hospital: "H", city: "Indore", contactName: "C", contactPhone: "9826012345" };
+    for (let i = 0; i < 3; i += 1) assert.equal((await api("bloodCreate", [], { token: TOKENS.member }).send(extra)).status, 201);
+    assertError(
+      await api("bloodCreate", [], { token: TOKENS.member }).send(extra),
+      409,
+      "You already have 3 blood requests in progress. Confirm one as received before adding another.",
+    );
+    await query("DELETE FROM blood_requests WHERE patient_name = 'Limit Check'");
   });
 });
 

@@ -15,14 +15,14 @@ import { assertNoMarkup } from "../common/utils/markup.js";
 import { normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
-import type { Application, StudentApplication, Transaction } from "../generated/prisma/client.js";
+import type { Application, Prisma, StudentApplication, Transaction } from "../generated/prisma/client.js";
 import { AvailabilityService } from "../lookups/availability.service.js";
 import { asLang, type Lang, type NotificationKey, userNotification, workflowNotification } from "../notifications/notification-texts.js";
 import { NotificationsRepository } from "../notifications/notifications.repository.js";
 import { StudentApplicationsRepository } from "../student-applications/student-applications.repository.js";
 import { TransactionsRepository } from "../transactions/transactions.repository.js";
 import { toTransactionVo } from "../transactions/vo/transactions.vo.js";
-import type { PaymentReviewDto, RegistrationDto, RegistrationPaymentsQueryDto } from "./dto/registrations.dto.js";
+import type { PaymentEditDto, PaymentReviewDto, RegistrationDto, RegistrationPaymentsQueryDto } from "./dto/registrations.dto.js";
 import { PaymentFilesService } from "./payment-files.service.js";
 import {
   birthDateError,
@@ -229,6 +229,32 @@ export class RegistrationsService {
             : null,
       };
     });
+  }
+
+  // Super admin corrections: amount, UTR and remarks only (the status changes through reviewPayment).
+  async editPayment(id: string, dto: PaymentEditDto) {
+    const fee = await this.transactions.findById(id);
+    if (!fee || !Object.values(FEE_TYPES).includes(fee.type)) throw new ApiError(404, "Registration payment not found.");
+    assertNoMarkup(dto);
+    const data: Prisma.TransactionUncheckedUpdateInput = {
+      ...(dto.amount !== undefined ? { amount: dto.amount } : {}),
+      ...(dto.utr !== undefined ? { utr: dto.utr?.trim() || null } : {}),
+      ...(dto.adminRemarks !== undefined ? { adminRemarks: dto.adminRemarks?.trim() || null } : {}),
+    };
+    const row = await this.transactions.update(id, data);
+    if (!row) throw new ApiError(404, "Registration payment not found.");
+    return toTransactionVo(row);
+  }
+
+  // Super admin: delete a registration payment (the audit log keeps a copy). Not while its application still awaits a
+  // decision: without the fee record it could be approved without payment. Reject the payment instead.
+  async deletePayment(id: string): Promise<void> {
+    const fee = await this.transactions.findById(id);
+    if (!fee || !Object.values(FEE_TYPES).includes(fee.type)) throw new ApiError(404, "Registration payment not found.");
+    const application = await this.applicationFor(fee.referenceId);
+    if (application && !["APPROVED", "REJECTED"].includes(application.row.status || ""))
+      throw new ApiError(409, "This application is still waiting for a decision. Reject the payment (or decide the application) instead of deleting it.");
+    await this.transactions.delete(id);
   }
 
   async reviewPayment(id: string, dto: PaymentReviewDto, admin: UserRow, scope: AdminScope = SUPER_ADMIN_SCOPE) {

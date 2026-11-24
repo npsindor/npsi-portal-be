@@ -44,7 +44,11 @@ export async function communityAccount(db: Db, user: UserRow | null): Promise<Co
       studentId: null,
       mobiles: mobiles([family?.contactNumber, member?.mobile]),
     };
-  const student = await db.student.findFirst({ where: { userId: user.id, status: "ACTIVE" }, select: { studentId: true, mobile: true } });
+  // A student approved from the public form has no user id on the record; their login is found by its email.
+  const student = await db.student.findFirst({
+    where: { OR: [{ userId: user.id }, ...(user.email ? [{ email: user.email.trim().toLowerCase() }] : [])], status: "ACTIVE" },
+    select: { studentId: true, mobile: true },
+  });
   if (student)
     return {
       kind: user.role === "admin" ? "ADMIN" : "STUDENT",

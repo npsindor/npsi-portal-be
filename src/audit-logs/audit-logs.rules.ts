@@ -9,6 +9,7 @@ export const SNAPSHOT_MODELS: Record<string, { model: string; param: string; key
   "/student-applications/:id": { model: "studentApplication", param: "id" },
   "/applications/:id": { model: "application", param: "id" },
   "/transactions/:id": { model: "transaction", param: "id" },
+  "/registration-payments/:id": { model: "transaction", param: "id" },
   "/events/:id": { model: "event", param: "id" },
   "/event-registrations/:id": { model: "eventRegistration", param: "id" },
   "/announcements/:id": { model: "announcement", param: "id" },

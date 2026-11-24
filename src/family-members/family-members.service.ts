@@ -150,14 +150,15 @@ export class FamilyMembersService {
   // administrator's email.
   // Whether this email already signs in to an account other than the one making the change.
   private async emailIsAnotherLogin(email: string | null | undefined, user: UserRow): Promise<boolean> {
-    const value = email?.trim();
+    const value = email?.trim().toLowerCase();
     if (!value || sameText(value, user.email)) return false;
     return Boolean(await this.prisma.user.findFirst({ where: { email: value, id: { not: user.id } }, select: { id: true } }));
   }
 
   private async assertContactsFree(familyId: string, input: { mobile?: string | null; email?: string | null }, memberId: string | null): Promise<void> {
     const mobile = tenDigits(input.mobile);
-    const email = input.email?.trim() || null;
+    // Lower-cased like the stored values, so an upper-case copy of an address can't slip past these checks.
+    const email = input.email?.trim().toLowerCase() || null;
     if (email && (await this.prisma.user.findFirst({ where: { email, role: "admin" }, select: { id: true } }))) throw new ApiError(409, ADMIN_EMAIL_MEMBER);
     const contact: Prisma.FamilyMemberWhereInput[] = [...(mobile ? [{ mobileDigits: mobile }] : []), ...(email ? [{ email }] : [])];
     if (!contact.length) return;

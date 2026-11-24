@@ -1195,6 +1195,166 @@
         ]
       }
     },
+    "/api/v1/registration-payments/{id}": {
+      "patch": {
+        "operationId": "RegistrationsController_editPayment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PaymentEditDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransactionVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: correct a registration payment's amount, UTR or remarks (the status changes only through the review)",
+        "tags": [
+          "registrations"
+        ]
+      },
+      "delete": {
+        "description": "Refused while its application still awaits a decision: deleting the fee would let it be approved without payment.",
+        "operationId": "RegistrationsController_deletePayment",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The application still awaits a decision",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Super admin: delete a registration payment (recorded in the audit log)",
+        "tags": [
+          "registrations"
+        ]
+      }
+    },
     "/api/v1/registration-payments/{id}/screenshot": {
       "get": {
         "operationId": "RegistrationsController_screenshot",
@@ -7744,7 +7904,7 @@
         },
         "responses": {
           "400": {
-            "description": "Invalid blood group / date, or BLOOD_DONOR_MOBILE (no mobile on the account)",
+            "description": "Missing name / mobile / city, invalid mobile, blood group or date",
             "content": {
               "application/json": {
                 "schema": {
@@ -14107,6 +14267,27 @@
           "updatedAt"
         ]
       },
+      "PaymentEditDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 100000,
+            "example": 500
+          },
+          "utr": {
+            "type": "string",
+            "nullable": true,
+            "description": "UPI transaction reference (UTR)"
+          },
+          "adminRemarks": {
+            "type": "string",
+            "nullable": true,
+            "description": "Admin remarks"
+          }
+        }
+      },
       "ApplicationVo": {
         "type": "object",
         "properties": {
@@ -19033,6 +19214,15 @@
       "DonorDto": {
         "type": "object",
         "properties": {
+          "name": {
+            "type": "string"
+          },
+          "mobile": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
           "bloodGroup": {
             "type": "string",
             "enum": [
@@ -19058,6 +19248,9 @@
           }
         },
         "required": [
+          "name",
+          "mobile",
+          "city",
           "bloodGroup"
         ]
       },

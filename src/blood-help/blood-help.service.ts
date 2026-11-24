@@ -17,9 +17,11 @@ import {
   donorEligible,
   type HistoryEntry,
   historyOf,
+  MAX_OPEN_REQUESTS,
   mobile10,
   needsConfirmation,
   nextEligibleDate,
+  notifiedDonors,
   type RequestStatus,
   whatsappLink,
 } from "./blood-help.rules.js";
@@ -81,7 +83,7 @@ export class BloodHelpService {
 
   // ---- Donor -----------------------------------------------------------------------------------------------
 
-  // The form's read-only details come from the member's own records; the donor row holds only the donor fields.
+  // The form starts from the donor's saved name / mobile / city, else the member's own records (blank when unknown).
   async profile(viewer: UserRow | null) {
     const { account, user } = await this.member(viewer);
     const family = account.familyId
@@ -93,9 +95,9 @@ export class BloodHelpService {
     const place = family?.city || family?.district || student?.city || null;
     const donor = await this.db.bloodDonor.findUnique({ where: { userId: user.id } });
     return {
-      name: user.fullName || "",
-      mobile: mobile10(user.phone) ?? account.mobiles[0] ?? "",
-      city: place || "",
+      name: donor?.name || user.fullName || "",
+      mobile: donor?.mobile || mobile10(user.phone) || account.mobiles[0] || "",
+      city: donor?.city || place || "",
       donor: donor ? this.donorView(donor) : null,
       gapDays: this.gapDays(),
     };
@@ -103,10 +105,19 @@ export class BloodHelpService {
 
   async saveDonor(viewer: UserRow | null, dto: DonorDto) {
     const { user } = await this.member(viewer);
-    if (!mobile10(user.phone)) throw new ApiError(400, "BLOOD_DONOR_MOBILE");
+    assertNoMarkup(dto);
+    const mobile = mobile10(dto.mobile);
+    if (!mobile) throw new ApiError(400, "Enter a valid 10-digit mobile number.");
     const last = dto.lastDonationDate ? new Date(`${dto.lastDonationDate}T00:00:00Z`) : null;
     if (last && (Number.isNaN(last.getTime()) || last.getTime() > Date.now())) throw new ApiError(400, "Last donation date can't be in the future.");
-    const data = { bloodGroup: dto.bloodGroup, lastDonationDate: last, available: dto.available ?? true };
+    const data = {
+      name: dto.name.replace(/\s+/g, " ").trim(),
+      mobile,
+      city: dto.city.replace(/\s+/g, " ").trim(),
+      bloodGroup: dto.bloodGroup,
+      lastDonationDate: last,
+      available: dto.available ?? true,
+    };
     const donor = await this.db.bloodDonor.upsert({ where: { userId: user.id }, create: { id: randomId(), userId: user.id, ...data }, update: data });
     return this.donorView(donor);
   }
@@ -128,6 +139,9 @@ export class BloodHelpService {
     assertNoMarkup(dto);
     const contactPhone = mobile10(dto.contactPhone);
     if (!contactPhone) throw new ApiError(400, "Enter a valid 10-digit mobile number for the contact person.");
+    const open = await this.db.bloodRequest.count({ where: { userId: user.id, status: "IN_PROGRESS" } });
+    if (open >= MAX_OPEN_REQUESTS)
+      throw new ApiError(409, `You already have ${MAX_OPEN_REQUESTS} blood requests in progress. Confirm one as received before adding another.`);
     const created: HistoryEntry = { at: new Date().toISOString(), status: "IN_PROGRESS", source: "CREATED", byId: user.id };
     for (let attempt = 1; ; attempt += 1) {
       try {
@@ -170,7 +184,8 @@ export class BloodHelpService {
       : [];
     return eligible.flatMap((donor) => {
       const person = users.find((u) => u.id === donor.userId);
-      const name = person?.fullName || "";
+      // The name and mobile the donor gave on the form, else their account's (donors registered before the form asked).
+      const name = donor.name || person?.fullName || "";
       const message = fill(MESSAGES[lang].toDonor, {
         name,
         patient: request.patientName,
@@ -181,7 +196,7 @@ export class BloodHelpService {
         contact: request.contactName,
         phone: request.contactPhone,
       });
-      const whatsapp = person ? whatsappLink(person.phone, message) : null;
+      const whatsapp = person ? whatsappLink(donor.mobile || person.phone, message) : null;
       return person && whatsapp
         ? [
             {
@@ -216,8 +231,12 @@ export class BloodHelpService {
     const row = await this.ownRequest(id, user);
     if (row.status !== "IN_PROGRESS") throw new ApiError(409, "This blood request is already completed.");
     const allowed = new Map((await this.matchingDonors(row, row.userId, "en")).map((s) => [s.donorId, s]));
-    const chosen = [...new Set(dto.donorIds)].filter((donorId) => allowed.has(donorId));
-    if (!chosen.length) throw new ApiError(400, "Select at least one suggested donor.");
+    const suggested = [...new Set(dto.donorIds)].filter((donorId) => allowed.has(donorId));
+    if (!suggested.length) throw new ApiError(400, "Select at least one suggested donor.");
+    // Each donor gets a request once: repeats are skipped (and refused when nobody new is left).
+    const already = notifiedDonors(row.history);
+    const chosen = suggested.filter((donorId) => !already.has(donorId));
+    if (!chosen.length) throw new ApiError(409, "This request was already sent to the selected donors.");
     const donors = await this.db.bloodDonor.findMany({ where: { id: { in: chosen } }, select: { userId: true } });
     const vars = {
       patientName: row.patientName,
@@ -228,8 +247,14 @@ export class BloodHelpService {
       contactName: row.contactName,
       contactPhone: row.contactPhone,
     };
-    await this.db.notification.createMany({ data: donors.map((donor) => userNotification("bloodDonorAlert", donor.userId, vars, asLang(dto.lang))) });
-    return { sent: donors.length };
+    await this.db.$transaction([
+      this.db.notification.createMany({ data: donors.map((donor) => userNotification("bloodDonorAlert", donor.userId, vars, asLang(dto.lang))) }),
+      this.db.bloodRequest.update({
+        where: { id: row.id },
+        data: { history: this.withHistory(row, { at: new Date().toISOString(), status: "IN_PROGRESS", source: "NOTIFIED", byId: user.id, donorIds: chosen }) },
+      }),
+    ]);
+    return { sent: donors.length, skipped: suggested.length - chosen.length };
   }
 
   // My requests or the community's (everyone else's), filtered, sorted and paged, with both tab counts.
@@ -305,7 +330,8 @@ export class BloodHelpService {
       completionSource: row.completionSource,
       mine,
       contactName: row.contactName,
-      contactPhone: mine ? row.contactPhone : null,
+      // The contact person shared their number for donors: shown (and in the WhatsApp link) while blood is still needed.
+      contactPhone: mine || row.status === "IN_PROGRESS" ? row.contactPhone : null,
       whatsapp: row.status === "IN_PROGRESS" && !mine ? whatsappLink(row.contactPhone, message) : null,
     };
   }
