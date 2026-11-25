@@ -1,7 +1,7 @@
 import { Injectable } from "@nestjs/common";
 import { indiaDate } from "../common/validation/fields.js";
 import { PrismaService } from "../database/prisma.service.js";
-import { ageOn, isBirthdayOn, isHead, MIN_BIRTHDAY_AGE } from "./home-members.rules.js";
+import { ageOn, byName, isBirthdayOn, isHead, MIN_BIRTHDAY_AGE } from "./home-members.rules.js";
 
 const ACTIVE = ["ACTIVE", "Active", "APPROVED"];
 // Names typed with extra spaces ("Arvind   Patidar") are shown tidy.
@@ -21,7 +21,8 @@ export class HomeMembersService {
     return new Map(users.filter((u) => u.photoUrl).map((u) => [u.id, u.photoUrl as string]));
   }
 
-  // "NPS Family Heads": the heads of the families an administrator chose, oldest registration first.
+  // "NPS Family Heads": the heads of the families shown on the home page, in alphabetical order of the head's name.
+  // (The first MAX_HEADS families by registration are taken, so the list stays bounded; then sorted by name.)
   async familyHeads() {
     const families = await this.db.family.findMany({
       where: { status: "ACTIVE", showOnHome: true },
@@ -47,7 +48,8 @@ export class HomeMembersService {
           photoUrl: head?.photoUrl || (family.ownerUserId ? photos.get(family.ownerUserId) : null) || null,
         };
       })
-      .filter((head) => head.name);
+      .filter((head) => head.name)
+      .sort(byName);
   }
 
   // "Today Birthday": adult ACTIVE members of the chosen families whose birthday is today (India time).

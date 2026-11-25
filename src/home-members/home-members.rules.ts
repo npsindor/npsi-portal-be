@@ -24,3 +24,9 @@ export const ageOn = (dob: Date, today: string): number => {
 };
 
 export const isHead = (relationship: string | null | undefined): boolean => ["head", "self", "मुखिया"].includes((relationship || "").trim().toLowerCase());
+
+// Alphabetical by name for the home page lists: case and accents ignored, numbers in natural order; equal names keep
+// a stable order by id.
+const collator = new Intl.Collator("en", { sensitivity: "base", numeric: true });
+export const byName = <T extends { name: string; id: string }>(a: T, b: T): number =>
+  collator.compare(a.name, b.name) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

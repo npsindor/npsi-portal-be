@@ -8761,7 +8761,7 @@
             "description": "[{ id, name, place, photoUrl }]"
           }
         },
-        "summary": "Public: name, village and photo of the family heads an administrator chose to show (no ids or contacts)",
+        "summary": "Public: name, village and photo of the family heads shown on the home page, A to Z by name (no ids or contacts)",
         "tags": [
           "Home page"
         ]

@@ -8,7 +8,7 @@ export class HomeMembersController {
   constructor(private readonly service: HomeMembersService) {}
 
   @Get("family-heads")
-  @ApiOperation({ summary: "Public: name, village and photo of the family heads an administrator chose to show (no ids or contacts)" })
+  @ApiOperation({ summary: "Public: name, village and photo of the family heads shown on the home page, A to Z by name (no ids or contacts)" })
   @ApiOkResponse({ description: "[{ id, name, place, photoUrl }]" })
   familyHeads() {
     return this.service.familyHeads();
