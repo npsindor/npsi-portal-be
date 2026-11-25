@@ -29,6 +29,12 @@ export class FamiliesRepository {
     return count ? this.findById(id, db) : null;
   }
 
+  // "On website" for many families in one statement; returns how many rows matched.
+  async setShowOnHome(ids: string[], showOnHome: boolean): Promise<number> {
+    const { count } = await this.prisma.family.updateMany({ where: { id: { in: ids } }, data: { showOnHome } });
+    return count;
+  }
+
   // Deleting an id that doesn't exist is not an error.
   async delete(id: string): Promise<void> {
     await this.prisma.family.deleteMany({ where: { id } });

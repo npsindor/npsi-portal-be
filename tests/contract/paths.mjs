@@ -83,6 +83,7 @@ const v1 = {
   list: (entity, qs = "") => ["GET", `/api/v1/${RESOURCES[entity]}${qs}`],
   create: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}`],
   bulk: (entity) => ["POST", `/api/v1/${RESOURCES[entity]}/batch`],
+  familyHomeVisibility: () => ["PUT", "/api/v1/families/home-visibility"],
   update: (entity, id) => ["PATCH", `/api/v1/${RESOURCES[entity]}/${id}`],
   remove: (entity, id) => ["DELETE", `/api/v1/${RESOURCES[entity]}/${id}`],
   review: (entity, id) => ["POST", `/api/v1/${RESOURCES[entity]}/${id}/review`],
