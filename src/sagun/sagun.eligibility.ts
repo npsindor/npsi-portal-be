@@ -50,7 +50,12 @@ export interface MemberFacts {
   status: string | null;
   // Shagun Bandhan is for unmarried members; a member the family marked MARRIED is not offered it.
   maritalStatus?: string | null;
+  // A spouse (and the head's father or mother) is married by the relationship itself, whatever the status field says.
+  relationship?: string | null;
 }
+const MARRIED_RELATIONSHIPS = ["spouse", "wife", "husband", "father", "mother"];
+export const isMarried = (member: Pick<MemberFacts, "maritalStatus" | "relationship">): boolean =>
+  (member.maritalStatus || "").trim().toUpperCase() === "MARRIED" || MARRIED_RELATIONSHIPS.includes((member.relationship || "").trim().toLowerCase());
 export interface Eligibility {
   eligible: boolean;
   reason: IneligibleReason | null;
@@ -66,7 +71,7 @@ export const evaluateMember = (member: MemberFacts, settings: SagunSettingsValue
   const minimumAge = gender ? minimumAgeFor(gender, settings) : null;
   const reason: IneligibleReason | null = !memberIsActive(member.status)
     ? "MEMBER_INACTIVE"
-    : (member.maritalStatus || "").trim().toUpperCase() === "MARRIED"
+    : isMarried(member)
       ? "MARRIED"
       : !dob || age === null || age < 0
         ? "NO_DOB"

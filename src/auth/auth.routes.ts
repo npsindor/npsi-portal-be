@@ -15,4 +15,6 @@ export const AUTH_ROUTES = {
   mobileOtp: "mobile-otps",
   mobileOtpVerify: "mobile-otps/verifications",
   mobileRegister: "mobile-registrations",
+  emailChange: "email-changes",
+  emailChangeConfirm: "email-changes/confirmations",
 } as const;

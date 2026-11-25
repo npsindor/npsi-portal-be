@@ -20,7 +20,7 @@ export class MyOpenTransferRequestVo {
   @ApiProperty({ example: "TRF-000012" }) requestId!: string;
   @ApiProperty({ example: "family_to_family" }) requestType!: string;
   @ApiProperty({ example: "PENDING" }) status!: string;
-  @ApiProperty({ example: "NPSI-MEM-000034", nullable: true }) sourceMembershipId!: string | null;
+  @ApiProperty({ example: "NPSI-MEB-00002401", nullable: true }) sourceMembershipId!: string | null;
   @ApiProperty({ example: "NPSI-STU-000003", nullable: true }) sourceStudentId!: string | null;
   @ApiProperty({ example: "NPSI-FAM-000002", nullable: true }) targetFamilyId!: string | null;
   @ApiProperty({ example: "2026-11-18T10:00:00.000Z" }) createdAt!: string;

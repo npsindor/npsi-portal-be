@@ -2,6 +2,7 @@
 // HTTP against the built app (`npm run test:contract`). Tests run in order and
 // share one seeded database, so later tests may depend on records created earlier.
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { after, before, describe, test } from "node:test";
 import { backfillContactDigits, call, FAMILY1, FAMILY2, IDS, OTP_CODE, PASSWORDS, query, setup, TOKENS, teardown } from "./harness.mjs";
 import { API, ENTITIES } from "./paths.mjs";
@@ -682,7 +683,7 @@ describe("entities: create", () => {
     const payment = (await api("list", ["Transaction", "?limit=500"], { token: TOKENS.admin })).body.find((t) => t.referenceId === res.body.registrationId);
     assert.deepEqual(
       [payment?.transactionId, payment?.type, payment?.amount, payment?.paymentStatus, payment?.familyId, payment?.memberId],
-      [res.body.transactionId, "Event Registration", 100, "PENDING", FAMILY1, "NPSI-MEM-000001"],
+      [res.body.transactionId, "Event Registration", 100, "PENDING", FAMILY1, "NPSI-MEB-00000101"],
     );
     const seen = (await api("list", ["Notification"], { token: TOKENS.member })).body;
     assert.ok(seen.some((n) => n.type === "Event" && n.recipientFamilyId === FAMILY1 && n.message.includes("Paid Event")));
@@ -734,7 +735,7 @@ describe("entities: create", () => {
       membershipId: "CLIENT",
     });
     assert.equal(res.status, 201);
-    assert.equal(res.body.membershipId, "NPSI-MEM-000003");
+    assert.equal(res.body.membershipId, "NPSI-MEB-00000102", "family NPSI-FAM-000001's next member id");
     assert.equal(res.body.photoUrl, null);
     assert.equal(res.body.status, "ACTIVE", "a registered family's new member is active at once; the client can't choose the status");
     IDS.createdMember = res.body.id;
@@ -800,7 +801,7 @@ describe("entities: create", () => {
     assertError(
       await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
         requestType: "family_to_family",
-        sourceMembershipId: "NPSI-MEM-000002",
+        sourceMembershipId: "NPSI-MEB-00000201",
         targetFamilyId: FAMILY2,
       }),
       403,
@@ -818,7 +819,7 @@ describe("entities: create", () => {
     const res = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
       requestType: "family_to_family",
       sourceFamilyId: FAMILY2,
-      sourceMembershipId: "NPSI-MEM-000001",
+      sourceMembershipId: "NPSI-MEB-00000101",
       targetFamilyId: FAMILY2,
       status: "APPROVED",
       requesterName: "Admin Spoof",
@@ -834,7 +835,7 @@ describe("entities: create", () => {
     assertError(
       await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
         requestType: "family_to_family",
-        sourceMembershipId: "NPSI-MEM-000001",
+        sourceMembershipId: "NPSI-MEB-00000101",
         targetFamilyId: FAMILY2,
       }),
       409,
@@ -929,8 +930,9 @@ describe("family members: batch create", () => {
       ],
     });
     assert.equal(res.status, 201);
-    const [first, second] = res.body.map((m) => Number(m.membershipId.slice("NPSI-MEM-".length)));
-    assert.equal(second, first + 1);
+    const [first, second] = res.body.map((m) => m.membershipId);
+    assert.match(first, /^NPSI-MEB-000002\d{2}$/, "member ids carry the family number");
+    assert.equal(Number(second.slice(-2)), Number(first.slice(-2)) + 1);
     assert.equal(res.body[1].dob, null);
   });
 });
@@ -960,7 +962,7 @@ describe("entities: update", () => {
     const res = await api("update", ["FamilyMember", IDS.member1], { token: TOKENS.member }).send({ name: "Member Renamed", membershipId: "HACK" });
     assert.equal(res.status, 200);
     assert.equal(res.body.name, "Member Renamed");
-    assert.equal(res.body.membershipId, "NPSI-MEM-000001");
+    assert.equal(res.body.membershipId, "NPSI-MEB-00000101");
   });
   test("family: members can't change it; its member count follows its members", async () => {
     assertError(await api("update", ["Family", IDS.family1], { token: TOKENS.member }).send({ memberCount: 9 }), 403, "Admin access required.");
@@ -1421,7 +1423,7 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     const again = await api("bloodDonor", [], { token: TOKENS.other }).send({ ...contact, bloodGroup: "O-", lastDonationDate: "2024-04-15" });
     assert.equal(again.body.id, state.donorId, "one donor row per member, updated in place");
   });
-  test("request blood: validation, then the request with matching donors (WhatsApp, no number listed)", async () => {
+  test("request blood: validation, then the request with matching donors (no donor number or WhatsApp link)", async () => {
     assertError(await api("bloodCreate", [], { token: TOKENS.member }).send({ ...request, units: 0 }), 400, "At least 1 unit is required.");
     assertError(
       await api("bloodCreate", [], { token: TOKENS.member }).send({ ...request, contactPhone: "123" }),
@@ -1435,9 +1437,9 @@ describe("Blood Help Network: donors, requests, matching, confirmation and admin
     assert.deepEqual([res.body.request.status, res.body.request.mine, res.body.request.contactPhone], ["IN_PROGRESS", true, "9826012345"]);
     const [suggested] = res.body.suggestions;
     assert.deepEqual([suggested.donorId, suggested.bloodGroup, suggested.lastDonationDate], [state.donorId, "O-", "2024-04-15"]);
-    assert.match(suggested.whatsapp, /^https:\/\/wa\.me\/919826055555\?text=/, "the mobile the donor gave");
     assert.equal(suggested.name, "Ravi Donor");
-    assert.ok(!("mobile" in suggested) && !("phone" in suggested));
+    assert.ok(!("mobile" in suggested) && !("phone" in suggested) && !("whatsapp" in suggested), "a donor's number never goes to the requester");
+    assert.ok(!JSON.stringify(res.body.suggestions).includes("9826055555"));
     state.requestId = res.body.request.id;
     const own = await api("bloodSuggestions", [state.requestId], { token: TOKENS.other });
     assertError(own, 404, "Blood request not found.");
@@ -1550,6 +1552,8 @@ describe("reviews (end to end, last: they create families and move members)", ()
       members.map((m) => [m.name, m.familyId, m.status]),
       [["A", family.familyId, "ACTIVE"]],
     );
+    const familyNumber = family.familyId.slice(-6);
+    assert.equal(members[0].membershipId, `NPSI-MEB-${familyNumber}01`, "the family's first member id: family number + 01");
     const listed = (await api("list", ["Family", `?familyId=${family.familyId}`], { token: TOKENS.admin })).body;
     assert.equal(listed.length, 1);
     const notice = (await api("list", ["Notification", "?limit=500"], { token: TOKENS.admin })).body.find((n) => n.recipientFamilyId === family.familyId);
@@ -1597,7 +1601,7 @@ describe("reviews (end to end, last: they create families and move members)", ()
     const request = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
       requestType: "family_to_family",
       sourceFamilyId: FAMILY1,
-      sourceMembershipId: "NPSI-MEM-000001",
+      sourceMembershipId: "NPSI-MEB-00000101",
       targetFamilyId: FAMILY2,
       reason: "Moving",
     });
@@ -1609,7 +1613,7 @@ describe("reviews (end to end, last: they create families and move members)", ()
     assertError(
       await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
         requestType: "family_to_family",
-        sourceMembershipId: "NPSI-MEM-000001",
+        sourceMembershipId: "NPSI-MEB-00000101",
         targetFamilyId: "NPSI-FAM-999999",
       }),
       404,
@@ -1622,8 +1626,10 @@ describe("reviews (end to end, last: they create families and move members)", ()
       [approved.body.status, approved.body.oldFamilyId, approved.body.newFamilyId, approved.body.approvedById],
       ["APPROVED", FAMILY1, FAMILY2, IDS.adminUser],
     );
-    const moved = (await api("list", ["FamilyMember", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body.find((m) => m.membershipId === "NPSI-MEM-000001");
+    const moved = (await api("list", ["FamilyMember", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body.find((m) => m.id === IDS.member1);
     assert.ok(moved, "member now in the target family");
+    assert.match(moved.membershipId, /^NPSI-MEB-000002\d{2}$/, "a moved member gets the new family's next member id");
+    assert.equal(approved.body.resultingMembershipId, moved.membershipId);
     assert.equal((await api("list", ["Family", `?familyId=${FAMILY2}`], { token: TOKENS.admin })).body[0].memberCount, before + 1);
     assertError(
       await api("review", ["TransferRequest", request.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" }),
@@ -1925,5 +1931,162 @@ describe("member details: marital status (family form, add member) and education
     const [row] = await query("SELECT members_data FROM applications WHERE user_id = ?", [IDS.noFamilyUser]);
     const head = (typeof row.members_data === "string" ? JSON.parse(row.members_data) : row.members_data)[0];
     assert.equal(head.maritalStatus, "UNMARRIED");
+  });
+});
+
+describe("security findings (final5 report)", () => {
+  const sha = (value) => createHash("sha256").update(value).digest("hex");
+  test("34: an invited account's mobile from a registration form is not a verified login mobile", async () => {
+    const res = await api("invite", [], { token: TOKENS.admin }).send({ email: "invited34@test.local", phone: "9100000034", fullName: "Invited 34" });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    const [row] = await query("SELECT phone_verified FROM users WHERE email = 'invited34@test.local'");
+    assert.equal(Number(row.phone_verified), 0, "the form's mobile can't sign in or receive reset codes until verified");
+    assertError(await api("login").send({ phone: "9100000034", password: res.body.password }), 401, "Invalid email/phone or password.");
+  });
+  test("34: the account email can be changed: password, then a code sent to the new address; other devices signed out", async () => {
+    const token = { token: TOKENS.noFamily };
+    assertError(await api("emailChange").send({ email: "x@test.local", currentPassword: PASSWORDS.member }), 401, "Authentication required.");
+    assertError(await api("emailChange", [], token).send({ email: "new34@test.local", currentPassword: "wrong" }), 401, "Current password is incorrect.");
+    assertError(
+      await api("emailChange", [], token).send({ email: "member@test.local", currentPassword: PASSWORDS.member }),
+      409,
+      "An account with this email already exists.",
+    );
+    assertError(
+      await api("emailChange", [], token).send({ email: "not-an-email", currentPassword: PASSWORDS.member }),
+      400,
+      "A valid email address is required.",
+    );
+    const asked = await api("emailChange", [], token).send({ email: " New34@Test.Local ", currentPassword: PASSWORDS.member });
+    assert.deepEqual([asked.status, asked.body.ok], [200, true], JSON.stringify(asked.body));
+    const [pending] = await query("SELECT email, pending_email FROM users WHERE id = ?", [IDS.noFamilyUser]);
+    assert.deepEqual([pending.email, pending.pending_email], ["nofamily@test.local", "new34@test.local"], "nothing changes before the code");
+    await query("UPDATE users SET pending_email_code_hash = ? WHERE id = ?", [sha("654321"), IDS.noFamilyUser]);
+    await query("INSERT INTO sessions (id, user_id, expires_at) VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 DAY))", [sha("other-device-34"), IDS.noFamilyUser]);
+    assertError(await api("emailChangeConfirm", [], token).send({ code: "000000" }), 400, "The code is incorrect.");
+    const done = await api("emailChangeConfirm", [], token).send({ code: "654321" });
+    assert.equal(done.status, 200, JSON.stringify(done.body));
+    assert.equal(done.body.email, "new34@test.local");
+    const [sessions] = await query("SELECT COUNT(*) AS n FROM sessions WHERE user_id = ?", [IDS.noFamilyUser]);
+    assert.equal(Number(sessions.n), 1, "only this device stays signed in");
+    assertError(await api("emailChangeConfirm", [], token).send({ code: "654321" }), 400, "This code has expired. Ask for a new one.");
+    // Back to the seeded address for the other suites.
+    await query("UPDATE users SET email = 'nofamily@test.local' WHERE id = ?", [IDS.noFamilyUser]);
+  });
+  test("22/24: a member carrying another person's verified login mobile waits for an admin; the head can't activate it", async () => {
+    const outside = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Outside Mobile",
+      relationship: "Brother",
+      mobile: "9100000007",
+    });
+    assert.equal(outside.status, 201, JSON.stringify(outside.body));
+    assert.equal(outside.body.status, "PENDING", "the no-family user's login mobile");
+    const activated = await api("update", ["FamilyMember", outside.body.id], { token: TOKENS.member }).send({ status: "ACTIVE" });
+    assert.equal(activated.body.status, "PENDING", "a head can't approve the member");
+    const child = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Own Mobile Kid",
+      relationship: "Son",
+      mobile: "9100000002",
+    });
+    assert.equal(child.body.status, "ACTIVE", "the head's own mobile on a child is fine");
+    for (const id of [outside.body.id, child.body.id]) assert.equal((await api("remove", ["FamilyMember", id], { token: TOKENS.member })).status, 204);
+  });
+  test("30: removing a member closes its open transfer request", async () => {
+    const kid = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({ familyId: FAMILY1, name: "Transfer Kid", relationship: "Son" });
+    const request = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
+      requestType: "family_to_family",
+      sourceFamilyId: FAMILY1,
+      sourceMembershipId: kid.body.membershipId,
+      targetFamilyId: FAMILY2,
+      reason: "Moving",
+    });
+    assert.equal(request.status, 201, JSON.stringify(request.body));
+    assert.equal((await api("remove", ["FamilyMember", kid.body.id], { token: TOKENS.member })).status, 204);
+    const [row] = await query("SELECT status, open_key FROM transfer_requests WHERE id = ?", [request.body.id]);
+    assert.deepEqual([row.status, row.open_key], ["REJECTED", null]);
+  });
+  test("26: a registration fee's status can't be changed from the Transactions page (refund rules live in Registration payments)", async () => {
+    await query(
+      "INSERT INTO transactions (id, transaction_id, type, amount, payment_method, payment_status, reference_id) VALUES ('fee-26', 'TXN-SEC-26', 'Family Registration', 500, 'UPI', 'VERIFIED', 'NPSI-APP-SEC-26')",
+    );
+    try {
+      assertError(
+        await api("update", ["Transaction", "fee-26"], { token: TOKENS.admin }).send({ paymentStatus: "REFUNDED" }),
+        409,
+        "A registration fee's status is changed in Admin → Registration payments.",
+      );
+      const same = await api("update", ["Transaction", "fee-26"], { token: TOKENS.admin }).send({ paymentStatus: "VERIFIED", remarks: "note" });
+      assert.equal(same.status, 200, "saving the form with the same status still works");
+    } finally {
+      await query("DELETE FROM transactions WHERE id = 'fee-26'");
+    }
+  });
+});
+
+describe("family member rules: married relationships and education by relationship", () => {
+  test("a spouse is saved married and never offered Shagun Bandhan", async () => {
+    const spouse = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Spouse Rule",
+      relationship: "Spouse",
+      gender: "Female",
+      dob: "1995-01-01",
+      maritalStatus: "UNMARRIED",
+    });
+    assert.equal(spouse.status, 201, JSON.stringify(spouse.body));
+    assert.equal(spouse.body.maritalStatus, "MARRIED", "a spouse is married by the relationship");
+    try {
+      const eligible = await call("GET", "/api/v1/sagun/eligible-members", { token: TOKENS.member });
+      assert.equal(eligible.status, 200, JSON.stringify(eligible.body));
+      const row = eligible.body.members.find((m) => m.id === spouse.body.id);
+      assert.deepEqual([row?.eligible, row?.reason], [false, "MARRIED"]);
+    } finally {
+      await api("remove", ["FamilyMember", spouse.body.id], { token: TOKENS.member });
+    }
+  });
+  test("a son or daughter may be in any class; a brother, sister, spouse, father or mother starts from 8th", async () => {
+    const son = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "School Son",
+      relationship: "Son",
+      education: "LKG",
+    });
+    assert.equal(son.status, 201, JSON.stringify(son.body));
+    for (const relationship of ["Brother", "Sister", "Spouse", "Father", "Mother"]) {
+      assertError(
+        await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+          familyId: FAMILY1,
+          name: `Edu ${relationship}`,
+          relationship,
+          education: "5th",
+        }),
+        400,
+        "For a spouse, father, mother, brother, sister or the head, education starts from 8th.",
+      );
+    }
+    const brother = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Edu Brother",
+      relationship: "Brother",
+      education: "8th",
+    });
+    assert.equal(brother.status, 201, JSON.stringify(brother.body));
+    // Turning the LKG son into a brother needs a suitable class.
+    assertError(
+      await api("update", ["FamilyMember", son.body.id], { token: TOKENS.member }).send({ relationship: "Brother" }),
+      400,
+      "For a spouse, father, mother, brother, sister or the head, education starts from 8th.",
+    );
+    // An older record keeps what it had while other details change.
+    await query("UPDATE family_members SET education = '3rd' WHERE id = ?", [brother.body.id]);
+    const renamed = await api("update", ["FamilyMember", brother.body.id], { token: TOKENS.member }).send({
+      name: "Edu Brother Two",
+      relationship: "Brother",
+      education: "3rd",
+    });
+    assert.equal(renamed.status, 200, JSON.stringify(renamed.body));
+    for (const id of [son.body.id, brother.body.id]) await api("remove", ["FamilyMember", id], { token: TOKENS.member });
   });
 });

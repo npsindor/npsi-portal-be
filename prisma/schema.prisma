@@ -701,6 +701,11 @@ model User {
   // false while the mobile number was never proven by a code sent to it (the code went to the email fallback):
   // such a number can't be used to log in or reset the password and doesn't block anyone else from registering it.
   phoneVerified       Boolean             @default(true) @map("phone_verified")
+  /// Email change in progress: the new address, its code (SHA-256), expiry and wrong tries.
+  pendingEmail          String?   @map("pending_email") @db.VarChar(255)
+  pendingEmailCodeHash  String?   @map("pending_email_code_hash") @db.VarChar(64)
+  pendingEmailExpiresAt DateTime? @map("pending_email_expires_at") @db.DateTime(0)
+  pendingEmailAttempts  Int       @default(0) @map("pending_email_attempts")
   sessions            Session[]
   notificationReads   NotificationRead[]
 

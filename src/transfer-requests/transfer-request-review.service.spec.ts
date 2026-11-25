@@ -65,7 +65,7 @@ const build = (requests = [familyMove, studentMove], memberFamilyId = "NPSI-FAM-
       membershipId === "NPSI-MEM-000005" ? familyMemberRow({ id: "m-5", membershipId, familyId: memberFamilyId }) : null,
     hasContactInFamily: async (_familyId: string, mobile: string | null) => mobile === "9000000000",
   };
-  familyMembers.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
+  familyMembers.latestDisplayIds.mock.mockImplementation(async (prefix: string) => (prefix === "NPSI-MEB-000002" ? ["NPSI-MEB-00000201"] : []));
   const students = {
     ...fakeModelRepo(studentRow, [studentRow({ id: "s-3", studentId: "NPSI-STU-000003", studentName: "Asha", mobile: "9111111111", status: "ACTIVE" })]),
     findByStudentId: async (studentId: string) =>
@@ -93,6 +93,9 @@ describe("TransferRequestReviewService", () => {
     );
     assert.ok(result.approvedDate instanceof Date);
     assert.deepEqual([familyMembers.stored[0].familyId, familyMembers.stored[0].status], ["NPSI-FAM-000002", "ACTIVE"]);
+    // The member id carries the family number: the moved member gets the new family's next id, and its copies follow.
+    assert.equal(result.resultingMembershipId, "NPSI-MEB-00000202");
+    assert.deepEqual(familyMembers.renameMembership.mock.calls[0].arguments.slice(1, 3), ["NPSI-MEM-000005", "NPSI-MEB-00000202"]);
     assert.deepEqual(familyMembers.recountFamilies.mock.calls[0].arguments[0], ["NPSI-FAM-000001", "NPSI-FAM-000002"]);
     assert.equal(notifications.stored[0].recipientFamilyId, "NPSI-FAM-000002");
     assert.match(notifications.stored[0].message, /NPSI-FAM-000001.*New/);
@@ -103,15 +106,15 @@ describe("TransferRequestReviewService", () => {
     const member = familyMembers.stored.at(-1);
     assert.deepEqual(
       [member?.membershipId, member?.familyId, member?.name, member?.linkedStudentId],
-      ["NPSI-MEM-000052", "NPSI-FAM-000002", "Asha", "NPSI-STU-000003"],
+      ["NPSI-MEB-00000202", "NPSI-FAM-000002", "Asha", "NPSI-STU-000003"],
     );
     assert.deepEqual(
       [students.stored[0].status, students.stored[0].linkedFamilyId, students.stored[0].linkedMembershipId],
-      ["TRANSFERRED", "NPSI-FAM-000002", "NPSI-MEM-000052"],
+      ["TRANSFERRED", "NPSI-FAM-000002", "NPSI-MEB-00000202"],
     );
-    assert.deepEqual([result.resultingMembershipId, result.newFamilyId], ["NPSI-MEM-000052", "NPSI-FAM-000002"]);
+    assert.deepEqual([result.resultingMembershipId, result.newFamilyId], ["NPSI-MEB-00000202", "NPSI-FAM-000002"]);
     assert.deepEqual(familyMembers.recountFamilies.mock.calls[0].arguments[0], ["NPSI-FAM-000002"]);
-    assert.match(notifications.stored[0].message, /NPSI-MEM-000052/);
+    assert.match(notifications.stored[0].message, /NPSI-MEB-00000202/);
   });
   test("reject / correction need remarks and change nothing else", async () => {
     const { service, familyMembers, notifications } = build();

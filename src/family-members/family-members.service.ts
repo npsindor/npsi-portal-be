@@ -1,22 +1,23 @@
 import { Injectable } from "@nestjs/common";
 import { type AdminScope, adminScopeOf, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { DEFAULT_LIMIT, toOrderBy } from "../common/dto/list-query.dto.js";
+import { communityAccount } from "../common/eligibility/community-account.js";
 import { loginAccount } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
-import { createWithDisplayId, displayIdAt, nextDisplayId } from "../common/utils/display-ids.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
+import { memberIdPrefix, nextMemberIds } from "../common/utils/member-ids.js";
 import { pick } from "../common/utils/objects.js";
 import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
 import { MembershipRepository } from "../membership/membership.repository.js";
+import { isMarried } from "../sagun/sagun.eligibility.js";
 import type { CreateFamilyMemberDto, FamilyMemberListQueryDto, UpdateFamilyMemberDto } from "./dto/family-members.dto.js";
 import { FamilyMembersRepository } from "./family-members.repository.js";
+import { EDUCATION_FROM_8TH, educationNotAllowed } from "./member-rules.js";
 import { type FamilyMemberVo, toFamilyMemberVo } from "./vo/family-members.vo.js";
-
-const PREFIX = "NPSI-MEM-";
 
 // The fields the member's "my family" screen edits; the rest (status above all) is admin-only.
 const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "maritalStatus", "address"] as const;
@@ -25,6 +26,10 @@ export const MEMBER_ELSEWHERE =
   "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
 export const ADMIN_EMAIL_MEMBER = "This email belongs to an administrator account and can't be added as a family member.";
 
+// How a stored login mobile may be written (older rows keep the +91 / 0 the person typed).
+const phoneSpellings = (mobile: string): string[] => [mobile, `+91${mobile}`, `+91 ${mobile}`, `+91-${mobile}`, `91${mobile}`, `0${mobile}`];
+// A spouse, father or mother is married by the relationship itself (the rule Shagun Bandhan uses).
+const impliesMarried = (relationship: string | null | undefined): boolean => isMarried({ maritalStatus: null, relationship });
 const tenDigits = (value: string | null | undefined): string | null => {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length >= 10 ? digits.slice(-10) : null;
@@ -69,28 +74,31 @@ export class FamilyMembersService {
       if (!ownFamilyId || dto.familyId !== ownFamilyId) throw new ApiError(403, "You can only add members to your own family.");
       input = { ...pick(dto, MEMBER_FIELDS), familyId: ownFamilyId } as CreateFamilyMemberDto;
       assertNoMarkup(input);
+      if (educationNotAllowed(input.relationship, input.education)) throw new ApiError(400, EDUCATION_FROM_8TH);
+      if (impliesMarried(input.relationship)) input.maritalStatus = "MARRIED";
       await this.assertContactsFree(ownFamilyId, input, null);
-      input.status = (await this.emailIsAnotherLogin(input.email, user)) ? "PENDING" : "ACTIVE";
+      input.status = (await this.contactIsOutsideLogin(ownFamilyId, input, user)) ? "PENDING" : "ACTIVE";
     }
     const row = await this.prisma.$transaction(async (tx) => {
-      const created = await createWithDisplayId(
-        PREFIX,
-        (prefix) => this.repo.latestDisplayIds(prefix, tx),
-        (membershipId) => this.repo.create({ id: randomId(), membershipId, ...toCreateData(input) }, tx),
-      );
+      const [membershipId] = nextMemberIds(input.familyId, await this.repo.latestDisplayIds(memberIdPrefix(input.familyId), tx));
+      const created = await this.repo.create({ id: randomId(), membershipId, ...toCreateData(input) }, tx);
       await this.repo.recountFamilies([created.familyId], tx);
       return created;
     });
     return toFamilyMemberVo(row);
   }
 
-  // Admins only: consecutive membership ids, all or nothing.
+  // Admins only: each family's next member ids in order, all or nothing.
   async createBatch(records: CreateFamilyMemberDto[] | undefined): Promise<{ status: 200 | 201; records: FamilyMemberVo[] }> {
     if (!records?.length) return { status: 200, records: [] };
-    const first = Number(nextDisplayId(PREFIX, await this.repo.latestDisplayIds(PREFIX)).slice(PREFIX.length));
     const rows = await this.prisma.$transaction(async (tx) => {
+      const ids = new Map<string, string[]>();
+      for (const familyId of new Set(records.map((dto) => dto.familyId))) {
+        const count = records.filter((dto) => dto.familyId === familyId).length;
+        ids.set(familyId, nextMemberIds(familyId, await this.repo.latestDisplayIds(memberIdPrefix(familyId), tx), count));
+      }
       const created = await this.repo.createMany(
-        records.map((dto, index) => ({ id: randomId(), membershipId: displayIdAt(PREFIX, first + index), ...toCreateData(dto) })),
+        records.map((dto) => ({ id: randomId(), membershipId: ids.get(dto.familyId)?.shift() as string, ...toCreateData(dto) })),
         tx,
       );
       await this.repo.recountFamilies(
@@ -114,10 +122,21 @@ export class FamilyMembersService {
       if (!member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only update members of your own family.");
       input = pick(dto, MEMBER_FIELDS);
       assertNoMarkup(input);
+      // Checked when the education or relationship changes (an older record keeps what it had until then).
+      const relationship = input.relationship ?? member.relationship;
+      const education = input.education !== undefined ? input.education : member.education;
+      const educationTouched =
+        (input.education !== undefined && !sameText(input.education, member.education)) ||
+        (input.relationship !== undefined && !sameText(input.relationship, member.relationship));
+      if (educationTouched && educationNotAllowed(relationship, education)) throw new ApiError(400, EDUCATION_FROM_8TH);
+      if (impliesMarried(relationship)) input = { ...input, maritalStatus: "MARRIED" };
       await this.assertContactsFree(ownFamilyId, input, member.id);
-      // A new email that is already another person's login goes to an admin before the member counts again.
+      // A new email or mobile that is another person's login goes to an admin before the member counts again.
       const emailChanged = input.email !== undefined && !sameText(input.email, member.email);
-      if (emailChanged && member.status !== "PENDING" && (await this.emailIsAnotherLogin(input.email, user))) input = { ...input, status: "PENDING" };
+      const mobileChanged = input.mobile !== undefined && tenDigits(input.mobile) !== tenDigits(member.mobile);
+      const changed = { email: emailChanged ? input.email : null, mobile: mobileChanged ? input.mobile : null };
+      if ((emailChanged || mobileChanged) && member.status !== "PENDING" && (await this.contactIsOutsideLogin(ownFamilyId, changed, user)))
+        input = { ...input, status: "PENDING" };
     }
     const row = await this.prisma.$transaction(async (tx) => {
       const fromFamilyId = (await this.repo.findById(id, tx))?.familyId;
@@ -148,11 +167,22 @@ export class FamilyMembersService {
 
   // A head may not add a person who is already an active member of another family (that is a transfer), nor an
   // administrator's email.
-  // Whether this email already signs in to an account other than the one making the change.
-  private async emailIsAnotherLogin(email: string | null | undefined, user: UserRow): Promise<boolean> {
-    const value = email?.trim().toLowerCase();
-    if (!value || sameText(value, user.email)) return false;
-    return Boolean(await this.prisma.user.findFirst({ where: { email: value, id: { not: user.id } }, select: { id: true } }));
+  // Whether this email, or this mobile as someone's verified login, signs in to another person's account that is not
+  // already part of this family. Such a member waits for an admin (PENDING): a head can't attach someone else's account
+  // to their family (security finding 22). Logins of the same family (the head's own mobile on a child) are fine.
+  private async contactIsOutsideLogin(familyId: string, input: { email?: string | null; mobile?: string | null }, user: UserRow): Promise<boolean> {
+    const email = input.email?.trim().toLowerCase() || null;
+    const mobile = tenDigits(input.mobile);
+    const contact: Prisma.UserWhereInput[] = [
+      ...(email && !sameText(email, user.email) ? [{ email }] : []),
+      ...(mobile ? [{ phone: { in: phoneSpellings(mobile) }, phoneVerified: true }] : []),
+    ];
+    if (!contact.length) return false;
+    const logins = await this.prisma.user.findMany({ where: { OR: contact, id: { not: user.id } }, take: 5 });
+    for (const login of logins) {
+      if ((await communityAccount(this.prisma, login))?.familyId !== familyId) return true;
+    }
+    return false;
   }
 
   private async assertContactsFree(familyId: string, input: { mobile?: string | null; email?: string | null }, memberId: string | null): Promise<void> {
@@ -179,6 +209,13 @@ export class FamilyMembersService {
       const member = await this.repo.findById(id, tx);
       await this.repo.delete(id, tx);
       await this.repo.recountFamilies([member?.familyId], tx);
+      // A transfer request for a member who no longer exists can't be decided: it is closed (security finding 30).
+      if (member?.membershipId) {
+        await tx.transferRequest.updateMany({
+          where: { sourceMembershipId: member.membershipId, status: { in: ["PENDING", "CORRECTION_REQUIRED"] } },
+          data: { status: "REJECTED", openKey: null, adminRemarks: "Closed automatically: the member was removed from the family." },
+        });
+      }
     });
   }
 }

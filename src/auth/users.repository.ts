@@ -154,22 +154,87 @@ export class UsersRepository {
 
   async insertInvited(id: string, email: string, fullName: unknown, phone: unknown, passwordHash: string, role: "admin" | "user"): Promise<void> {
     await this.prisma.user.create({
-      data: { id, email, fullName: nullableText(fullName), phone: nullableText(phone), passwordHash, role, status: "invited", isVerified: true },
+      // The mobile comes from a registration form, never proven by a code: it can't sign in or reset a password until
+      // its owner verifies it (Settings → verify mobile).
+      data: {
+        id,
+        email,
+        fullName: nullableText(fullName),
+        phone: nullableText(phone),
+        phoneVerified: false,
+        passwordHash,
+        role,
+        status: "invited",
+        isVerified: true,
+      },
     });
   }
 
-  // Name and phone only change when given.
+  // Name and phone only change when given; a different (unproven) mobile is stored unverified.
   async updateInvited(userId: string, fullName: unknown, phone: unknown, passwordHash: string): Promise<void> {
+    const current = await this.prisma.user.findUnique({ where: { id: userId }, select: { phone: true } });
+    const next = nullableText(phone);
+    const digits = (value: string | null | undefined) =>
+      String(value ?? "")
+        .replace(/\D/g, "")
+        .slice(-10);
+    const phoneChanged = next !== null && digits(next) !== digits(current?.phone);
     await this.prisma.user.update({
       where: { id: userId },
       data: {
         fullName: nullableText(fullName) ?? undefined,
-        phone: nullableText(phone) ?? undefined,
+        phone: next ?? undefined,
+        ...(phoneChanged ? { phoneVerified: false } : {}),
         passwordHash,
         isVerified: true,
         status: "invited",
       },
     });
+  }
+
+  // Email change: the new address waits here until the code sent to it is entered.
+  async setPendingEmail(userId: string, email: string, codeHash: string, expiresAt: Date): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { pendingEmail: email, pendingEmailCodeHash: codeHash, pendingEmailExpiresAt: expiresAt, pendingEmailAttempts: 0 },
+    });
+  }
+
+  async countEmailAttempt(userId: string): Promise<number> {
+    const row = await this.prisma.user.update({
+      where: { id: userId },
+      data: { pendingEmailAttempts: { increment: 1 } },
+      select: { pendingEmailAttempts: true },
+    });
+    return row.pendingEmailAttempts;
+  }
+
+  async clearPendingEmail(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { pendingEmail: null, pendingEmailCodeHash: null, pendingEmailExpiresAt: null, pendingEmailAttempts: 0 },
+    });
+  }
+
+  // The new email replaces the old one; every other device is signed out (whoever held the old address loses access).
+  async confirmEmail(userId: string, email: string, keepTokenHash?: string): Promise<UserRow> {
+    const [user] = await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: userId },
+        data: {
+          email,
+          isVerified: true,
+          pendingEmail: null,
+          pendingEmailCodeHash: null,
+          pendingEmailExpiresAt: null,
+          pendingEmailAttempts: 0,
+          resetTokenHash: null,
+          resetTokenExpiresAt: null,
+        },
+      }),
+      this.prisma.session.deleteMany({ where: { userId, ...(keepTokenHash ? { id: { not: keepTokenHash } } : {}) } }),
+    ]);
+    return user as UserRow;
   }
 
   async setInviteResetToken(userId: string, tokenHash: string): Promise<void> {

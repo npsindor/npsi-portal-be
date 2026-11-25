@@ -88,6 +88,15 @@ export class ChangePasswordDto {
   @ApiPropertyOptional({ example: "newSecret1", minLength: 8 }) @IsOptional() newPassword?: string;
 }
 
+export class EmailChangeDto {
+  @ApiPropertyOptional({ example: "new@example.com", description: "The new email; a code is sent to it" }) @IsOptional() email?: string;
+  @ApiPropertyOptional({ description: "The account's current password" }) @IsOptional() currentPassword?: string;
+}
+
+export class EmailChangeConfirmDto {
+  @ApiPropertyOptional({ example: "123456", description: "The code sent to the new email" }) @IsOptional() code?: string;
+}
+
 export class MobileOtpDto {
   @ApiPropertyOptional({ example: "9876543210" }) @IsOptional() mobile?: string;
   @ApiPropertyOptional({ enum: ["REGISTER", "RESET"], default: "REGISTER" }) @IsOptional() purpose?: string;

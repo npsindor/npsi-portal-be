@@ -146,7 +146,7 @@ const seed = async () => {
     [IDS.family1, FAMILY1, IDS.family2, FAMILY2],
   );
   await query(
-    "INSERT INTO family_members (id, family_id, membership_id, name, relationship, gender, mobile, email, status, created_at) VALUES (?, ?, 'NPSI-MEM-000001', 'Member One', 'Self', 'Male', '9300000001', 'member@test.local', 'ACTIVE', '2026-01-01 00:00:00'), (?, ?, 'NPSI-MEM-000002', 'Other One', 'Self', 'Female', '9300000002', 'other@test.local', 'ACTIVE', '2026-01-02 00:00:00')",
+    "INSERT INTO family_members (id, family_id, membership_id, name, relationship, gender, mobile, email, status, created_at) VALUES (?, ?, 'NPSI-MEB-00000101', 'Member One', 'Self', 'Male', '9300000001', 'member@test.local', 'ACTIVE', '2026-01-01 00:00:00'), (?, ?, 'NPSI-MEB-00000201', 'Other One', 'Self', 'Female', '9300000002', 'other@test.local', 'ACTIVE', '2026-01-02 00:00:00')",
     [IDS.member1, FAMILY1, IDS.member2, FAMILY2],
   );
   await query(

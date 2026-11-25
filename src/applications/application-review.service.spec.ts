@@ -34,7 +34,7 @@ const build = (application = pending, fee: { id: string; paymentStatus: string |
   const families = fakeModelRepo(familyRow);
   families.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-FAM-000023"]);
   const familyMembers = fakeModelRepo(familyMemberRow);
-  familyMembers.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
+  familyMembers.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]); // old global ids play no part
   familyMembers.createMany.mock.mockImplementation(async (rows) => {
     const created = rows.map((data) => familyMemberRow(data));
     familyMembers.stored.push(...created);
@@ -73,8 +73,8 @@ describe("ApplicationReviewService", () => {
     assert.deepEqual(
       result.members.map((m) => [m.membershipId, m.familyId, m.name, m.dob, m.photoUrl, m.status]),
       [
-        ["NPSI-MEM-000052", "NPSI-FAM-000024", "Ram", "1980-02-03", "/uploads/r.png", "ACTIVE"],
-        ["NPSI-MEM-000053", "NPSI-FAM-000024", "Sita", null, null, "ACTIVE"],
+        ["NPSI-MEB-00002401", "NPSI-FAM-000024", "Ram", "1980-02-03", "/uploads/r.png", "ACTIVE"],
+        ["NPSI-MEB-00002402", "NPSI-FAM-000024", "Sita", null, null, "ACTIVE"],
       ],
     );
     // The marital status asked on the form goes to the member; an unknown value is left empty.

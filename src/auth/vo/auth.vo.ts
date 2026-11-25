@@ -80,6 +80,11 @@ export class InvitationVo {
   password: string | null;
 }
 
+export class EmailChangeVo {
+  @ApiProperty({ example: true }) ok: true;
+  @ApiProperty({ example: 600 }) expiresInSeconds: number;
+}
+
 export class MobileOtpVo {
   @ApiProperty({ example: true }) ok: true;
   @ApiProperty({ enum: ["WHATSAPP", "SMS", "EMAIL", "DEV"], description: "Where the code was sent" }) channel: string;

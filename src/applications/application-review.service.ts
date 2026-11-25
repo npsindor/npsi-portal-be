@@ -5,7 +5,8 @@ import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import { ApplicantNotifier, type Outbound } from "../common/messaging/applicant-notifier.service.js";
 import { randomId } from "../common/utils/crypto.js";
-import { createWithDisplayId, displayIdAt, nextDisplayId } from "../common/utils/display-ids.js";
+import { createWithDisplayId } from "../common/utils/display-ids.js";
+import { isHeadRelationship, memberIdPrefix, nextMemberIds } from "../common/utils/member-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import { FamiliesRepository } from "../families/families.repository.js";
 import { toFamilyVo } from "../families/vo/families.vo.js";
@@ -21,8 +22,6 @@ import { ApplicationsRepository } from "./applications.repository.js";
 import { applicationMembers, dateOnly, maritalStatus, text } from "./members-data.js";
 import type { ApplicationReviewVo } from "./vo/application-review.vo.js";
 import { toApplicationVo } from "./vo/applications.vo.js";
-
-const MEMBER_PREFIX = "NPSI-MEM-";
 
 // An admin's decision on a family registration application, all in one
 // transaction. Approving creates the ACTIVE family and its members from the
@@ -138,11 +137,14 @@ export class ApplicationReviewService {
           tx,
         ),
     );
-    const first = Number(nextDisplayId(MEMBER_PREFIX, await this.familyMembers.latestDisplayIds(MEMBER_PREFIX, tx)).slice(MEMBER_PREFIX.length));
+    // The head gets the family's first member id (…01), the others follow in the order they were listed.
+    const ordered = [...listed].sort((a, b) => Number(isHeadRelationship(b.relationship)) - Number(isHeadRelationship(a.relationship)));
+    const familyId = family.familyId as string;
+    const ids = nextMemberIds(familyId, await this.familyMembers.latestDisplayIds(memberIdPrefix(familyId), tx), ordered.length);
     const members = await this.familyMembers.createMany(
-      listed.map((member, index) => ({
+      ordered.map((member, index) => ({
         id: randomId(),
-        membershipId: displayIdAt(MEMBER_PREFIX, first + index),
+        membershipId: ids[index],
         familyId: family.familyId as string,
         name: text(member.name) ?? "",
         relationship: text(member.relationship) ?? "",

@@ -14,7 +14,9 @@ const build = (accounts?: FakeAccountRecords) => {
     familyMemberRow({ id: "m-own", familyId: FAM, status: "ACTIVE", email: "son@example.com", mobile: "9000000001" }),
     familyMemberRow({ id: "m-other", familyId: "OTHER" }),
   ]);
-  repo.latestDisplayIds.mock.mockImplementation(async () => ["NPSI-MEM-000051"]);
+  repo.latestDisplayIds.mock.mockImplementation(async (prefix: string) =>
+    prefix === "NPSI-MEB-000001" ? ["NPSI-MEB-00000103", "NPSI-MEB-00000101"] : ["NPSI-MEM-000051"],
+  );
   return {
     service: new FamilyMembersService(as<PrismaService>(fakePrisma(accounts)), as<FamilyMembersRepository>(repo), as<MembershipRepository>(fakeMembership())),
     repo,
@@ -25,7 +27,7 @@ describe("FamilyMembersService", () => {
   test("members add to their own family only, with the form's fields", async () => {
     const { service } = build();
     const created = await service.create({ familyId: FAM, name: "Kid", relationship: "Son", dob: "2015-03-04", photoUrl: "/x.png" }, member());
-    assert.deepEqual([created.membershipId, created.familyId, created.dob, created.photoUrl], ["NPSI-MEM-000052", FAM, "2015-03-04", null]);
+    assert.deepEqual([created.membershipId, created.familyId, created.dob, created.photoUrl], ["NPSI-MEB-00000104", FAM, "2015-03-04", null]);
     await rejectsWith(service.create({ familyId: "OTHER", name: "X", relationship: "Son" }, member()), 403, "You can only add members to your own family.");
     await rejectsWith(service.create({ familyId: FAM, name: "<b>", relationship: "Son" }, member()), 400, 'The "name" field cannot contain < or > characters.');
   });

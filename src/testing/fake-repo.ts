@@ -34,6 +34,7 @@ export const fakeModelRepo = <Row extends { id: string }>(build: (data: Partial<
     }),
     delete: mock.fn(async (_id: string) => undefined),
     latestDisplayIds: mock.fn(async (_prefix: string): Promise<(string | null)[]> => []),
+    renameMembership: mock.fn(async (_memberId: string, _oldId: string | null, _newId: string): Promise<void> => {}),
     hasRegistrations: mock.fn(async (_eventId: string) => false),
     activeExists: mock.fn(async (_familyId: string, _eventId: string) => false),
     recountFamilies: mock.fn(async (_familyIds: (string | null | undefined)[], _db?: unknown) => undefined),
@@ -124,6 +125,7 @@ export const fakeAccountDb = (records: FakeAccountRecords = {}) => {
     student: model(records.students),
     studentApplication: model(records.studentApplications),
     adminAccess: model(records.adminAccess),
+    transferRequest: { ...model(), updateMany: mock.fn(async (_args: unknown) => ({ count: 0 })) },
   };
 };
 export const TX = { transaction: true, ...fakeAccountDb() };

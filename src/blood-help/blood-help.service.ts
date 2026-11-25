@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { Injectable } from "@nestjs/common";
 import { communityAccount } from "../common/eligibility/community-account.js";
+import { LOGIN_USER_STATUSES } from "../common/eligibility/login-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
@@ -160,7 +161,7 @@ export class BloodHelpService {
             history: [created] as unknown as Prisma.InputJsonValue,
           },
         });
-        return { request: this.requestView(row, user.id, asLang(dto.lang)), suggestions: await this.matchingDonors(row, user.id, asLang(dto.lang)) };
+        return { request: this.requestView(row, user.id, asLang(dto.lang)), suggestions: await this.matchingDonors(row, user.id) };
       } catch (error) {
         if (attempt >= 3 || !isUniqueViolation(error)) throw error;
       }
@@ -168,7 +169,7 @@ export class BloodHelpService {
   }
 
   // Eligible donors for a request: compatible blood group, available, rested since their last donation, not the requester.
-  private async matchingDonors(request: BloodRequest, requesterId: string, lang: Lang) {
+  private async matchingDonors(request: BloodRequest, requesterId: string) {
     const now = new Date();
     const donors = await this.db.bloodDonor.findMany({
       where: { bloodGroup: { in: compatibleDonors(request.bloodGroup) }, available: true, userId: { not: requesterId } },
@@ -178,7 +179,7 @@ export class BloodHelpService {
     const eligible = donors.filter((donor) => donorEligible(donor, now, this.gapDays()));
     const users = eligible.length
       ? await this.db.user.findMany({
-          where: { id: { in: eligible.map((d) => d.userId) }, status: "active" },
+          where: { id: { in: eligible.map((d) => d.userId) }, status: { in: LOGIN_USER_STATUSES } },
           select: { id: true, fullName: true, phone: true },
         })
       : [];
@@ -186,25 +187,15 @@ export class BloodHelpService {
       const person = users.find((u) => u.id === donor.userId);
       // The name and mobile the donor gave on the form, else their account's (donors registered before the form asked).
       const name = donor.name || person?.fullName || "";
-      const message = fill(MESSAGES[lang].toDonor, {
-        name,
-        patient: request.patientName,
-        units: request.units,
-        group: request.bloodGroup,
-        hospital: request.hospital,
-        city: request.city,
-        contact: request.contactName,
-        phone: request.contactPhone,
-      });
-      const whatsapp = person ? whatsappLink(donor.mobile || person.phone, message) : null;
-      return person && whatsapp
+      // No donor's mobile or WhatsApp link goes to the requester: donors hear about the request through the portal
+      // (Send) and contact the requester, whose number they see (security finding 33).
+      return person
         ? [
             {
               donorId: donor.id,
               name,
               bloodGroup: donor.bloodGroup,
               lastDonationDate: day(donor.lastDonationDate),
-              whatsapp,
               exactMatch: donor.bloodGroup === request.bloodGroup,
             },
           ]
@@ -218,11 +209,11 @@ export class BloodHelpService {
     return row;
   }
 
-  async suggestions(viewer: UserRow | null, id: string, lang?: Lang) {
+  async suggestions(viewer: UserRow | null, id: string, _lang?: Lang) {
     const { user } = await this.member(viewer);
     const row = await this.ownRequest(id, user);
     if (row.status !== "IN_PROGRESS") return [];
-    return this.matchingDonors(row, row.userId, asLang(lang));
+    return this.matchingDonors(row, row.userId);
   }
 
   // "Send to selected donors": an in-app notification to each chosen donor (only donors suggested for this request).
@@ -230,7 +221,7 @@ export class BloodHelpService {
     const { user } = await this.member(viewer);
     const row = await this.ownRequest(id, user);
     if (row.status !== "IN_PROGRESS") throw new ApiError(409, "This blood request is already completed.");
-    const allowed = new Map((await this.matchingDonors(row, row.userId, "en")).map((s) => [s.donorId, s]));
+    const allowed = new Map((await this.matchingDonors(row, row.userId)).map((s) => [s.donorId, s]));
     const suggested = [...new Set(dto.donorIds)].filter((donorId) => allowed.has(donorId));
     if (!suggested.length) throw new ApiError(400, "Select at least one suggested donor.");
     // Each donor gets a request once: repeats are skipped (and refused when nobody new is left).

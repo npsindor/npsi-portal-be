@@ -51,10 +51,20 @@ export class FamilyMembersRepository {
     const rows = await db.familyMember.findMany({
       where: { membershipId: displayIdPrefixRange(prefix) },
       orderBy: { membershipId: "desc" },
-      take: 20,
+      take: 500,
       select: { membershipId: true },
     });
     return rows.map((row) => row.membershipId);
+  }
+
+  // A member moved to another family gets that family's next member id; the copies of the old id follow it.
+  async renameMembership(memberId: string, oldId: string | null, newId: string, db: Db = this.prisma): Promise<void> {
+    await db.familyMember.update({ where: { id: memberId }, data: { membershipId: newId } });
+    await db.eventRoster.updateMany({ where: { memberId }, data: { membershipId: newId } });
+    if (!oldId) return;
+    await db.student.updateMany({ where: { linkedMembershipId: oldId }, data: { linkedMembershipId: newId } });
+    await db.studentApplication.updateMany({ where: { linkedMembershipId: oldId }, data: { linkedMembershipId: newId } });
+    await db.sehatMr.updateMany({ where: { membershipId: oldId }, data: { membershipId: newId } });
   }
 
   findByMembershipId(membershipId: string, db: Db = this.prisma): Promise<FamilyMember | null> {

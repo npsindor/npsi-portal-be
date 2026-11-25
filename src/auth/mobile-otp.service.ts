@@ -53,14 +53,9 @@ export class MobileOtpService {
     if (!channel && fallbackEmail && this.mail.isConfigured()) {
       await this.mailCode(fallbackEmail, code);
       channel = "EMAIL";
-    } else if (channel && purpose === "RESET" && fallbackEmail && this.mail.isConfigured()) {
-      // A WhatsApp / SMS provider "accepting" a message does not mean it arrived (unapproved template, number not on
-      // WhatsApp, DND). For a password reset the account's own registered email also gets the code, so the member
-      // is never left waiting. Best effort: a mail failure must not undo the code already sent.
-      await this.mailCode(fallbackEmail, code).catch((error: unknown) =>
-        console.warn("[otp] reset code email copy failed:", error instanceof Error ? error.message : error),
-      );
     }
+    // A code that went to the mobile is never also emailed: the email on an account may have been proven by someone
+    // other than the mobile's owner, and a copy would let them take the account back (security finding 34).
     if (!channel && this.config.appEnv === "development") {
       console.warn(`[otp] development only — code for ${mobile.slice(0, 2)}******${mobile.slice(-2)}: ${code}`);
       channel = "DEV";

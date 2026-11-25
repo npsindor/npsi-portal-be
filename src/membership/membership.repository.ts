@@ -29,7 +29,7 @@ export class MembershipRepository {
     return member ? member.familyId : null;
   }
 
-  // The family a membership id (NPSI-MEM-…) belongs to.
+  // The family a membership id (NPSI-MEB-…) belongs to.
   async familyIdOfMembership(membershipId: string): Promise<string | null> {
     const member = await this.prisma.familyMember.findFirst({ where: { membershipId }, select: { familyId: true } });
     return member?.familyId ?? null;
