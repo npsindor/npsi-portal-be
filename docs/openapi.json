@@ -3237,6 +3237,74 @@
         ]
       }
     },
+    "/api/v1/families/home-visibility": {
+      "put": {
+        "description": "Admin only. Sets showOnHome (head photo in the carousel and birthday wishes) for every family in familyIds, in one update.",
+        "operationId": "FamiliesController_setHomeVisibility",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FamilyHomeVisibilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FamilyHomeVisibilityVo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "No families, too many, or showOnHome missing",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorVo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Show or hide many families on the home page at once",
+        "tags": [
+          "families"
+        ]
+      }
+    },
     "/api/v1/families/{id}": {
       "patch": {
         "description": "Admin only (the member count follows the family's members).",
@@ -15876,6 +15944,38 @@
             "description": "Show the head's photo in the home page carousel and the family's birthday wishes"
           }
         }
+      },
+      "FamilyHomeVisibilityDto": {
+        "type": "object",
+        "properties": {
+          "familyIds": {
+            "description": "Record ids (`id`, not the NPSI-FAM display id) of the families to change",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "showOnHome": {
+            "type": "boolean",
+            "description": "true shows the head's photo and birthday wishes on the home page, false hides them"
+          }
+        },
+        "required": [
+          "familyIds",
+          "showOnHome"
+        ]
+      },
+      "FamilyHomeVisibilityVo": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "integer",
+            "description": "How many families were changed (ids that don't exist are skipped)"
+          }
+        },
+        "required": [
+          "updated"
+        ]
       },
       "UpdateFamilyDto": {
         "type": "object",

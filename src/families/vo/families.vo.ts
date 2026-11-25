@@ -48,3 +48,7 @@ export const toFamilyVo = (row: Family): FamilyVo => ({
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });
+
+export class FamilyHomeVisibilityVo {
+  @ApiProperty({ type: "integer", description: "How many families were changed (ids that don't exist are skipped)" }) updated!: number;
+}

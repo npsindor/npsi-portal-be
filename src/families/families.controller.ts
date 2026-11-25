@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, UseGuards } from "@nestjs/common";
 import {
   ApiBadRequestResponse,
   ApiBearerAuth,
@@ -16,9 +16,9 @@ import { AdminAreaGuard, AdminAreaRoute, CurrentAdminScope } from "../common/adm
 import { type AdminScope } from "../common/admin-access/admin-scope.js";
 import { ErrorVo } from "../common/filters/error.vo.js";
 import { AdminGuard } from "../common/guards/auth.guards.js";
-import { CreateFamilyDto, FamilyListQueryDto, UpdateFamilyDto } from "./dto/families.dto.js";
+import { CreateFamilyDto, FamilyHomeVisibilityDto, FamilyListQueryDto, UpdateFamilyDto } from "./dto/families.dto.js";
 import { FamiliesService } from "./families.service.js";
-import { FamilyVo } from "./vo/families.vo.js";
+import { FamilyHomeVisibilityVo, FamilyVo } from "./vo/families.vo.js";
 
 @ApiTags("families")
 @ApiBearerAuth()
@@ -47,6 +47,20 @@ export class FamiliesController {
   @ApiForbiddenResponse({ type: ErrorVo })
   create(@Body() body: CreateFamilyDto): Promise<FamilyVo> {
     return this.families.create(body);
+  }
+
+  @Put("home-visibility")
+  @UseGuards(AdminGuard)
+  @ApiOperation({
+    summary: "Show or hide many families on the home page at once",
+    description: "Admin only. Sets showOnHome (head photo in the carousel and birthday wishes) for every family in familyIds, in one update.",
+  })
+  @ApiOkResponse({ type: FamilyHomeVisibilityVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "No families, too many, or showOnHome missing" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiForbiddenResponse({ type: ErrorVo })
+  setHomeVisibility(@Body() body: FamilyHomeVisibilityDto): Promise<FamilyHomeVisibilityVo> {
+    return this.families.setHomeVisibility(body);
   }
 
   @Patch(":id")

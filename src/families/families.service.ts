@@ -6,9 +6,9 @@ import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
 import { createWithDisplayId } from "../common/utils/display-ids.js";
 import type { Prisma } from "../generated/prisma/client.js";
-import type { CreateFamilyDto, FamilyListQueryDto, UpdateFamilyDto } from "./dto/families.dto.js";
+import type { CreateFamilyDto, FamilyHomeVisibilityDto, FamilyListQueryDto, UpdateFamilyDto } from "./dto/families.dto.js";
 import { FamiliesRepository } from "./families.repository.js";
-import { type FamilyVo, toFamilyVo } from "./vo/families.vo.js";
+import { type FamilyHomeVisibilityVo, type FamilyVo, toFamilyVo } from "./vo/families.vo.js";
 
 // Families are created by admins (or by approving an application) and changed only by
 // admins. The member count follows the family's member rows (FamilyMembersRepository.recountFamilies).
@@ -36,6 +36,13 @@ export class FamiliesService {
     const row = await this.repo.update(id, toUpdateData(dto));
     if (!row) throw new ApiError(404, "Record not found");
     return toFamilyVo(row);
+  }
+
+  // Admin → Families → select-all "On website": every chosen family in one update.
+  async setHomeVisibility(dto: FamilyHomeVisibilityDto): Promise<FamilyHomeVisibilityVo> {
+    const ids = [...new Set(dto.familyIds.map((id) => id.trim()).filter(Boolean))];
+    if (!ids.length) throw new ApiError(400, "Choose at least one family.");
+    return { updated: await this.repo.setShowOnHome(ids, dto.showOnHome) };
   }
 
   remove(id: string): Promise<void> {
