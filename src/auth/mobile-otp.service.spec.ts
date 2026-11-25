@@ -27,12 +27,11 @@ const build = ({ provider = "WHATSAPP" as string | null, mailWorks = true } = {}
 };
 
 describe("MobileOtpService delivery", () => {
-  test("password reset: WhatsApp accepted and the account's email also gets the code", async () => {
+  test("password reset: a code sent to the mobile is never also emailed (the email may be someone else's)", async () => {
     const { service, mail } = build();
     const result = await service.send("9876543210", "RESET", "member@example.com");
     assert.equal(result.channel, "WHATSAPP");
-    assert.equal(mail.send.mock.callCount(), 1);
-    assert.equal(mail.send.mock.calls[0].arguments[0].to, "member@example.com");
+    assert.equal(mail.send.mock.callCount(), 0);
   });
   test("registration: no email copy when WhatsApp accepted (the mobile itself must be proven)", async () => {
     const { service, mail } = build();
@@ -45,7 +44,7 @@ describe("MobileOtpService delivery", () => {
     assert.equal(result.channel, "EMAIL");
     assert.equal(mail.send.mock.callCount(), 1);
   });
-  test("a failing email copy does not undo a reset code already sent by WhatsApp", async () => {
+  test("a reset code sent by WhatsApp is recorded even when email is down", async () => {
     const { service, challenges } = build({ mailWorks: false });
     const result = await service.send("9876543210", "RESET", "member@example.com");
     assert.equal(result.channel, "WHATSAPP");

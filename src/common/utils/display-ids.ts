@@ -9,7 +9,8 @@ const MAX_ATTEMPTS = 3;
 // Hand-made ids such as "TXN-MBX3K9F2" sort after the numbered ones and are left out, so they can't
 // crowd the numbered ids out of the "latest few" window and make the next id collide.
 export const displayIdPrefixRange = (prefix: string): { gte: string; lt: string } => {
-  if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*-$/.test(prefix)) throw new Error("Invalid display-ID prefix");
+  // A prefix ends with "-" (NPSI-FAM-) or is a family's member-id stem ending in digits (NPSI-MEB-000001).
+  if (!/^[A-Z0-9]+(?:-[A-Z0-9]+)*(?:-|\d)$/.test(prefix)) throw new Error("Invalid display-ID prefix");
   return { gte: `${prefix}0`, lt: `${prefix}A` };
 };
 

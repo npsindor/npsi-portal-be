@@ -1,4 +1,5 @@
 import { Injectable } from "@nestjs/common";
+import { communityAccount } from "../common/eligibility/community-account.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
@@ -34,18 +35,22 @@ export class SehatService {
   private admin(user: UserRow) {
     if (user.role !== "admin" || user.status !== "active") throw new ApiError(403, "SEHAT_ADMIN_REQUIRED");
   }
+  // Every registered community member may use Sehat Saathi, as with the other member services: the owner or a member
+  // of an ACTIVE family (also when the account has no email, e.g. registered by mobile) and an ACTIVE student.
   private async member(user: UserRow, db: Db = this.db) {
-    if (user.status !== "active" || !user.isVerified || !user.email) throw new ApiError(403, "SEHAT_MEMBERSHIP_REQUIRED");
-    const family = await db.family.findFirst({ where: { email: user.email, status: "ACTIVE" } });
-    const member = await db.familyMember.findFirst({
-      where: { email: user.email, status: { in: ["ACTIVE", "Active", "APPROVED"] }, family: { status: "ACTIVE" } },
-    });
-    if (!family && !member && user.role !== "admin") throw new ApiError(403, "SEHAT_MEMBERSHIP_REQUIRED");
+    const account = await communityAccount(db, user);
+    if (!account) throw new ApiError(403, "SEHAT_MEMBERSHIP_REQUIRED");
+    const family = account.familyId
+      ? await db.family.findUnique({ where: { familyId: account.familyId }, select: { headName: true, contactNumber: true } })
+      : null;
+    const member = account.memberId
+      ? await db.familyMember.findUnique({ where: { id: account.memberId }, select: { name: true, mobile: true, membershipId: true } })
+      : null;
     return {
       name: user.fullName || member?.name || family?.headName || "",
-      email: user.email,
+      email: user.email ?? "",
       phone: mobileDigits(user.phone || member?.mobile || family?.contactNumber),
-      phones: [user.phone, member?.mobile, family?.contactNumber].map(mobileDigits).filter(Boolean),
+      phones: [...new Set([...account.mobiles, member?.mobile, family?.contactNumber].map(mobileDigits).filter(Boolean))],
       membershipId: member?.membershipId || "",
     };
   }

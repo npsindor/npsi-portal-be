@@ -3,7 +3,7 @@ import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
 import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
-import { createWithDisplayId } from "../common/utils/display-ids.js";
+import { memberIdPrefix, nextMemberIds } from "../common/utils/member-ids.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import { FamiliesRepository } from "../families/families.repository.js";
 import { FamilyMembersRepository } from "../family-members/family-members.repository.js";
@@ -57,6 +57,13 @@ export class TransferRequestReviewService {
         request.requestType === "student_to_family"
           ? await this.addStudent(request, target, tx, dto.lang)
           : await this.moveMember(request, target, tx, dto.lang);
+      // Older duplicate requests for the same member (filed before one open request per member was enforced) are closed.
+      if (request.sourceMembershipId) {
+        await tx.transferRequest.updateMany({
+          where: { id: { not: id }, sourceMembershipId: request.sourceMembershipId, status: { in: ["PENDING", "CORRECTION_REQUIRED"] } },
+          data: { status: "REJECTED", openKey: null, adminRemarks: "Closed automatically: another transfer request for this member was approved." },
+        });
+      }
       return this.requests.update(id, { ...decided, ...moved, status: "APPROVED", openKey: null, approvedDate: new Date(), newFamilyId: target.familyId }, tx);
     });
     return toTransferRequestVo(row as TransferRequest);
@@ -70,28 +77,24 @@ export class TransferRequestReviewService {
     if (await this.familyMembers.hasContactInFamily(familyId, student.mobile, student.email, tx)) {
       throw new ApiError(409, "This person is already a member of the target family.");
     }
-    const member = await createWithDisplayId(
-      "NPSI-MEM-",
-      (prefix) => this.familyMembers.latestDisplayIds(prefix, tx),
-      (membershipId) =>
-        this.familyMembers.create(
-          {
-            id: randomId(),
-            membershipId,
-            familyId,
-            name: student.studentName,
-            relationship: "Other",
-            gender: student.gender,
-            dob: student.dob,
-            mobile: student.mobile,
-            email: student.email,
-            address: student.address,
-            photoUrl: student.photoUrl,
-            status: "ACTIVE",
-            linkedStudentId: student.studentId,
-          },
-          tx,
-        ),
+    const [membershipId] = nextMemberIds(familyId, await this.familyMembers.latestDisplayIds(memberIdPrefix(familyId), tx));
+    const member = await this.familyMembers.create(
+      {
+        id: randomId(),
+        membershipId,
+        familyId,
+        name: student.studentName,
+        relationship: "Other",
+        gender: student.gender,
+        dob: student.dob,
+        mobile: student.mobile,
+        email: student.email,
+        address: student.address,
+        photoUrl: student.photoUrl,
+        status: "ACTIVE",
+        linkedStudentId: student.studentId,
+      },
+      tx,
     );
     await this.students.update(student.id, { status: "TRANSFERRED", linkedFamilyId: familyId, linkedMembershipId: member.membershipId }, tx);
     await this.familyMembers.recountFamilies([familyId], tx);
@@ -108,10 +111,14 @@ export class TransferRequestReviewService {
       throw new ApiError(409, "This member is no longer in the family that asked for the transfer, so the request is out of date. Reject it.");
     }
     const fromFamilyId = member.familyId;
-    await this.familyMembers.update(member.id, { familyId: target.familyId as string, status: "ACTIVE" }, tx);
-    await this.familyMembers.recountFamilies([fromFamilyId, target.familyId], tx);
+    const toFamilyId = target.familyId as string;
+    // The member id carries the family's number, so the moved member gets the new family's next id.
+    const [membershipId] = nextMemberIds(toFamilyId, await this.familyMembers.latestDisplayIds(memberIdPrefix(toFamilyId), tx));
+    await this.familyMembers.update(member.id, { familyId: toFamilyId, status: "ACTIVE" }, tx);
+    await this.familyMembers.renameMembership(member.id, member.membershipId, membershipId, tx);
+    await this.familyMembers.recountFamilies([fromFamilyId, toFamilyId], tx);
     const vars = { fromFamilyId, toFamilyName: target.familyName };
-    await this.notifications.create(workflowNotification("transferMoved", target.familyId as string, vars, lang), tx);
-    return { oldFamilyId: fromFamilyId };
+    await this.notifications.create(workflowNotification("transferMoved", toFamilyId, vars, lang), tx);
+    return { oldFamilyId: fromFamilyId, resultingMembershipId: membershipId };
   }
 }

@@ -127,7 +127,7 @@ export const familyRow = (overrides: Partial<Models.Family> = {}): Models.Family
   memberCount: null,
   applicationId: null,
   ownerUserId: null,
-  showOnHome: false,
+  showOnHome: true,
   createdAt: AT,
   updatedAt: AT,
   ...overrides,
@@ -389,5 +389,9 @@ export const userRow = (overrides: Partial<Models.User> = {}): Models.User => ({
   otpExpiresAt: null,
   photoUrl: null,
   phoneVerified: true,
+  pendingEmail: null,
+  pendingEmailCodeHash: null,
+  pendingEmailExpiresAt: null,
+  pendingEmailAttempts: 0,
   ...overrides,
 });

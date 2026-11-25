@@ -258,7 +258,7 @@ describe("model resources", () => {
     });
     const ok = await api("post", `${V1}/family-members`, TOKENS.admin).send({ familyId: FAMILY, name: "Kid", relationship: "Son", dob: "2015-03-04" });
     assert.equal(ok.status, 201);
-    assert.deepEqual([ok.body.familyId, ok.body.dob, ok.body.membershipId], [FAMILY, "2015-03-04", "NPSI-MEM-000002"]);
+    assert.deepEqual([ok.body.familyId, ok.body.dob, ok.body.membershipId], [FAMILY, "2015-03-04", "NPSI-MEB-00000102"]);
   });
   test("POST /applications: validation and duplicate checks", async () => {
     assert.deepEqual((await api("post", `${V1}/applications`).send({ mobile: "1" })).body, { error: "A valid 10-digit mobile number is required." });

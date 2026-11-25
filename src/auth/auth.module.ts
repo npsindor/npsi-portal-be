@@ -25,6 +25,7 @@ export class AuthModule implements NestModule {
         route(R.resetRequest, RequestMethod.POST),
         route(R.resetPassword, RequestMethod.POST),
         route(R.changePassword, RequestMethod.PUT),
+        route(R.emailChange, RequestMethod.POST),
       );
     consumer
       .apply(otpLimiter)
@@ -33,6 +34,7 @@ export class AuthModule implements NestModule {
         route(R.resendOtp, RequestMethod.POST),
         route(R.mobileOtp, RequestMethod.POST),
         route(R.mobileOtpVerify, RequestMethod.POST),
+        route(R.emailChangeConfirm, RequestMethod.POST),
       );
   }
 }

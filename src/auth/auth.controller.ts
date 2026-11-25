@@ -25,6 +25,8 @@ import { AUTH_ROUTES as R } from "./auth.routes.js";
 import { AuthService } from "./auth.service.js";
 import {
   ChangePasswordDto,
+  EmailChangeConfirmDto,
+  EmailChangeDto,
   EmailDto,
   InviteDto,
   LoginDto,
@@ -36,7 +38,17 @@ import {
   VerifyMobileOtpDto,
   VerifyOtpDto,
 } from "./dto/auth.dto.js";
-import { CurrentSessionVo, InvitationVo, MeVo, MobileOtpVo, MobileVerificationVo, PublicUserVo, RegistrationVo, SessionVo } from "./vo/auth.vo.js";
+import {
+  CurrentSessionVo,
+  EmailChangeVo,
+  InvitationVo,
+  MeVo,
+  MobileOtpVo,
+  MobileVerificationVo,
+  PublicUserVo,
+  RegistrationVo,
+  SessionVo,
+} from "./vo/auth.vo.js";
 
 @ApiTags("auth")
 @ApiTooManyRequestsResponse({ description: "Rate limit exceeded (auth and OTP routes)" })
@@ -157,6 +169,32 @@ export class AuthController {
   @ApiForbiddenResponse({ type: ErrorVo, description: "Not an admin" })
   invite(@Body() body: InviteDto): Promise<InvitationVo> {
     return this.auth.invite(body);
+  }
+
+  @Post(R.emailChange)
+  @HttpCode(200)
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Change the account email, step 1: current password + new email; a code is sent to the new email" })
+  @ApiOkResponse({ type: EmailChangeVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Invalid email, or already the account's email" })
+  @ApiUnauthorizedResponse({ type: ErrorVo, description: "Not logged in, or current password wrong" })
+  @ApiConflictResponse({ type: ErrorVo, description: "Another account uses this email" })
+  requestEmailChange(@CurrentUser() user: UserRow, @Body() body: EmailChangeDto): Promise<EmailChangeVo> {
+    return this.auth.requestEmailChange(user, body);
+  }
+
+  @Post(R.emailChangeConfirm)
+  @HttpCode(200)
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Change the account email, step 2: the code from the new email; other devices are signed out" })
+  @ApiOkResponse({ type: PublicUserVo })
+  @ApiBadRequestResponse({ type: ErrorVo, description: "Wrong or expired code" })
+  @ApiUnauthorizedResponse({ type: ErrorVo })
+  @ApiConflictResponse({ type: ErrorVo, description: "Another account took this email meanwhile" })
+  confirmEmailChange(@CurrentUser() user: UserRow, @Body() body: EmailChangeConfirmDto, @Req() request: Request): Promise<PublicUserVo> {
+    return this.auth.confirmEmailChange(user, body, bearerToken(request));
   }
 
   @Put(R.changePassword)

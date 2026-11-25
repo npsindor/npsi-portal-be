@@ -110,7 +110,7 @@ const seed = async (db: Db): Promise<void> => {
     [FAMILY],
   );
   await db.execute(
-    "INSERT INTO family_members (id, family_id, membership_id, name, relationship, gender, mobile, email, status, created_at) VALUES ('fm-1', ?, 'NPSI-MEM-000001', 'Member One', 'Self', 'Male', '9300000001', 'member@e2e.local', 'ACTIVE', '2026-01-01')",
+    "INSERT INTO family_members (id, family_id, membership_id, name, relationship, gender, mobile, email, status, created_at) VALUES ('fm-1', ?, 'NPSI-MEB-00000101', 'Member One', 'Self', 'Male', '9300000001', 'member@e2e.local', 'ACTIVE', '2026-01-01')",
     [FAMILY],
   );
   await db.execute("INSERT INTO events (id, title, date, venue, fee, status) VALUES ('ev-1', 'Event', '2099-12-01', 'Hall', 50, 'PUBLISHED')");

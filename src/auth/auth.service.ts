@@ -13,6 +13,8 @@ import { OWN_UPLOAD_URL } from "../common/utils/uploads.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import type {
   ChangePasswordDto,
+  EmailChangeConfirmDto,
+  EmailChangeDto,
   EmailDto,
   InviteDto,
   LoginDto,
@@ -109,6 +111,11 @@ const assertNotCommon = (value: string): void => {
 };
 
 const OK: OkVo = { ok: true };
+const EMAIL_CHANGE_TTL_MS = 10 * 60 * 1000;
+const EMAIL_CHANGE_MAX_TRIES = 5;
+const EMAIL_CODE_EXPIRED = "This code has expired. Ask for a new one.";
+const maskEmail = (email: string): string =>
+  email.replace(/^(.)(.*)(@.*)$/, (_m, first: string, rest: string, domain: string) => `${first}${"*".repeat(Math.min(rest.length, 6))}${domain}`);
 const logMailError = (label: string) => (error: unknown) => console.error(`[mailer] ${label} failed:`, error instanceof Error ? error.message : error);
 
 // A file served from this API's /uploads (see UploadsService): uuid name, image extension.
@@ -369,6 +376,61 @@ export class AuthService {
     if (newPassword === currentPassword) throw new ApiError(400, "The new password must be different from the current one.");
     await this.users.updatePassword(user.id, hashPassword(newPassword), currentToken ? sha256(currentToken) : undefined);
     return OK;
+  }
+
+  // Email change, step 1: the current password, then a code to the new address (nothing changes until it is entered).
+  async requestEmailChange(user: UserRow, body: EmailChangeDto): Promise<{ ok: true; expiresInSeconds: number }> {
+    const email = body?.email?.trim().toLowerCase() || "";
+    if (!EMAIL_PATTERN.test(email)) throw new ApiError(400, "A valid email address is required.");
+    if (email === user.email?.trim().toLowerCase()) throw new ApiError(400, "This is already your account email.");
+    if (!verifyPassword(body?.currentPassword, user.passwordHash)) throw new ApiError(401, "Current password is incorrect.");
+    const owner = await this.users.findIdByEmail(email);
+    if (owner && owner.id !== user.id) throw new ApiError(409, "An account with this email already exists.");
+    const code = generateOtp();
+    await this.users.setPendingEmail(user.id, email, hashOtp(code), new Date(Date.now() + EMAIL_CHANGE_TTL_MS));
+    const html = `<p>Your NPS Indore code to confirm this email for your account / आपके खाते में यह ईमेल जोड़ने का कोड:</p><p style="font-size:28px;font-weight:bold;letter-spacing:6px;">${code}</p><p>Valid for 10 minutes. If you did not ask for this, ignore this email. / 10 मिनट तक मान्य।</p>`;
+    const text = `Your NPS Indore email confirmation code is ${code}. Valid for 10 minutes.`;
+    if (!this.mail.isConfigured() && this.config.appEnv === "development") console.info(`[dev] email change code for ${email}: ${code}`);
+    else {
+      try {
+        await this.mail.send({ to: email, subject: "Confirm your new email", html, text });
+      } catch (error) {
+        logMailError("email change code")(error);
+        throw new ApiError(503, "The code could not be emailed. Please try again shortly.");
+      }
+    }
+    return { ok: true, expiresInSeconds: EMAIL_CHANGE_TTL_MS / 1000 };
+  }
+
+  // Email change, step 2: the right code moves the account to the new email, signs out every other device and tells
+  // the old address (so whoever proved it can no longer reset the password through it).
+  async confirmEmailChange(user: UserRow, body: EmailChangeConfirmDto, currentToken?: string): Promise<PublicUserVo> {
+    const code = String(body?.code ?? "").trim();
+    const pending = user.pendingEmail;
+    if (!pending || !user.pendingEmailCodeHash || !user.pendingEmailExpiresAt || user.pendingEmailExpiresAt.getTime() < Date.now()) {
+      throw new ApiError(400, EMAIL_CODE_EXPIRED);
+    }
+    if (!safeEqual(hashOtp(code), user.pendingEmailCodeHash)) {
+      if ((await this.users.countEmailAttempt(user.id)) >= EMAIL_CHANGE_MAX_TRIES) {
+        await this.users.clearPendingEmail(user.id);
+        throw new ApiError(400, EMAIL_CODE_EXPIRED);
+      }
+      throw new ApiError(400, "The code is incorrect.");
+    }
+    const owner = await this.users.findIdByEmail(pending);
+    if (owner && owner.id !== user.id) throw new ApiError(409, "An account with this email already exists.");
+    const updated = await this.users.confirmEmail(user.id, pending, currentToken ? sha256(currentToken) : undefined);
+    if (user.email) {
+      void this.mail
+        .send({
+          to: user.email,
+          subject: "Your NPS Indore account email was changed",
+          html: `<p>The email of your NPS Indore account was changed to <b>${maskEmail(pending)}</b>. This address no longer signs in to the account.</p><p>If you did not do this, contact the NPS Indore office.</p>`,
+          text: `The email of your NPS Indore account was changed to ${maskEmail(pending)}. If you did not do this, contact the NPS Indore office.`,
+        })
+        .catch(logMailError("email changed notice"));
+    }
+    return PublicUserVo.from(updated);
   }
 
   async me(user: UserRow): Promise<MeVo> {
