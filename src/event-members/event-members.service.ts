@@ -28,6 +28,31 @@ const clean = (value: string | null | undefined) => (value ?? "").replace(/\s+/g
 // A photo is either one already on the person's record or a fresh upload to this API's own /uploads.
 export const OWN_UPLOAD = /^(https?:\/\/[^\s"'<>]+)?\/(api\/v1\/)?uploads\/[A-Za-z0-9_-]+\.(jpg|jpeg|png|webp|gif)$/i;
 
+// The same person on a team, recognised by name and village as written by different people: case, spacing, dots and a
+// leading Shri/Smt./Ku./Dr. don't matter in the name; spacing, punctuation and common spelling variants of the village
+// (Dongargaon/Dongargoan, Gopal Pura/GopalPura, Ghegava/Ghegawa, Pipri/Pipari) don't matter either.
+export const nameKey = (value: string | null | undefined) =>
+  String(value ?? "")
+    .toLowerCase()
+    .replace(/[.,]/g, " ")
+    .replace(/^\s*(shri|smt|shrimati|ku|kumari|dr|mr|mrs|ms)\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim();
+export const villageKey = (value: string | null | undefined) =>
+  String(value ?? "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/[^\p{L}\p{N}]/gu, "")
+    .replace(/oan/g, "aon")
+    .replace(/w/g, "v")
+    .replace(/aa/g, "a")
+    .replace(/ee/g, "i")
+    .replace(/oo/g, "u")
+    .replace(/([a-z])(?=\1)/g, "")
+    .replace(/(?<=[^aeiou])a(?=r)/g, ""); // Pipari / Pipri
+export const sameEntry = (a: { name: string | null; village: string | null }, b: { name: string | null; village: string | null }) =>
+  nameKey(a.name) === nameKey(b.name) && villageKey(a.village) === villageKey(b.village);
+
 type Person = { memberId: string | null; studentId: string | null; mobileDigits: string | null };
 // One open (PENDING/APPROVED) application per person per section; the database enforces it through active_key.
 export const activeKeyOf = (sectionId: string | null, customEventName: string | null, person: Person, id: string): string => {
@@ -288,6 +313,27 @@ export class EventMembersService {
     if (same) throw new ApiError(409, "EM_DUPLICATE");
   }
 
+  // The same name and village already on the team (or, with statuses OPEN, also waiting for it) is the same person.
+  private async assertNotListed(
+    db: Db,
+    sectionId: string | null,
+    customEventName: string | null,
+    entry: { name: string | null; village: string | null },
+    statuses: string[],
+    exceptId?: string,
+  ) {
+    if (!entry.name || !entry.village) return;
+    const team = await db.eventMemberApplication.findMany({
+      where: {
+        status: { in: statuses },
+        ...(sectionId ? { sectionId } : { sectionId: null, customEventName: customEventName ?? "" }),
+        ...(exceptId ? { NOT: { id: exceptId } } : {}),
+      },
+      select: { id: true, name: true, village: true },
+    });
+    if (team.some((row) => (!exceptId || row.id !== exceptId) && sameEntry(row, entry))) throw new ApiError(409, "EM_SAME_ENTRY");
+  }
+
   // The one application form. Logged out: reCAPTCHA, not linked to any record (no lookup of existing members).
   // Logged in: may pick one of the account's own people, whose record ids are linked; the details typed in the form
   // belong to the event profile only and never change the member's or student's master record.
@@ -322,15 +368,8 @@ export class EventMembersService {
     const id = randomId();
     const who = { memberId: person?.memberId ?? null, studentId: person?.studentId ?? null, mobileDigits: mobileDigits || null };
     await this.assertNoOpen(this.db, section?.id ?? null, customEventName, who);
-    // Without a mobile or linked record, the same name and village already on (or waiting for) the team is a duplicate.
-    if (adminListing && !who.mobileDigits && village) {
-      const sameName = await this.db.eventMemberApplication.findMany({
-        where: { status: { in: OPEN }, ...(section ? { sectionId: section.id } : { sectionId: null, customEventName: customEventName ?? "" }) },
-        select: { name: true, village: true },
-      });
-      const key = (value: string | null) => (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
-      if (sameName.some((row) => key(row.name) === key(name) && key(row.village) === key(village))) throw new ApiError(409, "EM_DUPLICATE");
-    }
+    // An admin adding someone: the same name and village already on (or waiting for) the team is the same person.
+    if (isAdmin) await this.assertNotListed(this.db, section?.id ?? null, customEventName, { name, village }, OPEN);
     const approveNow = isAdmin && input.approveNow === true && Boolean(section);
     try {
       return await this.db.$transaction(async (tx) => {
@@ -434,6 +473,8 @@ export class EventMembersService {
       }
       const who = { memberId: row.memberId, studentId: row.studentId, mobileDigits: row.mobileDigits };
       await this.assertNoOpen(tx, section.id, null, who, id);
+      // Approving puts the card on the website: never a second card with the same name and village.
+      await this.assertNotListed(tx, section.id, null, row, ["APPROVED"], id);
       if (row.section && row.section.id !== section.id) await this.deactivateRoster(tx, row, user);
       const after = await tx.eventMemberApplication.update({
         where: { id },
@@ -489,6 +530,14 @@ export class EventMembersService {
         }
         data.sectionId = section.id;
         if (row.status === "APPROVED") await this.deactivateRoster(tx, row, user);
+      }
+      // Renaming, moving or changing the village of someone on a team must not make them a second card of another member.
+      if (row.status === "APPROVED" && (data.name !== undefined || data.village !== undefined || data.sectionId !== undefined)) {
+        const entry = {
+          name: (data.name as string | undefined) ?? row.name,
+          village: data.village === undefined ? row.village : (data.village as string | null),
+        };
+        await this.assertNotListed(tx, (data.sectionId as string | undefined) ?? row.sectionId, row.customEventName, entry, ["APPROVED"], id);
       }
       const changes: Record<string, { from: unknown; to: unknown }> = {};
       for (const [key, value] of Object.entries(data)) {
