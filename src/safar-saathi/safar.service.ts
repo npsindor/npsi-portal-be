@@ -8,8 +8,21 @@ import { escapeLike } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { type Db, PrismaService } from "../database/prisma.service.js";
 import type { SafarEntry, SafarMatch } from "../generated/prisma/client.js";
-import type { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto } from "./safar.dto.js";
-import { canMatch, indiaToday, minutesApart, mobileDigits, ONE_DAY_MS, routeKey, validTravelDate } from "./safar.rules.js";
+import type { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto, SafarAvailableQueryDto, SafarConnectDto } from "./safar.dto.js";
+import {
+  canMatch,
+  departureMinutes,
+  directKinds,
+  discoveryScore,
+  indiaToday,
+  MATCH_WINDOW_HOURS,
+  MATCH_WINDOW_MINUTES,
+  minutesApart,
+  mobileDigits,
+  ONE_DAY_MS,
+  routeKey,
+  validTravelDate,
+} from "./safar.rules.js";
 
 const todayDate = (): Date => new Date(`${indiaToday()}T00:00:00Z`);
 
@@ -111,7 +124,8 @@ export class SafarService {
   // within MATCH_WINDOW_MINUTES, travel date not passed, poster's account active. A request that already has a
   // confirmed traveller takes no more offers. Your own entries never pair with each other.
   private async candidates(db: Db, entry: SafarEntry): Promise<SafarEntry[]> {
-    if (entry.status !== "OPEN") return [];
+    // A direct request is paired only with the entry it was sent to.
+    if (entry.status !== "OPEN" || entry.targetEntryId) return [];
     const today = todayDate();
     if (entry.travelDate < today) return [];
     if (entry.kind === "REQUEST" && (await db.safarMatch.count({ where: { requestId: entry.id, status: "CONFIRMED" } }))) return [];
@@ -127,6 +141,7 @@ export class SafarService {
           gte: new Date(Math.max(entry.travelDate.getTime() - ONE_DAY_MS, today.getTime())),
           lte: new Date(entry.travelDate.getTime() + ONE_DAY_MS),
         },
+        targetEntryId: null,
         user: { status: "active" },
         ...(entry.kind === "OFFER" ? { requests: { none: { status: "CONFIRMED" } } } : {}),
       },
@@ -176,6 +191,163 @@ export class SafarService {
     return users;
   }
 
+  // A direct request whose pair ended (declined, withdrawn, the other entry cancelled or another traveller confirmed)
+  // has nothing left to wait for: it is closed, so it neither stays "open" nor pairs with anyone else.
+  private async closeDirect(tx: Db, matches: { id: string; request: SafarEntry; offer: SafarEntry }[]) {
+    for (const match of matches)
+      for (const entry of [match.request, match.offer])
+        if (entry.targetEntryId && entry.status === "OPEN" && [match.request.id, match.offer.id].includes(entry.targetEntryId))
+          await tx.safarEntry.update({ where: { id: entry.id }, data: { status: "CLOSED" } });
+  }
+
+  // Available Journeys & Requests: every other member's open, upcoming entry (travel plans, parcel and
+  // travel-together requests) without names or contact details. With a route and/or date/time the member is looking
+  // for, only that route is listed and only within MATCH_WINDOW_MINUTES of that date/time, best first; without one,
+  // everything by departure. `connection` is the viewer's existing request with that entry (no second one is sent).
+  async available(user: UserRow, query: SafarAvailableQueryDto) {
+    await this.member(user);
+    const today = todayDate();
+    const originKey = query.origin?.trim() ? routeKey(query.origin) : undefined;
+    const destinationKey = query.destination?.trim() ? routeKey(query.destination) : undefined;
+    const rows = await this.db.safarEntry.findMany({
+      where: {
+        status: "OPEN",
+        travelDate: { gte: today },
+        userId: { not: user.id },
+        targetEntryId: null,
+        user: { status: "active" },
+        ...(originKey ? { originKey } : {}),
+        ...(destinationKey ? { destinationKey } : {}),
+      },
+      orderBy: [{ travelDate: "asc" }, { preferredTime: "asc" }, { createdAt: "asc" }],
+      take: 300,
+    });
+    // The wanted moment: a date (the whole day) or a date and time.
+    const wantedFrom = query.date ? departureMinutes(new Date(`${query.date}T00:00:00Z`), query.time || "00:00") : undefined;
+    const wantedTo = query.date ? departureMinutes(new Date(`${query.date}T00:00:00Z`), query.time || "23:59") : undefined;
+    const gapOf = (entry: SafarEntry) => {
+      if (wantedFrom === undefined || wantedTo === undefined) return undefined;
+      const at = departureMinutes(entry.travelDate, entry.preferredTime);
+      return at < wantedFrom ? wantedFrom - at : at > wantedTo ? at - wantedTo : 0;
+    };
+    const ids = rows.map((row) => row.id);
+    const confirmed = new Set(
+      (await this.db.safarMatch.findMany({ where: { status: "CONFIRMED", requestId: { in: ids } }, select: { requestId: true } })).map((m) => m.requestId),
+    );
+    const connections = await this.db.safarMatch.findMany({
+      where: {
+        status: { in: ["PROPOSED", "CONFIRMED"] },
+        OR: [
+          { requestId: { in: ids }, offer: { userId: user.id } },
+          { offerId: { in: ids }, request: { userId: user.id } },
+        ],
+      },
+      select: { id: true, status: true, requestId: true, offerId: true },
+    });
+    const items = rows
+      .filter((row) => !(row.kind === "REQUEST" && confirmed.has(row.id)))
+      .map((row) => ({ row, gap: gapOf(row) }))
+      .filter(({ gap }) => gap === undefined || gap <= MATCH_WINDOW_MINUTES)
+      .sort((a, b) => discoveryScore(b.row, { originKey, destinationKey }, b.gap) - discoveryScore(a.row, { originKey, destinationKey }, a.gap))
+      .map(({ row, gap }) => {
+        const connection = connections.find((match) => match.requestId === row.id || match.offerId === row.id);
+        return {
+          id: row.id,
+          kind: row.kind,
+          requestType: row.requestType,
+          origin: row.origin,
+          destination: row.destination,
+          travelDate: row.travelDate.toISOString().slice(0, 10),
+          preferredTime: row.preferredTime,
+          // What is to be carried, so a traveller can decide; names and contacts stay private until both accept.
+          itemDetails: row.kind === "REQUEST" ? row.itemDetails : null,
+          status: row.status,
+          minutesFromWanted: gap ?? null,
+          connection: connection ? { matchId: connection.id, status: connection.status } : null,
+        };
+      });
+    return { matchWindowHours: MATCH_WINDOW_HOURS, items };
+  }
+
+  // A direct request from Available Journeys & Requests, without posting a separate plan or request first: saves the
+  // asker's side as their own entry (same route and date, the details from the small form), linked to the chosen
+  // entry and paired with it at once, already accepted by the asker. The owner gets a "direct request" notice and
+  // accepts or declines; contact details are shared after both accept, as for every match. Sending again (a retry
+  // or a second click) returns the same request.
+  async connect(targetId: string, dto: SafarConnectDto, user: UserRow) {
+    const phones = await this.member(user);
+    if (!phones[0]) throw new ApiError(400, "SAFAR_REGISTERED_MOBILE");
+    if (dto.notificationMethod === "EMAIL" && !this.mail.isConfigured()) throw new ApiError(400, "SAFAR_EMAIL_UNAVAILABLE");
+    const result = await this.transaction(async (tx) => {
+      const replay = await tx.safarEntry.findUnique({ where: { userId_clientRequestId: { userId: user.id, clientRequestId: dto.clientRequestId } } });
+      if (replay) {
+        const match = await tx.safarMatch.findFirst({ where: { OR: [{ requestId: replay.id }, { offerId: replay.id }] }, orderBy: { createdAt: "desc" } });
+        return { entryId: replay.id, matchId: match?.id ?? null, existing: true, owner: null as string | null };
+      }
+      const target = await tx.safarEntry.findUnique({ where: { id: targetId }, include: { user: { select: { status: true } } } });
+      if (!target || target.userId === user.id || target.targetEntryId) throw new ApiError(404, "SAFAR_NOT_FOUND");
+      if (target.status !== "OPEN" || target.user.status !== "active" || target.travelDate < todayDate()) throw new ApiError(409, "SAFAR_INVALID_STATE");
+      const already = await tx.safarMatch.findFirst({
+        where: {
+          status: { in: ["PROPOSED", "CONFIRMED"] },
+          OR: [
+            { requestId: target.id, offer: { userId: user.id } },
+            { offerId: target.id, request: { userId: user.id } },
+          ],
+        },
+        include: { request: true, offer: true },
+      });
+      if (already) {
+        const own = already.request.userId === user.id ? already.request : already.offer;
+        return { entryId: own.id, matchId: already.id, existing: true, owner: null as string | null };
+      }
+      const kind = target.kind === "OFFER" ? "REQUEST" : "OFFER";
+      const requestType = target.kind === "OFFER" ? dto.requestType || "" : target.requestType === "DELIVERY" ? "DELIVERY" : "TRAVEL";
+      if (!directKinds(target, requestType)) throw new ApiError(400, "SAFAR_REQUEST_TYPE");
+      if (kind === "REQUEST" && requestType === "DELIVERY" && !dto.itemDetails?.trim()) throw new ApiError(400, "SAFAR_ITEM_REQUIRED");
+      if (target.kind === "REQUEST" && (await tx.safarMatch.count({ where: { requestId: target.id, status: "CONFIRMED" } })))
+        throw new ApiError(409, "SAFAR_INVALID_STATE");
+      const preferredTime = dto.preferredTime || target.preferredTime;
+      if (minutesApart(target, { travelDate: target.travelDate, preferredTime }) > MATCH_WINDOW_MINUTES) throw new ApiError(400, "SAFAR_TIME_WINDOW");
+      if ((await tx.safarEntry.count({ where: { userId: user.id, status: "OPEN", travelDate: { gte: todayDate() } } })) >= 20)
+        throw new ApiError(429, "SAFAR_OPEN_LIMIT");
+      const entry = await tx.safarEntry.create({
+        data: {
+          id: randomId(),
+          clientRequestId: dto.clientRequestId,
+          userId: user.id,
+          kind,
+          requestType,
+          name: (user.fullName || "Member").trim().slice(0, 150),
+          phone: phones[0],
+          email: user.email,
+          origin: target.origin,
+          destination: target.destination,
+          originKey: target.originKey,
+          destinationKey: target.destinationKey,
+          travelDate: target.travelDate,
+          preferredTime,
+          itemDetails: dto.itemDetails?.trim() || null,
+          instructions: dto.instructions?.trim() || null,
+          notificationMethod: dto.notificationMethod || "IN_APP",
+          lang: dto.lang,
+          targetEntryId: target.id,
+        },
+      });
+      const [request, offer] = kind === "REQUEST" ? [entry, target] : [target, entry];
+      const match = await tx.safarMatch.create({
+        data: { id: randomId(), requestId: request.id, offerId: offer.id, requestAccepted: kind === "REQUEST", offerAccepted: kind === "OFFER" },
+      });
+      await this.notices(tx, match.id, "REQUESTED", [request, offer]);
+      return { entryId: entry.id, matchId: match.id, existing: false, owner: target.userId };
+    });
+    if (result.owner) {
+      await this.safeDeliverEmails(result.owner);
+      await this.safeDeliverEmails(user.id);
+    }
+    return { entryId: result.entryId, matchId: result.matchId, existing: result.existing };
+  }
+
   async mine(user: UserRow) {
     const phones = await this.member(user);
     const open = await this.db.safarEntry.findMany({ where: { userId: user.id, status: "OPEN", travelDate: { gte: todayDate() } } });
@@ -210,6 +382,8 @@ export class SafarService {
           otherKind: other.kind,
           ownRoute: { origin: own.origin, destination: own.destination, travelDate: own.travelDate, preferredTime: own.preferredTime },
           minutesApart: minutesApart(own, other),
+          // A direct request: SENT = you asked from their entry, RECEIVED = they asked from yours.
+          direction: own.targetEntryId === other.id ? "SENT" : other.targetEntryId === own.id ? "RECEIVED" : null,
           acceptedByMe: isRequest ? match.requestAccepted : match.offerAccepted,
           acceptedByOther: isRequest ? match.offerAccepted : match.requestAccepted,
           origin: other.origin,
@@ -226,7 +400,8 @@ export class SafarService {
       notices,
       // Your own travel plan and request that would pair if another member had posted one of them: shown as a hint,
       // since a member cannot carry their own parcel or travel with themselves.
-      ownPairs: open.filter((a) => a.kind === "REQUEST" && open.some((b) => canMatch(a, b))).length,
+      ownPairs: open.filter((a) => !a.targetEntryId && a.kind === "REQUEST" && open.some((b) => !b.targetEntryId && canMatch(a, b))).length,
+      matchWindowHours: MATCH_WINDOW_HOURS,
       historyLimit: 100,
     };
   }
@@ -246,6 +421,7 @@ export class SafarService {
         await tx.safarMatch.update({ where: { id: match.id }, data: { status: "CANCELLED" } });
         await this.notices(tx, match.id, "CANCELLED", [match.request, match.offer]);
       }
+      await this.closeDirect(tx, matches);
       return [...new Set(matches.flatMap((match) => [match.request.userId, match.offer.userId]))];
     });
     for (const id of parties) await this.safeDeliverEmails(id);
@@ -282,6 +458,7 @@ export class SafarService {
             await tx.safarMatch.update({ where: { id: other.id }, data: { status: "CANCELLED" } });
             await this.notices(tx, other.id, "CANCELLED", [other.request, other.offer]);
           }
+          await this.closeDirect(tx, alternatives);
           await this.notices(tx, id, "CONFIRMED", [match.request, match.offer]);
         }
       } else {
@@ -289,7 +466,11 @@ export class SafarService {
           throw new ApiError(409, "SAFAR_INVALID_STATE");
         const status = decision === "COMPLETE" ? "COMPLETED" : "DECLINED";
         await tx.safarMatch.update({ where: { id }, data: { status } });
-        if (decision === "COMPLETE") await tx.safarEntry.update({ where: { id: match.requestId }, data: { status: "COMPLETED" } });
+        if (decision === "COMPLETE") {
+          await tx.safarEntry.update({ where: { id: match.requestId }, data: { status: "COMPLETED" } });
+          // An offer made for this one request is done too.
+          if (match.offer.targetEntryId) await tx.safarEntry.update({ where: { id: match.offerId }, data: { status: "COMPLETED" } });
+        } else await this.closeDirect(tx, [match]);
         await this.notices(tx, id, status, [match.request, match.offer]);
       }
       return { users: [...affected] };
@@ -318,6 +499,7 @@ export class SafarService {
         const url = new URL("/travel-assistance", this.config.frontendUrl).href;
         const states: Record<string, string[]> = {
           PROPOSED: ["Possible match found", "संभावित साथी मिला"],
+          REQUESTED: ["Direct request", "सीधा अनुरोध"],
           CONFIRMED: ["Both members accepted", "दोनों सदस्यों ने स्वीकार किया"],
           DECLINED: ["Match declined", "मिलान अस्वीकृत"],
           CANCELLED: ["Coordination cancelled", "समन्वय रद्द"],
@@ -396,11 +578,14 @@ export class SafarService {
     await this.db.$transaction(async (tx) => {
       await tx.safarEntry.update({ where: { id }, data: { status: dto.status, adminRemarks: remarks, reviewedAt: new Date() } });
       // Closing an entry withdraws its open matches, as when the member cancels it.
-      if (["CANCELLED", "CLOSED", "ARCHIVED"].includes(dto.status))
-        await tx.safarMatch.updateMany({
+      if (["CANCELLED", "CLOSED", "ARCHIVED"].includes(dto.status)) {
+        const open = await tx.safarMatch.findMany({
           where: { OR: [{ requestId: id }, { offerId: id }], status: { in: ["PROPOSED", "CONFIRMED"] } },
-          data: { status: "CANCELLED" },
+          include: { request: true, offer: true },
         });
+        await tx.safarMatch.updateMany({ where: { id: { in: open.map((match) => match.id) } }, data: { status: "CANCELLED" } });
+        await this.closeDirect(tx, open);
+      }
       await tx.notification.create({
         data: {
           id: randomId(),

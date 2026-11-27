@@ -56,6 +56,7 @@ function fixture(configured = false) {
           ? entry.travelDate.getTime() === value.getTime()
           : (!value.gte || entry.travelDate >= value.gte) && (!value.lte || entry.travelDate <= value.lte);
       if (key === "id" && typeof value === "object") return value.in.includes(entry.id);
+      if (key === "targetEntryId") return (entry.targetEntryId ?? null) === value;
       if (key === "user") return true;
       if (key === "requests") return !matches.some((m) => m.requestId === entry.id && m.status === "CONFIRMED");
       if (key === "status" && typeof value === "object") return value.in.includes(entry.status);
@@ -67,6 +68,7 @@ function fixture(configured = false) {
       if (key === "request" || key === "offer") return entries.find((entry) => entry.id === match[`${key}Id`])?.userId === value.userId;
       if (key === "status" && typeof value === "object") return value.in.includes(match.status);
       if (key === "id" && typeof value === "object") return match.id !== value.not;
+      if (typeof value === "object" && value && "in" in value) return value.in.includes(match[key]);
       return match[key] === value;
     });
   const db: Row = {
@@ -76,27 +78,38 @@ function fixture(configured = false) {
     safarEntry: {
       count: async ({ where }: Row) => entries.filter((row) => checkEntry(row, where)).length,
       create: async ({ data }: Row) => {
-        const row = { ...data, status: "OPEN", createdAt: new Date() };
+        const row = { targetEntryId: null, ...data, status: "OPEN", createdAt: new Date() };
         entries.push(row);
         return row;
       },
-      findUnique: async ({ where }: Row) =>
-        entries.find((row) =>
+      findUnique: async ({ where, include }: Row) => {
+        const row = entries.find((row) =>
           where.id
             ? row.id === where.id
             : row.userId === where.userId_clientRequestId.userId && row.clientRequestId === where.userId_clientRequestId.clientRequestId,
-        ),
+        );
+        return row && include?.user ? { ...row, user: users.find((u) => u.id === row.userId) } : row;
+      },
       findMany: async ({ where }: Row) => entries.filter((row) => checkEntry(row, where)),
       update: async ({ where, data }: Row) => Object.assign(rowById(entries, where.id), data),
     },
     safarMatch: {
       count: async ({ where }: Row) => matches.filter((row) => checkMatch(row, where)).length,
       create: async ({ data }: Row) => {
-        const row = { ...data, status: "PROPOSED", requestAccepted: false, offerAccepted: false, createdAt: new Date() };
+        const row = { status: "PROPOSED", requestAccepted: false, offerAccepted: false, ...data, createdAt: new Date() };
         matches.push(row);
         return row;
       },
       findMany: async ({ where }: Row) => matches.filter((row) => checkMatch(row, where)).map(joins),
+      findFirst: async ({ where }: Row) => {
+        const row = matches.filter((row) => checkMatch(row, where)).at(-1);
+        return row ? joins(row) : null;
+      },
+      updateMany: async ({ where, data }: Row) => {
+        const rows = matches.filter((row) => checkMatch(row, where));
+        for (const row of rows) Object.assign(row, data);
+        return { count: rows.length };
+      },
       findUnique: async ({ where }: Row) => {
         const row = matches.find((row) => row.id === where.id);
         return row ? joins(row) : null;
@@ -316,14 +329,19 @@ test("place names: case, spaces, state suffixes, brackets and common spellings g
 test("time window: same time and a few hours apart match, more than the window does not, across midnight counts", () => {
   assert.equal(minutesApart(at("2099-11-29", "19:00"), at("2099-11-29", "19:00")), 0);
   assert.equal(minutesApart(at("2099-11-29", "23:30"), at("2099-11-30", "00:30")), 60);
+  assert.equal(minutesApart(at("2099-11-29", "23:00"), at("2099-11-30", "05:00")), 360);
   const base = { kind: "REQUEST", requestType: "DELIVERY", originKey: "indore", destinationKey: "khargone", ...at("2099-11-29", "19:00") };
   const offer = (date: string, time: string, requestType = "BOTH") => ({ ...base, kind: "OFFER", requestType, ...at(date, time) });
   assert.equal(canMatch(base, offer("2099-11-29", "19:00")), true);
-  assert.equal(canMatch(base, offer("2099-11-29", "16:00")), true);
-  assert.equal(MATCH_WINDOW_MINUTES, 240);
-  assert.equal(canMatch(base, offer("2099-11-29", "23:00")), true); // exactly the window
-  assert.equal(canMatch(base, offer("2099-11-29", "23:01")), false);
+  assert.equal(canMatch(base, offer("2099-11-29", "17:00")), true); // 2 h
+  assert.equal(canMatch(base, offer("2099-11-29", "11:00")), true); // 8 h
+  assert.equal(MATCH_WINDOW_MINUTES, 720);
+  assert.equal(canMatch(base, offer("2099-11-30", "07:00")), true); // exactly 12 h, next morning
+  assert.equal(canMatch(base, offer("2099-11-30", "07:01")), false);
+  assert.equal(canMatch(base, offer("2099-11-29", "06:59")), false); // 12 h 1 min
   assert.equal(canMatch(base, offer("2099-11-30", "19:00")), false);
+  // A journey at 23:00 and a request at 05:00 the next morning.
+  assert.equal(canMatch({ ...base, ...at("2099-11-29", "23:00") }, offer("2099-11-30", "05:00")), true);
   assert.equal(canMatch(base, offer("2099-11-29", "19:00", "TRAVEL")), false); // travels, but carries no parcels
   assert.equal(canMatch(base, offer("2099-11-29", "19:00", "DELIVERY")), true);
   assert.equal(canMatch(base, { ...offer("2099-11-29", "19:00"), destinationKey: "khandwa" }), false);
@@ -355,7 +373,7 @@ test("travel plan + travel-together request match within the window; a different
   await f.service.create(plan({ preferredTime: "18:00" }), f.users[0]);
   assert.equal((await f.service.create(companion({ preferredTime: "20:30" }), f.users[1])).matches, 1);
   assert.equal((await f.service.create(companion({ destination: "Khandwa" }), f.users[2])).matches, 0);
-  assert.equal((await f.service.create(companion({ preferredTime: "23:30" }), f.users[2])).matches, 0);
+  assert.equal((await f.service.create(companion({ travelDate: "2099-11-30", preferredTime: "07:00" }), f.users[2])).matches, 0); // 13 h
   assert.equal(f.matches.length, 1);
 });
 
@@ -426,4 +444,145 @@ test("submitting the same form twice saves one entry and one match", async () =>
   assert.equal(twice.matches, 1);
   assert.equal(f.entries.length, 2);
   assert.equal(f.matches.length, 1);
+});
+
+// ---- Available Journeys & Requests and direct requests ----
+test("available: everyone else's open upcoming entries without names or contacts, even with nothing posted", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  await f.service.create(parcel({ destination: "Khandwa" }), f.users[1]);
+  const cancelled = await f.service.create(plan({ preferredTime: "08:00" }), f.users[0]);
+  await f.service.cancel(cancelled.id, f.users[0]);
+  const list = await f.service.available(f.users[2], {});
+  assert.equal(list.matchWindowHours, 12);
+  assert.deepEqual(
+    list.items.map((item) => [item.kind, item.destination]),
+    [
+      ["OFFER", "Khargone"],
+      ["REQUEST", "Khandwa"],
+    ],
+  );
+  for (const item of list.items) for (const key of ["name", "phone", "email", "instructions", "userId"]) assert.equal(key in item, false, key);
+  assert.equal(list.items[1].itemDetails, "Parcel pahuchan he");
+  // Own entries are not offered back to their owner; expired ones are gone.
+  assert.equal((await f.service.available(f.users[0], {})).items.length, 1);
+  for (const entry of f.entries) entry.travelDate = new Date("2000-01-01T00:00:00Z");
+  assert.equal((await f.service.available(f.users[2], {})).items.length, 0);
+});
+
+test("available: a route and date/time list that route within 12 hours, closest first", async () => {
+  const f = fixture();
+  await f.service.create(plan({ preferredTime: "13:00" }), f.users[0]); // 6 h before
+  await f.service.create(plan({ preferredTime: "19:30" }), f.users[1]); // 30 min
+  await f.service.create(plan({ travelDate: "2099-11-30", preferredTime: "09:00" }), f.users[0]); // 14 h after
+  await f.service.create(plan({ destination: "Khandwa" }), f.users[1]);
+  const list = await f.service.available(f.users[2], { origin: " INDORE ", destination: "khargon", date: "2099-11-29", time: "19:00" });
+  assert.deepEqual(
+    list.items.map((item) => [item.preferredTime, item.minutesFromWanted]),
+    [
+      ["19:30", 30],
+      ["13:00", 360],
+    ],
+  );
+});
+
+for (const [label, requestType] of [
+  ["Request Parcel Delivery", "DELIVERY"],
+  ["Request to Travel Together", "TRAVEL"],
+])
+  test(`${label}: a direct request linked to the travel plan, accepted by the asker, shown to the traveller`, async () => {
+    const f = fixture();
+    const journey = await f.service.create(plan(), f.users[0]);
+    const sent = await f.service.connect(
+      journey.id,
+      { clientRequestId: crypto.randomUUID(), requestType, itemDetails: requestType === "DELIVERY" ? "Sweets box" : null, lang: "en", consent: true },
+      f.users[1],
+    );
+    assert.equal(sent.existing, false);
+    const own = rowById(f.entries, sent.entryId);
+    assert.deepEqual([own.kind, own.requestType, own.targetEntryId, own.origin, own.preferredTime], ["REQUEST", requestType, journey.id, "Indore", "19:00"]);
+    const match = rowById(f.matches, sent.matchId as string);
+    assert.deepEqual(
+      [match.requestId, match.offerId, match.requestAccepted, match.offerAccepted, match.status],
+      [sent.entryId, journey.id, true, false, "PROPOSED"],
+    );
+    assert.deepEqual(f.notices.map((n) => [n.userId, n.kind]).sort(), [
+      ["a", "REQUESTED"],
+      ["b", "REQUESTED"],
+    ]);
+    const traveller = await f.service.mine(f.users[0]);
+    assert.equal(traveller.matches[0].direction, "RECEIVED");
+    assert.equal(traveller.matches[0].requestType, requestType);
+    assert.equal((await f.service.mine(f.users[1])).matches[0].direction, "SENT");
+    // The traveller accepts: both have accepted, contacts are shared.
+    await f.service.decide(sent.matchId as string, "ACCEPT", f.users[0]);
+    assert.equal(match.status, "CONFIRMED");
+    assert.equal((await f.service.mine(f.users[1])).matches[0].contact?.phone, "9000000000");
+    // Shown as requested in the list; refreshing keeps it.
+    assert.equal((await f.service.available(f.users[1], {})).items[0].connection?.status, "CONFIRMED");
+  });
+
+test("direct request: a second click or retry never makes a second request; wrong help type and own entries are refused", async () => {
+  const f = fixture();
+  const journey = await f.service.create(plan({ requestType: "TRAVEL" }), f.users[0]);
+  const form = { clientRequestId: crypto.randomUUID(), requestType: "TRAVEL", lang: "en", consent: true as const };
+  const first = await f.service.connect(journey.id, form, f.users[1]);
+  assert.equal((await f.service.connect(journey.id, form, f.users[1])).matchId, first.matchId);
+  const again = await f.service.connect(journey.id, { ...form, clientRequestId: crypto.randomUUID() }, f.users[1]);
+  assert.equal(again.matchId, first.matchId);
+  assert.equal(again.existing, true);
+  assert.equal(f.matches.length, 1);
+  assert.equal(f.entries.length, 2);
+  const code = async (work: () => Promise<unknown>) => {
+    try {
+      await work();
+      return "ok";
+    } catch (error) {
+      return JSON.stringify((error as ApiError).getResponse());
+    }
+  };
+  // This traveller takes people only, not parcels.
+  assert.match(
+    await code(() => f.service.connect(journey.id, { ...form, clientRequestId: crypto.randomUUID(), requestType: "DELIVERY", itemDetails: "x" }, f.users[2])),
+    /SAFAR_REQUEST_TYPE/,
+  );
+  assert.match(await code(() => f.service.connect(journey.id, { ...form, clientRequestId: crypto.randomUUID() }, f.users[0])), /SAFAR_NOT_FOUND/);
+  assert.match(
+    await code(() => f.service.connect(journey.id, { ...form, clientRequestId: crypto.randomUUID(), preferredTime: "06:00" }, f.users[2])),
+    /SAFAR_TIME_WINDOW/,
+  );
+  const parcelPlan = await f.service.create(plan({ preferredTime: "09:00" }), f.users[0]);
+  assert.match(
+    await code(() => f.service.connect(parcelPlan.id, { ...form, clientRequestId: crypto.randomUUID(), requestType: "DELIVERY" }, f.users[2])),
+    /SAFAR_ITEM_REQUIRED/,
+  );
+});
+
+test("Offer to Help on someone's request; a declined direct request closes and frees the member to ask again", async () => {
+  const f = fixture();
+  const need = await f.service.create(parcel(), f.users[1]);
+  const offer = await f.service.connect(need.id, { clientRequestId: crypto.randomUUID(), lang: "hi", consent: true }, f.users[0]);
+  const mine = rowById(f.entries, offer.entryId);
+  assert.deepEqual([mine.kind, mine.requestType, mine.targetEntryId], ["OFFER", "DELIVERY", need.id]);
+  assert.equal(rowById(f.matches, offer.matchId as string).offerAccepted, true);
+  await f.service.decide(offer.matchId as string, "DECLINE", f.users[1]);
+  assert.equal(mine.status, "CLOSED");
+  const retry = await f.service.connect(need.id, { clientRequestId: crypto.randomUUID(), lang: "hi", consent: true }, f.users[0]);
+  assert.equal(retry.existing, false);
+  // The traveller cancels their plan: the direct request to it closes too.
+  const journey = await f.service.create(plan(), f.users[2]);
+  const sent = await f.service.connect(journey.id, { clientRequestId: crypto.randomUUID(), requestType: "TRAVEL", lang: "en", consent: true }, f.users[0]);
+  await f.service.cancel(journey.id, f.users[2]);
+  assert.equal(rowById(f.entries, sent.entryId).status, "CLOSED");
+});
+
+test("direct requests stay with the entry they were sent to: never auto-paired with other plans", async () => {
+  const f = fixture();
+  const journey = await f.service.create(plan(), f.users[0]);
+  await f.service.connect(journey.id, { clientRequestId: crypto.randomUUID(), requestType: "TRAVEL", lang: "en", consent: true }, f.users[1]);
+  assert.equal((await f.service.create(plan({ preferredTime: "18:00" }), f.users[2])).matches, 0);
+  await f.service.mine(f.users[1]);
+  await f.service.mine(f.users[2]);
+  assert.equal(f.matches.length, 1);
+  assert.equal((await f.service.available(f.users[2], {})).items.length, 1); // the plan, not the direct request
 });

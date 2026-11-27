@@ -51,9 +51,10 @@ export const compatibleType = (request: string, offer: string): boolean => offer
 export const mobileDigits = (value: string | null | undefined): string => (value || "").replace(/\D/g, "").slice(-10);
 
 // A travel plan and a request match when their departures are at most this far apart, counted on date and time
-// together (23:30 and 00:30 the next day are one hour apart). Both are India times as the member typed them, so no
+// together (23:00 and 05:00 the next day are six hours apart). The one setting for matching and discovery. Both are India times as the member typed them, so no
 // time zone is involved.
-export const MATCH_WINDOW_MINUTES = 240;
+export const MATCH_WINDOW_MINUTES = 12 * 60;
+export const MATCH_WINDOW_HOURS = MATCH_WINDOW_MINUTES / 60;
 export const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 export const departureMinutes = (travelDate: Date, preferredTime: string): number => {
   const [hours, minutes] = preferredTime.split(":").map(Number);
@@ -82,3 +83,20 @@ export const canMatch = (a: MatchableEntry, b: MatchableEntry): boolean => {
     minutesApart(request, offer) <= MATCH_WINDOW_MINUTES
   );
 };
+
+// Order for Available Journeys & Requests: entries on the route the member is looking for come first (origin and
+// destination both = best), then the smallest gap to the date/time they gave (same date, close time = best). Ties
+// keep departure order.
+export const discoveryScore = (
+  entry: { originKey: string; destinationKey: string },
+  wanted: { originKey?: string; destinationKey?: string },
+  gap = 0,
+): number => {
+  const route =
+    (wanted.originKey && entry.originKey === wanted.originKey ? 1 : 0) + (wanted.destinationKey && entry.destinationKey === wanted.destinationKey ? 1 : 0);
+  return route * 100000 - Math.min(gap, 99999);
+};
+// What a member may ask of another's entry: a traveller who carries items takes parcels, one who takes people
+// takes companions; a request is answered with an offer of the same help.
+export const directKinds = (target: { kind: string; requestType: string }, requestType: string): boolean =>
+  target.kind === "OFFER" ? ["DELIVERY", "TRAVEL"].includes(requestType) && compatibleType(requestType, target.requestType) : true;

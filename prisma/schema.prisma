@@ -791,8 +791,12 @@ model SafarEntry {
 
   adminRemarks String?   @map("admin_remarks") @db.VarChar(500)
   reviewedAt   DateTime? @map("reviewed_at") @db.DateTime(0)
+  /// A direct request ("Request Parcel Delivery", "Request to Travel Together", "Offer to Help") made from another
+  /// member's entry in Available Journeys & Requests: paired with that entry only, never auto-matched with others.
+  targetEntryId String? @map("target_entry_id") @db.VarChar(64)
 
   @@unique([userId, clientRequestId])
+  @@index([targetEntryId])
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([originKey, destinationKey, travelDate, kind, status], map: "safar_route_idx")

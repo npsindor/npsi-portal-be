@@ -3,7 +3,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from "@nestjs/swagger";
 import { CurrentUser } from "../common/decorators/current-user.decorator.js";
 import { AdminGuard, UserGuard } from "../common/guards/auth.guards.js";
 import type { UserRow } from "../common/session/session.service.js";
-import { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto, SafarDecisionDto } from "./safar.dto.js";
+import { CreateSafarDto, SafarAdminQueryDto, SafarAdminUpdateDto, SafarAvailableQueryDto, SafarConnectDto, SafarDecisionDto } from "./safar.dto.js";
 import { SafarService } from "./safar.service.js";
 
 @ApiTags("Travel & Assistance")
@@ -28,6 +28,20 @@ export class SafarController {
   @ApiOperation({ summary: "Create a member travel request or willing-to-help travel plan and find matches" })
   create(@Body() body: CreateSafarDto, @CurrentUser() user: UserRow) {
     return this.service.create(body, user);
+  }
+  @Get("available")
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Available Journeys & Requests: other members' open upcoming entries, no names or contacts; optional route/date/time" })
+  available(@Query() query: SafarAvailableQueryDto, @CurrentUser() user: UserRow) {
+    return this.service.available(user, query);
+  }
+  @Post("entries/:id/connections")
+  @UseGuards(UserGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: "Direct request to another member's entry (parcel, travelling together, or an offer to help); idempotent" })
+  connect(@Param("id") id: string, @Body() body: SafarConnectDto, @CurrentUser() user: UserRow) {
+    return this.service.connect(id, body, user);
   }
   @Patch("entries/:id/cancellation")
   @UseGuards(UserGuard)
