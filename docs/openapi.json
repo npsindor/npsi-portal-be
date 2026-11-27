@@ -7184,7 +7184,7 @@
         },
         "summary": "Available notification channels; no personal data",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7204,7 +7204,7 @@
         ],
         "summary": "Own travel requests, matches and private notifications",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7234,7 +7234,7 @@
         ],
         "summary": "Create a member travel request or willing-to-help travel plan and find matches",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7263,7 +7263,7 @@
         ],
         "summary": "Cancel only your own entry and its active matches",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7302,7 +7302,7 @@
         ],
         "summary": "Accept, decline or complete your own match; contacts require mutual acceptance",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7356,9 +7356,9 @@
             "bearer": []
           }
         ],
-        "summary": "Admin: all transportation requests and offers, filtered by status/kind/search",
+        "summary": "Admin: all Travel & Assistance requests and offers, filtered by status/kind/search",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7397,7 +7397,7 @@
         ],
         "summary": "Admin: set a request's status with remarks (the member is notified)",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -17509,7 +17509,7 @@
         "properties": {
           "hidden": {
             "example": [
-              "page:/transportation",
+              "page:/travel-assistance",
               "section:home.gallery"
             ],
             "description": "Keys switched off (everything else is shown)",

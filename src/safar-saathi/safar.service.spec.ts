@@ -8,7 +8,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import type { AppConfigService } from "../config/app-config.service.js";
 import type { PrismaService } from "../database/prisma.service.js";
 import { CreateSafarDto } from "./safar.dto.js";
-import { compatibleType, routeKey, validTravelDate } from "./safar.rules.js";
+import { canMatch, compatibleType, MATCH_WINDOW_MINUTES, minutesApart, routeKey, validTravelDate } from "./safar.rules.js";
 import { SafarService } from "./safar.service.js";
 
 // biome-ignore lint/suspicious/noExplicitAny: This isolated Prisma double accepts heterogeneous query ASTs.
@@ -51,7 +51,11 @@ function fixture(configured = false) {
   const checkEntry = (entry: Row, where: Row = {}): boolean =>
     Object.entries(where).every(([key, value]) => {
       if (key === "userId" && typeof value === "object") return entry.userId !== value.not;
-      if (key === "travelDate") return value instanceof Date ? entry.travelDate.getTime() === value.getTime() : entry.travelDate >= value.gte;
+      if (key === "travelDate")
+        return value instanceof Date
+          ? entry.travelDate.getTime() === value.getTime()
+          : (!value.gte || entry.travelDate >= value.gte) && (!value.lte || entry.travelDate <= value.lte);
+      if (key === "id" && typeof value === "object") return value.in.includes(entry.id);
       if (key === "user") return true;
       if (key === "requests") return !matches.some((m) => m.requestId === entry.id && m.status === "CONFIRMED");
       if (key === "status" && typeof value === "object") return value.in.includes(entry.status);
@@ -275,4 +279,151 @@ test("email is optional, deduplicated and failures do not lose a saved request o
   await g.service.create(offer, g.users[1]);
   await g.service.create(offer, g.users[1]);
   assert.equal(g.sent(), 1);
+});
+
+// ---- Matching rules: a travel plan pairs with a parcel or travel-together request on the same route and time ----
+const at = (date: string, time: string) => ({ travelDate: new Date(`${date}T00:00:00Z`), preferredTime: time });
+const parcel = (fields: Partial<CreateSafarDto> = {}): CreateSafarDto => ({
+  ...request(),
+  requestType: "DELIVERY",
+  itemDetails: "Parcel pahuchan he",
+  origin: "Indore",
+  destination: "Khargone",
+  travelDate: "2099-11-29",
+  preferredTime: "19:00",
+  ...fields,
+});
+const plan = (fields: Partial<CreateSafarDto> = {}): CreateSafarDto => ({
+  ...request("OFFER"),
+  origin: "Indore",
+  destination: "Khargone",
+  travelDate: "2099-11-29",
+  preferredTime: "19:00",
+  ...fields,
+});
+const companion = (fields: Partial<CreateSafarDto> = {}): CreateSafarDto => ({ ...plan(), kind: "REQUEST", requestType: "TRAVEL", ...fields });
+
+test("place names: case, spaces, state suffixes, brackets and common spellings give one key", () => {
+  for (const spelling of ["Khargone", "  KHARGONE ", "Khargon", "khargaon", "Khargone (MP)", "Khargone, M.P.", "खरगोन"])
+    assert.equal(routeKey(spelling), "khargone", spelling);
+  for (const spelling of ["Indore", "indore.", "Indore, Madhya Pradesh", "इंदौर"]) assert.equal(routeKey(spelling), "indore", spelling);
+  // ड़ typed as one letter or as ड + nukta
+  assert.equal(routeKey("ब\u095Cवानी"), "barwani");
+  assert.equal(routeKey("ब\u0921\u093Cवानी"), "barwani");
+  assert.notEqual(routeKey("Khargone"), routeKey("Khandwa"));
+});
+
+test("time window: same time and a few hours apart match, more than the window does not, across midnight counts", () => {
+  assert.equal(minutesApart(at("2099-11-29", "19:00"), at("2099-11-29", "19:00")), 0);
+  assert.equal(minutesApart(at("2099-11-29", "23:30"), at("2099-11-30", "00:30")), 60);
+  const base = { kind: "REQUEST", requestType: "DELIVERY", originKey: "indore", destinationKey: "khargone", ...at("2099-11-29", "19:00") };
+  const offer = (date: string, time: string, requestType = "BOTH") => ({ ...base, kind: "OFFER", requestType, ...at(date, time) });
+  assert.equal(canMatch(base, offer("2099-11-29", "19:00")), true);
+  assert.equal(canMatch(base, offer("2099-11-29", "16:00")), true);
+  assert.equal(MATCH_WINDOW_MINUTES, 240);
+  assert.equal(canMatch(base, offer("2099-11-29", "23:00")), true); // exactly the window
+  assert.equal(canMatch(base, offer("2099-11-29", "23:01")), false);
+  assert.equal(canMatch(base, offer("2099-11-30", "19:00")), false);
+  assert.equal(canMatch(base, offer("2099-11-29", "19:00", "TRAVEL")), false); // travels, but carries no parcels
+  assert.equal(canMatch(base, offer("2099-11-29", "19:00", "DELIVERY")), true);
+  assert.equal(canMatch(base, { ...offer("2099-11-29", "19:00"), destinationKey: "khandwa" }), false);
+  assert.equal(canMatch(base, { ...offer("2099-11-29", "19:00"), originKey: "khargone", destinationKey: "indore" }), false); // the way back
+  assert.equal(canMatch(base, { ...base }), false); // two requests never pair
+});
+
+test("Indore → Khargone 29 Nov 19:00: a travel plan and a parcel request of two members match, shown to both", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  const result = await f.service.create(parcel(), f.users[1]);
+  assert.equal(result.matches, 1);
+  const traveller = await f.service.mine(f.users[0]);
+  assert.equal(traveller.matches.length, 1);
+  assert.equal(traveller.matches[0].requestType, "DELIVERY");
+  assert.equal(traveller.matches[0].otherKind, "REQUEST");
+  assert.equal(traveller.matches[0].ownKind, "OFFER");
+  assert.equal(traveller.matches[0].minutesApart, 0);
+  assert.equal(traveller.matches[0].origin, "Indore");
+  assert.equal(traveller.matches[0].destination, "Khargone");
+  assert.equal(traveller.matches[0].preferredTime, "19:00");
+  const sender = await f.service.mine(f.users[1]);
+  assert.equal(sender.matches[0].otherKind, "OFFER");
+  assert.equal(sender.matches[0].status, "PROPOSED");
+});
+
+test("travel plan + travel-together request match within the window; a different destination does not", async () => {
+  const f = fixture();
+  await f.service.create(plan({ preferredTime: "18:00" }), f.users[0]);
+  assert.equal((await f.service.create(companion({ preferredTime: "20:30" }), f.users[1])).matches, 1);
+  assert.equal((await f.service.create(companion({ destination: "Khandwa" }), f.users[2])).matches, 0);
+  assert.equal((await f.service.create(companion({ preferredTime: "23:30" }), f.users[2])).matches, 0);
+  assert.equal(f.matches.length, 1);
+});
+
+test("a cancelled travel plan or parcel request never matches", async () => {
+  const f = fixture();
+  const offer = await f.service.create(plan(), f.users[0]);
+  await f.service.cancel(offer.id, f.users[0]);
+  assert.equal((await f.service.create(parcel(), f.users[1])).matches, 0);
+  const g = fixture();
+  const sent = await g.service.create(parcel(), g.users[1]);
+  await g.service.cancel(sent.id, g.users[1]);
+  assert.equal((await g.service.create(plan(), g.users[0])).matches, 0);
+  assert.equal((await g.service.mine(g.users[0])).matches.length, 0);
+});
+
+test("entries saved without a match (older rules) are matched when a member opens the page, once", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  await f.service.create(parcel(), f.users[1]);
+  // As if both were saved before matching existed: no pair stored.
+  f.matches.length = 0;
+  f.notices.length = 0;
+  const first = await f.service.mine(f.users[1]);
+  assert.equal(first.matches.length, 1);
+  assert.equal(f.notices.filter((n) => n.kind === "PROPOSED").length, 2);
+  // Refreshing again and again (both members) never adds a second pair or notice.
+  await f.service.mine(f.users[1]);
+  await f.service.mine(f.users[0]);
+  assert.equal(f.matches.length, 1);
+  assert.equal(f.notices.length, 2);
+  assert.equal((await f.service.mine(f.users[0])).matches.length, 1);
+});
+
+test("a declined pair is not proposed again on refresh; past travel dates are not matched", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  await f.service.create(parcel(), f.users[1]);
+  await f.service.decide(f.matches[0].id, "DECLINE", f.users[0]);
+  await f.service.mine(f.users[0]);
+  assert.equal(f.matches.length, 1);
+  assert.equal(f.matches[0].status, "DECLINED");
+  const g = fixture();
+  await g.service.create(plan(), g.users[0]);
+  await g.service.create(parcel(), g.users[1]);
+  g.matches.length = 0;
+  for (const entry of g.entries) entry.travelDate = new Date("2000-01-01T00:00:00Z");
+  await g.service.mine(g.users[0]);
+  assert.equal(g.matches.length, 0);
+});
+
+test("your own travel plan and parcel request do not pair with each other, but the page says why", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  assert.equal((await f.service.create(parcel(), f.users[0])).matches, 0);
+  const mine = await f.service.mine(f.users[0]);
+  assert.equal(mine.matches.length, 0);
+  assert.equal(mine.ownPairs, 1);
+  assert.equal((await f.service.mine(f.users[1])).ownPairs, 0);
+});
+
+test("submitting the same form twice saves one entry and one match", async () => {
+  const f = fixture();
+  await f.service.create(plan(), f.users[0]);
+  const form = parcel();
+  const once = await f.service.create(form, f.users[1]);
+  const twice = await f.service.create(form, f.users[1]);
+  assert.equal(once.id, twice.id);
+  assert.equal(twice.matches, 1);
+  assert.equal(f.entries.length, 2);
+  assert.equal(f.matches.length, 1);
 });
