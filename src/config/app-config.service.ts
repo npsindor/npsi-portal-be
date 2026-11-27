@@ -66,6 +66,8 @@ export class AppConfigService {
       noticeTemplate: this.get("MSG91_WHATSAPP_NOTICE_TEMPLATE"),
       smsOtpTemplateId: this.get("MSG91_SMS_OTP_TEMPLATE_ID"),
       smsOtpVar: this.get("MSG91_SMS_OTP_VAR") || "otp",
+      // OTP widget with the default template: SMS without our own DLT registration (MSG91 generates and checks the code).
+      widgetId: this.get("MSG91_WIDGET_ID"),
     };
   }
   // Payment screenshots hold bank details: kept outside the public uploads folder.

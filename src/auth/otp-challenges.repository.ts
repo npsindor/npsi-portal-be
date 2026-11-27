@@ -6,7 +6,15 @@ import type { OtpChallenge } from "../generated/prisma/client.js";
 export class OtpChallengesRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(data: { id: string; mobileDigits: string; purpose: string; codeHash: string; channel: string; expiresAt: Date }): Promise<OtpChallenge> {
+  create(data: {
+    id: string;
+    mobileDigits: string;
+    purpose: string;
+    codeHash: string;
+    channel: string;
+    expiresAt: Date;
+    providerRequestId?: string | null;
+  }): Promise<OtpChallenge> {
     return this.prisma.otpChallenge.create({ data });
   }
 
