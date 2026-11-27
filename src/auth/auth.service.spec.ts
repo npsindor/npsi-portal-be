@@ -41,6 +41,9 @@ const fakeUsers = () => ({
 const fakeMobileOtp = () => ({
   send: mock.fn(async (..._args: unknown[]) => ({ channel: "WHATSAPP", expiresInSeconds: 600 })),
   verify: mock.fn(async (..._args: unknown[]) => "verification-token"),
+  // Administrator sign-in by SMS: off unless a test turns it on.
+  sendToMobileOnly: mock.fn(async (_mobile: string, _purpose: string): Promise<boolean> => false),
+  checkPending: mock.fn(async (_mobile: string, _purpose: string, _code: string): Promise<true | null> => null),
   consume: mock.fn(async (_mobile: string, _purpose: string, token: string | undefined) => {
     if (token === "email-verification-token") return false; // the code went to the fallback email
     if (token !== "verification-token") throw Object.assign(new Error("expired"), { getStatus: () => 400 });
@@ -266,6 +269,67 @@ describe("AuthService.login", () => {
     assert.equal(users.startSession.mock.callCount(), 0, "still no session without the code");
     logged.mock.restore();
   });
+  describe("administrator sign-in code by SMS", () => {
+    const withCode = () =>
+      new AuthService(as<UsersRepository>(users), mail.service, recaptcha.service, fakeConfig({ adminLoginCode: true }), as<MobileOtpService>(mobileOtp));
+    const SMS_MSG = "Enter the sign-in code sent by SMS to the mobile number on your account to finish logging in.";
+    const EMAIL_MSG = "Enter the sign-in code sent to your email to finish logging in.";
+    const anAdmin = (overrides = {}) =>
+      user({ role: "admin", email: "admin@npsindore.org", phone: "8989529107", phoneVerified: true, passwordHash: hashPassword(PASSWORD), ...overrides });
+
+    test("a verified mobile gets the code by SMS, and nothing is emailed", async () => {
+      users.findForLogin.mock.mockImplementation(async () => anAdmin());
+      mobileOtp.sendToMobileOnly.mock.mockImplementation(async () => true);
+      await rejectsWith(withCode().login({ email: "admin@npsindore.org", password: PASSWORD }), 403, SMS_MSG);
+      assert.deepEqual(mobileOtp.sendToMobileOnly.mock.calls[0].arguments, ["8989529107", "ADMIN_LOGIN"]);
+      assert.equal(mail.send.mock.callCount(), 0);
+      assert.equal(users.setOtp.mock.callCount(), 0);
+      assert.equal(users.startSession.mock.callCount(), 0);
+    });
+    test("SMS not sent: the same emailed code as before", async () => {
+      users.findForLogin.mock.mockImplementation(async () => anAdmin());
+      await rejectsWith(withCode().login({ email: "admin@npsindore.org", password: PASSWORD }), 403, EMAIL_MSG);
+      assert.equal(mobileOtp.sendToMobileOnly.mock.callCount(), 1);
+      assert.equal((mail.send.mock.calls[0].arguments[0] as { subject: string }).subject, "Your administrator sign-in code");
+    });
+    test("SMS failing with an error: still the emailed code", async () => {
+      users.findForLogin.mock.mockImplementation(async () => anAdmin());
+      mobileOtp.sendToMobileOnly.mock.mockImplementation(async () => {
+        throw new Error("database down");
+      });
+      const logged = mock.method(console, "error", () => undefined);
+      await rejectsWith(withCode().login({ email: "admin@npsindore.org", password: PASSWORD }), 403, EMAIL_MSG);
+      assert.equal(mail.send.mock.callCount(), 1);
+      logged.mock.restore();
+    });
+    test("an unverified mobile is never used: emailed code", async () => {
+      users.findForLogin.mock.mockImplementation(async () => anAdmin({ phoneVerified: false }));
+      await rejectsWith(withCode().login({ email: "admin@npsindore.org", password: PASSWORD }), 403, EMAIL_MSG);
+      assert.equal(mobileOtp.sendToMobileOnly.mock.callCount(), 0);
+    });
+    test("the SMS code finishes the sign-in (checked by MSG91 through checkPending)", async () => {
+      users.findByEmail.mock.mockImplementation(async () => anAdmin());
+      mobileOtp.checkPending.mock.mockImplementation(async () => true);
+      assert.ok((await service.verifyOtp({ email: "admin@npsindore.org", otpCode: "654321" })).accessToken);
+      assert.deepEqual(mobileOtp.checkPending.mock.calls[0].arguments, ["8989529107", "ADMIN_LOGIN", "654321"]);
+    });
+    test("no SMS code waiting and no emailed code: invalid", async () => {
+      users.findByEmail.mock.mockImplementation(async () => anAdmin());
+      await rejectsWith(service.verifyOtp({ email: "admin@npsindore.org", otpCode: "654321" }), 400, "Invalid or expired verification code.");
+      assert.equal(users.verifyAndStartSession.mock.callCount(), 0);
+    });
+    test("a right emailed code works without asking MSG91", async () => {
+      users.findByEmail.mock.mockImplementation(async () => anAdmin({ otpHash: hashOtp("123456"), otpExpiresAt: new Date(Date.now() + 60_000) }));
+      assert.ok((await service.verifyOtp({ email: "admin@npsindore.org", otpCode: "123456" })).accessToken);
+      assert.equal(mobileOtp.checkPending.mock.callCount(), 0);
+    });
+    test("members never use the administrator SMS code", async () => {
+      users.findByEmail.mock.mockImplementation(async () => user({ email: "member@example.com" }));
+      await rejectsWith(service.verifyOtp({ email: "member@example.com", otpCode: "654321" }), 400, "Invalid or expired verification code.");
+      assert.equal(mobileOtp.checkPending.mock.callCount(), 0);
+    });
+  });
+
   test("the admin's code can be entered with the mobile they logged in with", async () => {
     const pendingAdmin = user({ role: "admin", email: "admin@npsindore.org", otpHash: hashOtp("123456"), otpExpiresAt: new Date(Date.now() + 60_000) });
     users.findByPhone.mock.mockImplementation(async () => pendingAdmin);

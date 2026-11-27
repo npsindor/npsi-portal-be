@@ -7,8 +7,9 @@ import { normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { OtpChallengesRepository } from "./otp-challenges.repository.js";
 
+// Purposes the public mobile-code endpoint accepts. ADMIN_LOGIN is internal: only the administrator password step sends it.
 export const OTP_PURPOSES = ["REGISTER", "RESET"] as const;
-export type OtpPurpose = (typeof OTP_PURPOSES)[number];
+export type OtpPurpose = (typeof OTP_PURPOSES)[number] | "ADMIN_LOGIN";
 export type OtpDelivery = "WHATSAPP" | "SMS" | "EMAIL" | "DEV";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -79,6 +80,43 @@ export class MobileOtpService {
       expiresAt: new Date(now + CODE_TTL_MS),
     });
     return { channel, expiresInSeconds: CODE_TTL_MS / 1000 };
+  }
+
+  // Administrator sign-in: the code to the mobile only (WhatsApp / DLT flow / MSG91 widget), never emailed from here; on
+  // false the caller sends its own emailed code instead. True too when a mobile code went out under 30 s ago (a repeated
+  // password step), so the member keeps the code already on its way.
+  async sendToMobileOnly(mobile: string, purpose: OtpPurpose): Promise<boolean> {
+    const now = Date.now();
+    const last = await this.challenges.latest(mobile, purpose);
+    if (last && !last.verifiedAt && last.channel !== "EMAIL" && now - last.createdAt.getTime() < RESEND_GAP_MS) return true;
+    if ((await this.challenges.countSince(mobile, new Date(now - 60 * 60 * 1000))) >= MAX_PER_HOUR) return false;
+    const code = generateOtp();
+    let channel: OtpDelivery | null = await this.messaging.sendOtp(mobile, code);
+    let providerRequestId: string | null = null;
+    if (!channel) {
+      providerRequestId = await this.messaging.sendWidgetOtp(mobile);
+      if (providerRequestId) channel = "SMS";
+    }
+    if (!channel) return false;
+    await this.challenges.create({
+      id: randomId(),
+      mobileDigits: mobile,
+      purpose,
+      codeHash: providerRequestId ? hashOtp(createToken()) : hashOtp(code),
+      providerRequestId,
+      channel,
+      expiresAt: new Date(now + CODE_TTL_MS),
+    });
+    return true;
+  }
+
+  // A code sendToMobileOnly sent: null when none is waiting (the caller checks its own code), true when right; a wrong
+  // code throws like verify (and counts as an attempt).
+  async checkPending(mobile: string, purpose: OtpPurpose, code: string): Promise<true | null> {
+    const pending = await this.challenges.latest(mobile, purpose);
+    if (!pending || pending.verifiedAt || pending.expiresAt.getTime() <= Date.now()) return null;
+    await this.verify(mobile, purpose, code);
+    return true;
   }
 
   private mailCode(to: string, code: string) {

@@ -8,7 +8,7 @@ import type { UserRow } from "../common/session/session.service.js";
 import { randomId } from "../common/utils/crypto.js";
 import { parseDate } from "../common/utils/dates.js";
 import { assertNoMarkup } from "../common/utils/markup.js";
-import { memberIdPrefix, nextMemberIds } from "../common/utils/member-ids.js";
+import { isHeadRelationship, memberIdPrefix, nextMemberIds } from "../common/utils/member-ids.js";
 import { pick } from "../common/utils/objects.js";
 import { PrismaService } from "../database/prisma.service.js";
 import type { Prisma } from "../generated/prisma/client.js";
@@ -37,6 +37,10 @@ const MEMBER_FIELDS = [
 
 export const MEMBER_ELSEWHERE =
   "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
+// The head's own record stays the head: removing it or changing its relationship left families without a head (and
+// without the head's birthday) in November 2026. Only an administrator changes who the head is.
+export const HEAD_NOT_REMOVABLE = "The head of the family can't be removed. Ask an administrator if the head needs to change.";
+export const HEAD_STAYS_HEAD = "The head of the family's relationship can't be changed. Ask an administrator if the head needs to change.";
 export const ADMIN_EMAIL_MEMBER = "This email belongs to an administrator account and can't be added as a family member.";
 
 // How a stored login mobile may be written (older rows keep the +91 / 0 the person typed).
@@ -135,6 +139,8 @@ export class FamilyMembersService {
       if (!member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only update members of your own family.");
       input = pick(dto, MEMBER_FIELDS);
       assertNoMarkup(input);
+      if (isHeadRelationship(member.relationship) && input.relationship !== undefined && !isHeadRelationship(input.relationship))
+        throw new ApiError(403, HEAD_STAYS_HEAD);
       // Checked when the education or relationship changes (an older record keeps what it had until then).
       const relationship = input.relationship ?? member.relationship;
       const education = input.education !== undefined ? input.education : member.education;
@@ -217,6 +223,7 @@ export class FamilyMembersService {
       const ownFamilyId = await this.membership.ownFamilyId(user);
       const member = await this.repo.findById(id);
       if (!ownFamilyId || !member || member.familyId !== ownFamilyId) throw new ApiError(403, "You can only remove members of your own family.");
+      if (isHeadRelationship(member.relationship)) throw new ApiError(403, HEAD_NOT_REMOVABLE);
     }
     await this.prisma.$transaction(async (tx) => {
       const member = await this.repo.findById(id, tx);

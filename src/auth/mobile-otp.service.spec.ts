@@ -120,3 +120,40 @@ describe("MobileOtpService with MSG91's OTP widget (SMS without our own DLT)", (
     assert.equal(challenges.addAttempt.mock.callCount(), 0);
   });
 });
+
+describe("MobileOtpService.sendToMobileOnly / checkPending (administrator sign-in)", () => {
+  const recent = (channel: string, ageMs: number): Challenge & { channel: string; createdAt: Date } => ({
+    id: "c0",
+    codeHash: "x",
+    providerRequestId: "req-0",
+    attempts: 0,
+    verifiedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+    channel,
+    createdAt: new Date(Date.now() - ageMs),
+  });
+
+  test("sends by the widget and records the challenge; never emails", async () => {
+    const { service, mail, challenges } = build({ provider: null, widgetRequestId: "req-9" });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), true);
+    const saved = challenges.create.mock.calls[0].arguments[0];
+    assert.equal(saved.providerRequestId, "req-9");
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
+  test("nothing could send it: false (the caller emails its own code), nothing recorded", async () => {
+    const { service, challenges, mail } = build({ provider: null, widgetRequestId: null });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), false);
+    assert.equal(challenges.create.mock.callCount(), 0);
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
+  test("a code sent by SMS under 30 s ago: true without sending another", async () => {
+    const { service, messaging } = build({ provider: null, widgetRequestId: "req-9", pending: recent("SMS", 5_000) });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), true);
+    assert.equal(messaging.sendWidgetOtp.mock.callCount(), 0);
+  });
+  test("checkPending: null when no code is waiting", async () => {
+    const { service, messaging } = build();
+    assert.equal(await service.checkPending("8989529107", "ADMIN_LOGIN", "123456"), null);
+    assert.equal(messaging.verifyWidgetOtp.mock.callCount(), 0);
+  });
+});

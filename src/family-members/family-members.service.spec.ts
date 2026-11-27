@@ -107,6 +107,21 @@ describe("FamilyMembersService", () => {
     await rejectsWith(service.remove("m-other", member()), 403, "You can only remove members of your own family.");
     await service.remove("m-own", member());
   });
+  test("a family can't remove its head or change the head's relationship; an administrator can", async () => {
+    const { service, repo } = build();
+    repo.stored.push(familyMemberRow({ id: "m-head", familyId: FAM, relationship: "Head", status: "ACTIVE", name: "Ashish" }));
+    await rejectsWith(service.remove("m-head", member()), 403, "The head of the family can't be removed. Ask an administrator if the head needs to change.");
+    await rejectsWith(
+      service.update("m-head", { relationship: "Other" }, member()),
+      403,
+      "The head of the family's relationship can't be changed. Ask an administrator if the head needs to change.",
+    );
+    // The head still edits his own details, and saving the form with relationship "Head" (or "Self") is fine.
+    assert.equal((await service.update("m-head", { name: "Ashish Patidar", relationship: "Head", dob: "1987-11-27" }, member())).name, "Ashish Patidar");
+    assert.equal((await service.update("m-head", { relationship: "Self" }, member())).relationship, "Self");
+    assert.equal((await service.update("m-head", { relationship: "Father" }, admin())).relationship, "Father");
+    await service.remove("m-head", admin());
+  });
   test("admins: batch with consecutive ids (200 with [] for nothing), any update, 404", async () => {
     const { service, repo } = build();
     assert.deepEqual(await service.createBatch([]), { status: 200, records: [] });
