@@ -1592,10 +1592,25 @@ describe("reviews (end to end, last: they create families and move members)", ()
     assert.deepEqual([fee.type, fee.amount, fee.paymentStatus, fee.applicant.type], ["Student Registration", 100, "PENDING", "STUDENT"]);
     const verified = await api("reviewRegistrationPayment", [listed.payment.id], { token: TOKENS.admin }).send({ decision: "VERIFIED" });
     assert.equal(verified.status, 200, JSON.stringify(verified.body));
+    // A blood group on the registration puts the student's account on the Blood Donor list when approved.
+    await query("UPDATE student_applications SET user_id = ?, blood_group = 'A-' WHERE id = ?", [IDS.noFamilyUser, created.body.id]);
     const approved = await api("review", ["StudentApplication", created.body.id], { token: TOKENS.admin }).send({ decision: "APPROVED" });
-    assert.equal(approved.status, 200);
-    assert.match(approved.body.student.studentId, /^NPSI-STU-\d{6}$/);
-    assert.deepEqual([approved.body.student.status, approved.body.application.resultingStudentId], ["ACTIVE", approved.body.student.studentId]);
+    try {
+      assert.equal(approved.status, 200, JSON.stringify(approved.body));
+      assert.match(approved.body.student.studentId, /^NPSI-STU-\d{6}$/);
+      assert.deepEqual([approved.body.student.status, approved.body.application.resultingStudentId], ["ACTIVE", approved.body.student.studentId]);
+      assert.equal(approved.body.application.bloodGroup, "A-");
+      const donors = await query("SELECT blood_group, available, name, mobile FROM blood_donors WHERE user_id = ?", [IDS.noFamilyUser]);
+      assert.deepEqual(
+        donors.map((d) => [d.blood_group, Number(d.available), d.name, d.mobile]),
+        [["A-", 1, "Review Kid", "9876500077"]],
+      );
+    } finally {
+      // Back to a user with no student record and no donor entry for the other suites.
+      await query("DELETE FROM blood_donors WHERE user_id = ?", [IDS.noFamilyUser]);
+      await query("UPDATE students SET user_id = NULL WHERE user_id = ?", [IDS.noFamilyUser]);
+      await query("UPDATE student_applications SET user_id = NULL WHERE id = ?", [created.body.id]);
+    }
   });
   test("transfer: member request notifies the target family; approval moves the member and updates both counts", async () => {
     const request = await api("create", ["TransferRequest"], { token: TOKENS.member }).send({
@@ -1913,22 +1928,46 @@ describe("member details: marital status (family form, add member) and education
     assert.equal(res.body.status, "PENDING");
     assert.equal((await api("remove", ["FamilyMember", res.body.id], { token: TOKENS.member })).status, 204);
   });
+  test("a member's school / college and company name are saved, edited by the head and shown back", async () => {
+    const res = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
+      familyId: FAMILY1,
+      name: "Study Work",
+      relationship: "Brother",
+      occupation: "Private Job",
+      schoolCollege: "  Holkar Science College ",
+      companyName: "Infosys",
+    });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.deepEqual([res.body.schoolCollege, res.body.companyName], ["Holkar Science College", "Infosys"]);
+    const edited = await api("update", ["FamilyMember", res.body.id], { token: TOKENS.member }).send({ companyName: "TCS", schoolCollege: "" });
+    assert.equal(edited.status, 200, JSON.stringify(edited.body));
+    assert.deepEqual([edited.body.schoolCollege, edited.body.companyName], [null, "TCS"]);
+    assert.equal((await api("remove", ["FamilyMember", res.body.id], { token: TOKENS.member })).status, 204);
+  });
   test("the family registration form records the head's marital status and shows it back", async () => {
     const upload = await api("paymentScreenshot", [], { token: TOKENS.noFamily }).attach("file", png, { filename: "pay.png", contentType: "image/png" });
     assert.equal(upload.status, 201, JSON.stringify(upload.body));
     const base = { type: "FAMILY", ...form, screenshotFileId: upload.body.fileId };
     assertError(await api("submitRegistration", [], { token: TOKENS.noFamily }).send({ ...base, maritalStatus: "SINGLE" }), 400, /maritalStatus/);
+    assertError(
+      await api("submitRegistration", [], { token: TOKENS.noFamily }).send({ ...base, maritalStatus: "UNMARRIED", bloodGroup: "C+" }),
+      400,
+      /bloodGroup must be one of/,
+    );
     const sent = await api("submitRegistration", [], { token: TOKENS.noFamily }).send({
       ...base,
       maritalStatus: "UNMARRIED",
       education: "ignored for a family",
+      bloodGroup: "B+",
     });
     assert.equal(sent.status, 201, JSON.stringify(sent.body));
     const mine = await api("myRegistrations", [], { token: TOKENS.noFamily });
     assert.equal(mine.status, 200);
     const own = mine.body.registrations.find((row) => row.type === "FAMILY");
     assert.equal(own.form.maritalStatus, "UNMARRIED");
-    const [row] = await query("SELECT members_data FROM applications WHERE user_id = ?", [IDS.noFamilyUser]);
+    assert.equal(own.form.bloodGroup, "B+", "the blood group comes back for a correction");
+    const [row] = await query("SELECT members_data, blood_group FROM applications WHERE user_id = ?", [IDS.noFamilyUser]);
+    assert.equal(row.blood_group, "B+");
     const head = (typeof row.members_data === "string" ? JSON.parse(row.members_data) : row.members_data)[0];
     assert.equal(head.maritalStatus, "UNMARRIED");
   });
@@ -2063,7 +2102,7 @@ describe("family member rules: married relationships and education by relationsh
           education: "5th",
         }),
         400,
-        "For a spouse, father, mother, brother, sister or the head, education starts from 8th.",
+        "For a spouse, father, mother, brother, sister, sister-in-law, daughter-in-law, younger brother's wife or the head, education starts from 8th.",
       );
     }
     const brother = await api("create", ["FamilyMember"], { token: TOKENS.member }).send({
@@ -2077,7 +2116,7 @@ describe("family member rules: married relationships and education by relationsh
     assertError(
       await api("update", ["FamilyMember", son.body.id], { token: TOKENS.member }).send({ relationship: "Brother" }),
       400,
-      "For a spouse, father, mother, brother, sister or the head, education starts from 8th.",
+      "For a spouse, father, mother, brother, sister, sister-in-law, daughter-in-law, younger brother's wife or the head, education starts from 8th.",
     );
     // An older record keeps what it had while other details change.
     await query("UPDATE family_members SET education = '3rd' WHERE id = ?", [brother.body.id]);

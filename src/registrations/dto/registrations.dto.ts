@@ -1,5 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { IsIn, IsNumber, IsOptional, Matches, Max, Min } from "class-validator";
+import { BLOOD_GROUPS } from "../../blood-help/blood-help.rules.js";
 import { ListQueryDto } from "../../common/dto/list-query.dto.js";
 import { OptionalChoice, OptionalText, RequiredChoice, RequiredText } from "../../common/validation/fields.js";
 import { MARITAL_STATUSES } from "../../family-members/dto/family-members.dto.js";
@@ -30,6 +31,9 @@ export class RegistrationDto {
 
   @OptionalText(150, { description: 'Student registration: class or course, e.g. "12th" or "B.Tech (Computer Science)"' })
   education?: string | null;
+
+  @OptionalChoice(BLOOD_GROUPS, { description: "The applicant's blood group (optional); on approval they join the Blood Donor list" })
+  bloodGroup?: string | null;
 
   @RequiredChoice(CITIES, "City is required.")
   city!: string;

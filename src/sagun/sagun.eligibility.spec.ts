@@ -145,7 +145,7 @@ test("admin review transitions", () => {
 test("a spouse, father or mother is never offered Shagun Bandhan, even with no marital status recorded", () => {
   const settings = DEFAULT_SETTINGS;
   const adult = { gender: "Female", dob: new Date("1995-01-01"), status: "ACTIVE", maritalStatus: null };
-  for (const relationship of ["Spouse", "Mother", " father "]) {
+  for (const relationship of ["Spouse", "Mother", " father ", "Daughter-in-law", "Younger Brother's Wife"]) {
     assert.deepEqual([relationship, evaluateMember({ ...adult, relationship }, settings, "2026-11-25").reason], [relationship, "MARRIED"]);
   }
   assert.equal(evaluateMember({ ...adult, relationship: "Daughter" }, settings, "2026-11-25").eligible, true);

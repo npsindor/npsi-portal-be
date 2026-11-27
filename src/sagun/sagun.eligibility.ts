@@ -53,7 +53,7 @@ export interface MemberFacts {
   // A spouse (and the head's father or mother) is married by the relationship itself, whatever the status field says.
   relationship?: string | null;
 }
-const MARRIED_RELATIONSHIPS = ["spouse", "wife", "husband", "father", "mother"];
+const MARRIED_RELATIONSHIPS = ["spouse", "wife", "husband", "father", "mother", "daughter-in-law", "younger brother's wife"];
 export const isMarried = (member: Pick<MemberFacts, "maritalStatus" | "relationship">): boolean =>
   (member.maritalStatus || "").trim().toUpperCase() === "MARRIED" || MARRIED_RELATIONSHIPS.includes((member.relationship || "").trim().toLowerCase());
 export interface Eligibility {

@@ -4,7 +4,7 @@ import type { PrismaService } from "../database/prisma.service.js";
 import type { EventMemberApplication } from "../generated/prisma/client.js";
 import { admin, as, fakeRecaptcha, rejectsWith, user } from "../testing/fakes.js";
 import type { EventMemberApplyDto } from "./event-members.dto.js";
-import { activeKeyOf, EventMembersService, toPublicCard } from "./event-members.service.js";
+import { activeKeyOf, EventMembersService, nameKey, sameEntry, toPublicCard, villageKey } from "./event-members.service.js";
 
 const SECTION = {
   id: "ems-holi",
@@ -50,7 +50,12 @@ const appRow = (o: Partial<EventMemberApplication> = {}) =>
     ...o,
   }) as EventMemberApplication;
 
-const build = ({ recaptcha = true, open = null as { id: string } | null, row = appRow(), listed = [] as { name: string; village: string | null }[] } = {}) => {
+const build = ({
+  recaptcha = true,
+  open = null as { id: string } | null,
+  row = appRow(),
+  listed = [] as { id?: string; name: string; village: string | null }[],
+} = {}) => {
   const created: unknown[] = [];
   const updates: unknown[] = [];
   const db = {
@@ -218,9 +223,61 @@ describe("EventMembersService", () => {
     const data = created[0] as Record<string, unknown>;
     assert.deepEqual([data.memberId, data.name, data.village, data.mobileDigits], ["m-9", "Kamal Patidar", "Rampura", null]);
   });
+  test("name + village keys: spelling variants of one village and honorifics are the same entry, other villages are not", () => {
+    for (const [a, b] of [
+      ["Dongargaon", "Dongargoan"],
+      ["Gopal Pura", "GopalPura"],
+      ["Ghegava", "Ghegawa"],
+      ["Pipri", "Pipari"],
+      ["Nandgoan Road", "Nandgaon Road"],
+      ["balwadi", "Balwadi"],
+    ])
+      assert.equal(villageKey(a), villageKey(b), `${a} = ${b}`);
+    for (const [a, b] of [
+      ["Dasanga", "Ghegaon"],
+      ["Gopal Pura", "Rampura"],
+      ["Pipari", "Pandhana"],
+    ])
+      assert.notEqual(villageKey(a), villageKey(b), `${a} ≠ ${b}`);
+    assert.equal(nameKey("Shri  Nitin Patidar"), nameKey("nitin patidar"));
+    assert.equal(nameKey("Smt. Asha Patidar"), nameKey("Asha Patidar"));
+    assert.ok(sameEntry({ name: "Nitin Patidar", village: "Dongargoan" }, { name: "Shri Nitin Patidar", village: "Dongargaon" }));
+    assert.ok(!sameEntry({ name: "Alkesh Patidar", village: "Gopal Pura" }, { name: "Alkesh Patidar", village: "Rampura" }));
+  });
+  test("an admin can't add the same name and village again, even spelled differently", async () => {
+    const listing = { sectionKey: "HOLI", name: "Nitin Patidar", village: "Dongargaon", consent: true, approveNow: true } as EventMemberApplyDto;
+    await rejectsWith(build({ listed: [{ name: "Nitin Patidar", village: "Dongargoan" }] }).service.apply(listing, admin()), 409, "EM_SAME_ENTRY");
+    // Also with a mobile typed in (the old check only covered entries without one).
+    await rejectsWith(
+      build({ listed: [{ name: "Shri Nitin Patidar", village: "Dongargoan" }] }).service.apply({ ...listing, mobile: "9876543210" }, admin()),
+      409,
+      "EM_SAME_ENTRY",
+    );
+  });
+  test("approving or editing never makes a second card with the same name and village", async () => {
+    const twin = [{ id: "a-2", name: "Asha", village: "Kasrawad" }];
+    await rejectsWith(build({ listed: twin }).service.review("a-1", { decision: "APPROVED" }, admin()), 409, "EM_SAME_ENTRY");
+    // The row itself is not its own duplicate.
+    assert.equal(
+      (await build({ listed: [{ id: "a-1", name: "Asha", village: "Kasrawad" }] }).service.review("a-1", { decision: "APPROVED" }, admin()))?.id,
+      "a-1",
+    );
+    const approved = appRow({ status: "APPROVED" });
+    await rejectsWith(
+      build({ row: approved, listed: [{ id: "a-2", name: "Asha", village: "Kasrawad" }] }).service.update("a-1", { village: "kasrawad " }, admin()),
+      409,
+      "EM_SAME_ENTRY",
+    );
+    await rejectsWith(
+      build({ row: approved, listed: [{ id: "a-2", name: "Mira", village: "Kasrawad" }] }).service.update("a-1", { name: "Mira" }, admin()),
+      409,
+      "EM_SAME_ENTRY",
+    );
+    assert.equal((await build({ row: approved, listed: twin }).service.update("a-1", { designation: "Coordinator" }, admin())).designation, "Coordinator");
+  });
   test("the same name and village already on the team is a duplicate; members can't use the admin shortcut", async () => {
     const listing = { sectionKey: "HOLI", name: "Mahesh  Patidar", village: "ghegava", consent: true, approveNow: true } as EventMemberApplyDto;
-    await rejectsWith(build({ listed: [{ name: "Mahesh Patidar", village: "Ghegava" }] }).service.apply(listing, admin()), 409, "EM_DUPLICATE");
+    await rejectsWith(build({ listed: [{ name: "Mahesh Patidar", village: "Ghegava" }] }).service.apply(listing, admin()), 409, "EM_SAME_ENTRY");
     assert.equal(
       (await build({ listed: [{ name: "Mahesh Patidar", village: "Rampura" }] }).service.apply(listing, admin())).status,
       "APPROVED",

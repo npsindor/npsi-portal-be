@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
+import { addRegistrationDonor } from "../blood-help/registration-donor.js";
 import { type AdminScope, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE } from "../common/admin-access/admin-scope.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { APPROVAL_EMAIL_IS_FAMILY_LOGIN, bindsToFamily, loginAccount, loginAccountForEmail } from "../common/eligibility/login-account.js";
@@ -111,6 +112,14 @@ export class StudentApplicationReviewService {
         { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingStudentId: student.studentId },
         tx,
       );
+      // The blood group from the registration form puts the student on the Blood Donor list.
+      await addRegistrationDonor(tx, {
+        userId: application.userId,
+        bloodGroup: application.bloodGroup,
+        name: application.studentName,
+        mobile: application.mobile,
+        city: application.city,
+      });
       await this.notifications.create(workflowNotification("studentApproved", student.studentId as string, { studentId: student.studentId }, lang), tx);
       await notify("studentApproved", { studentId: student.studentId });
       return { application: updated as StudentApplication, student };

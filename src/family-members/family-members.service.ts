@@ -20,7 +20,20 @@ import { EDUCATION_FROM_8TH, educationNotAllowed } from "./member-rules.js";
 import { type FamilyMemberVo, toFamilyMemberVo } from "./vo/family-members.vo.js";
 
 // The fields the member's "my family" screen edits; the rest (status above all) is admin-only.
-const MEMBER_FIELDS = ["name", "relationship", "gender", "dob", "mobile", "email", "education", "occupation", "maritalStatus", "address"] as const;
+const MEMBER_FIELDS = [
+  "name",
+  "relationship",
+  "gender",
+  "dob",
+  "mobile",
+  "email",
+  "education",
+  "occupation",
+  "schoolCollege",
+  "companyName",
+  "maritalStatus",
+  "address",
+] as const;
 
 export const MEMBER_ELSEWHERE =
   "This mobile number or email already belongs to an active member of another family. To move them into your family, send a transfer request instead.";
@@ -219,6 +232,8 @@ export class FamilyMembersService {
     });
   }
 }
+// Free text: trimmed, single spaces, and empty means "not given" (null); not sent stays undefined (unchanged).
+const freeText = (value: string | null | undefined) => (value == null ? value : value.replace(/\s+/g, " ").trim() || null);
 // Request fields → Prisma data. Fields that weren't sent stay undefined, which Prisma skips.
 const toCreateData = (input: CreateFamilyMemberDto): Omit<Prisma.FamilyMemberUncheckedCreateInput, "id" | "membershipId"> => ({
   familyId: input.familyId,
@@ -230,6 +245,8 @@ const toCreateData = (input: CreateFamilyMemberDto): Omit<Prisma.FamilyMemberUnc
   email: input.email,
   education: input.education,
   occupation: input.occupation,
+  schoolCollege: freeText(input.schoolCollege),
+  companyName: freeText(input.companyName),
   maritalStatus: input.maritalStatus,
   address: input.address,
   photoUrl: input.photoUrl,
@@ -247,6 +264,8 @@ const toUpdateData = (input: UpdateFamilyMemberDto): Prisma.FamilyMemberUnchecke
   email: input.email,
   education: input.education,
   occupation: input.occupation,
+  schoolCollege: freeText(input.schoolCollege),
+  companyName: freeText(input.companyName),
   maritalStatus: input.maritalStatus,
   address: input.address,
   photoUrl: input.photoUrl,

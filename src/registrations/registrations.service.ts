@@ -420,6 +420,7 @@ export class RegistrationsService {
           gender: head?.gender ?? "",
           dob: head?.dob ?? "",
           maritalStatus: head?.maritalStatus ?? "",
+          bloodGroup: app.row.bloodGroup ?? "",
           ...this.formAddress(app.row),
         },
       };
@@ -432,6 +433,7 @@ export class RegistrationsService {
         gender: app.row.gender ?? "",
         dob: isoDateOnly(app.row.dob) ?? "",
         education: app.row.educationLevel ?? "",
+        bloodGroup: app.row.bloodGroup ?? "",
         ...this.formAddress(app.row),
       },
     };
@@ -519,6 +521,7 @@ export class RegistrationsService {
       membersData: [
         { name, relationship: "Head", gender: dto.gender, dob: isoDateOnly(dob), mobile, email: user.email ?? "", maritalStatus: dto.maritalStatus ?? "" },
       ],
+      bloodGroup: dto.bloodGroup || null,
       submittedDate: new Date(),
       userId: user.id,
     };
@@ -536,6 +539,7 @@ export class RegistrationsService {
       dob,
       gender: dto.gender,
       educationLevel: dto.education?.trim() || null,
+      bloodGroup: dto.bloodGroup || null,
       ...base,
       // Student records have no village column; the native village is kept with the address.
       address: `${base.address} (${NATIVE_LABEL} ${dto.nativeVillage.trim()})`,

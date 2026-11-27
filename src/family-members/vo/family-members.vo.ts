@@ -14,6 +14,8 @@ export class FamilyMemberVo {
   @ApiProperty({ type: "string", nullable: true }) email!: string | null;
   @ApiProperty({ type: "string", nullable: true }) education!: string | null;
   @ApiProperty({ type: "string", nullable: true }) occupation!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) schoolCollege!: string | null;
+  @ApiProperty({ type: "string", nullable: true }) companyName!: string | null;
   @ApiProperty({ type: "string", enum: ["MARRIED", "UNMARRIED"], nullable: true }) maritalStatus!: string | null;
   @ApiProperty({ type: "string", nullable: true }) address!: string | null;
   @ApiProperty({ type: "string", nullable: true }) photoUrl!: string | null;
@@ -35,6 +37,8 @@ export const toFamilyMemberVo = (row: FamilyMember): FamilyMemberVo => ({
   email: row.email,
   education: row.education,
   occupation: row.occupation,
+  schoolCollege: row.schoolCollege ?? null,
+  companyName: row.companyName ?? null,
   maritalStatus: row.maritalStatus,
   address: row.address,
   photoUrl: row.photoUrl,
