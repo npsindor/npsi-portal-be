@@ -15,6 +15,8 @@ export const BLOCK_PAGES = [
   "room-hunting",
   "feedback",
   "contact",
+  "terms",
+  "privacy",
 ] as const;
 export const BLOCK_ROLES = ["INTRO", "ITEM"] as const;
 export const BLOCK_MEDIA_TYPES = ["NONE", "IMAGE", "VIDEO"] as const;

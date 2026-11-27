@@ -53,6 +53,8 @@ model Application {
   nativePlace       String?   @map("native_place") @db.VarChar(255)
   village           String?   @db.VarChar(255)
   membersData       Json?     @map("members_data")
+  /// The applicant's blood group from the registration form (optional); on approval they join the Blood Donor list.
+  bloodGroup        String?   @map("blood_group") @db.VarChar(3)
   submittedDate     DateTime? @map("submitted_date") @db.DateTime(0)
   adminRemarks      String?   @map("admin_remarks") @db.Text
   reviewedDate      DateTime? @map("reviewed_date") @db.DateTime(0)
@@ -185,6 +187,9 @@ model FamilyMember {
   email              String?             @db.VarChar(255)
   education          String?             @db.VarChar(255)
   occupation         String?             @db.VarChar(255)
+  /// Where the member studies / works (free text from the My Family form).
+  schoolCollege      String?             @map("school_college") @db.VarChar(255)
+  companyName        String?             @map("company_name") @db.VarChar(255)
   maritalStatus      String?             @map("marital_status") @db.VarChar(20)
   address            String?             @db.Text
   photoUrl           String?             @map("photo_url") @db.Text
@@ -566,6 +571,8 @@ model StudentApplication {
   linkedMembershipId String?   @map("linked_membership_id") @db.VarChar(255)
   userId             String?   @map("user_id") @db.VarChar(64)
   lang               String?   @db.VarChar(4)
+  /// The student's blood group from the registration form (optional); on approval they join the Blood Donor list.
+  bloodGroup         String?   @map("blood_group") @db.VarChar(3)
 
   @@index([mobileDigits], map: "student_applications_mobile_digits_idx")
   @@index([userId], map: "student_applications_user_id_idx")

@@ -35,6 +35,12 @@ export class CreateFamilyMemberDto {
   @OptionalText(255)
   occupation?: string | null;
 
+  @OptionalText(255, { description: "School / college name" })
+  schoolCollege?: string | null;
+
+  @OptionalText(255, { description: "Company name" })
+  companyName?: string | null;
+
   @OptionalChoice(MARITAL_STATUSES)
   maritalStatus?: string | null;
 
@@ -74,6 +80,8 @@ export const FAMILYMEMBER_ORDERS = orderValues([
   "email",
   "education",
   "occupation",
+  "schoolCollege",
+  "companyName",
   "maritalStatus",
   "address",
   "photoUrl",

@@ -17,6 +17,7 @@ export class ApplicationVo {
   @ApiProperty({ type: "string", nullable: true }) gotra!: string | null;
   @ApiProperty({ type: "string", nullable: true }) nativePlace!: string | null;
   @ApiProperty({ type: "string", nullable: true }) village!: string | null;
+  @ApiProperty({ type: "string", nullable: true, description: "Head's blood group from the registration form" }) bloodGroup!: string | null;
   @ApiProperty({ nullable: true, oneOf: [{ type: "object" }, { type: "array", items: {} }] }) membersData!: unknown;
   @ApiProperty({ type: "string", format: "date-time", nullable: true }) submittedDate!: Date | null;
   @ApiProperty({ type: "string", nullable: true }) adminRemarks!: string | null;
@@ -42,6 +43,7 @@ export const toApplicationVo = (row: Application): ApplicationVo => ({
   gotra: row.gotra,
   nativePlace: row.nativePlace,
   village: row.village,
+  bloodGroup: row.bloodGroup ?? null,
   membersData: row.membersData,
   submittedDate: row.submittedDate,
   adminRemarks: row.adminRemarks,

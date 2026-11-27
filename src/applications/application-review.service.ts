@@ -1,5 +1,6 @@
 import { Injectable } from "@nestjs/common";
 import { AuthService } from "../auth/auth.service.js";
+import { addRegistrationDonor } from "../blood-help/registration-donor.js";
 import { type AdminScope, OUTSIDE_VILLAGES, SUPER_ADMIN_SCOPE, villageAllowed } from "../common/admin-access/admin-scope.js";
 import { type ReviewDto, reviewRemarks } from "../common/dto/review.dto.js";
 import { ApiError } from "../common/filters/api-error.js";
@@ -69,6 +70,14 @@ export class ApplicationReviewService {
       const { family, members } = await this.createFamily(application, tx);
       await this.moveStudentIntoFamily(application, family, members, tx);
       if (fee) await this.transactions.update(fee.id, { familyId: family.familyId }, tx);
+      // The blood group from the registration form puts the head on the Blood Donor list.
+      await addRegistrationDonor(tx, {
+        userId: application.userId,
+        bloodGroup: application.bloodGroup,
+        name: application.familyHeadName,
+        mobile: application.mobile,
+        city: application.city,
+      });
       const updated = await this.applications.update(
         id,
         { status: "APPROVED", adminRemarks: remarks ?? undefined, reviewedDate: new Date(), resultingFamilyId: family.familyId },

@@ -288,7 +288,7 @@ function drawCard(doc: Doc, t: Typo, card: CardView, logo: Image, photo: Image |
   doc.image(logo as never, 14, 6, { height: 82 });
   kalash(doc, 520, 13, 0.62);
   t.line("निमाड़ पाटीदार संगठन, इंदौर", 116, 40, { size: 25, weight: 700, color: "#ffffff", width: 390, align: "center", minSize: 18 });
-  t.line("NIMAR PATIDAR SANGATHAN, INDORE", 116, 55, { size: 8.5, weight: 600, color: C.goldLight, width: 390, align: "center" });
+  t.line("NIMAD PATIDAR SANGATHAN, INDORE", 116, 55, { size: 8.5, weight: 600, color: C.goldLight, width: 390, align: "center" });
   t.line("॥ समाज सेवा • संस्कार • समर्पण ॥", 116, 74, { size: 12.5, weight: 600, color: C.goldLight, width: 390, align: "center" });
 
   // title ribbon
@@ -527,7 +527,7 @@ function coverPage(doc: Doc, t: Typo, meta: BookletMeta, logo: Image, cards: Car
     width: mid.w,
     align: "center",
   });
-  t.line("Nimar Patidar Sangathan, Indore · npsindore.org", 0, 792, { size: 9.5, color: C.muted, width: A4[0], align: "center" });
+  t.line("Nimad Patidar Sangathan, Indore · npsindore.org", 0, 792, { size: 9.5, color: C.muted, width: A4[0], align: "center" });
 }
 
 function indexPage(doc: Doc, t: Typo, page: Extract<PlannedPage<CardView>, { kind: "index" }>) {
@@ -623,7 +623,7 @@ const toBuffer = (doc: Doc) =>
     doc.on("error", reject);
   });
 const newDoc = (title: string) =>
-  new PDFDocument({ autoFirstPage: false, margin: 0, info: { Title: title, Author: "Nimar Patidar Sangathan, Indore", Creator: "NPS Indore portal" } });
+  new PDFDocument({ autoFirstPage: false, margin: 0, info: { Title: title, Author: "Nimad Patidar Sangathan, Indore", Creator: "NPS Indore portal" } });
 const openImage = (doc: Doc, buffer: Buffer): Image => (doc as unknown as { openImage(source: Buffer): Image }).openImage(buffer);
 
 export async function renderBooklet(cards: CardView[], photos: Map<string, Buffer | null>, options: BookletOptions, meta: BookletMeta) {

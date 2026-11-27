@@ -55,6 +55,7 @@ export class StudentApplicationVo {
   @ApiProperty({ type: "string", nullable: true }) fatherName!: string | null;
   @ApiProperty({ type: "string", nullable: true }) motherName!: string | null;
   @ApiProperty({ type: "string", nullable: true }) educationLevel!: string | null;
+  @ApiProperty({ type: "string", nullable: true, description: "Blood group from the registration form" }) bloodGroup!: string | null;
   @ApiProperty({ type: "string", nullable: true }) linkedFamilyId!: string | null;
   @ApiProperty({ type: "string", nullable: true }) linkedMembershipId!: string | null;
   @ApiPropertyOptional({ type: StudentApplicationPaymentVo, nullable: true, description: "Registration fee (admin list only)" })
@@ -90,6 +91,7 @@ export const toStudentApplicationVo = (row: StudentApplication): StudentApplicat
   fatherName: row.fatherName,
   motherName: row.motherName,
   educationLevel: row.educationLevel,
+  bloodGroup: row.bloodGroup ?? null,
   linkedFamilyId: row.linkedFamilyId,
   linkedMembershipId: row.linkedMembershipId,
 });

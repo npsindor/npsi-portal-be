@@ -3499,6 +3499,10 @@
                 "-education",
                 "occupation",
                 "-occupation",
+                "schoolCollege",
+                "-schoolCollege",
+                "companyName",
+                "-companyName",
                 "maritalStatus",
                 "-maritalStatus",
                 "address",
@@ -6472,7 +6476,9 @@
                 "medical",
                 "room-hunting",
                 "feedback",
-                "contact"
+                "contact",
+                "terms",
+                "privacy"
               ]
             }
           }
@@ -14270,6 +14276,21 @@
             "nullable": true,
             "description": "Student registration: class or course, e.g. \"12th\" or \"B.Tech (Computer Science)\""
           },
+          "bloodGroup": {
+            "type": "string",
+            "enum": [
+              "A+",
+              "A-",
+              "B+",
+              "B-",
+              "AB+",
+              "AB-",
+              "O+",
+              "O-"
+            ],
+            "nullable": true,
+            "description": "The applicant's blood group (optional); on approval they join the Blood Donor list"
+          },
           "city": {
             "type": "string",
             "enum": [
@@ -14555,6 +14576,11 @@
             "type": "string",
             "nullable": true
           },
+          "bloodGroup": {
+            "type": "string",
+            "nullable": true,
+            "description": "Head's blood group from the registration form"
+          },
           "membersData": {
             "nullable": true,
             "oneOf": [
@@ -14610,6 +14636,7 @@
           "gotra",
           "nativePlace",
           "village",
+          "bloodGroup",
           "membersData",
           "submittedDate",
           "adminRemarks",
@@ -14914,6 +14941,14 @@
             "type": "string",
             "nullable": true
           },
+          "schoolCollege": {
+            "type": "string",
+            "nullable": true
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true
+          },
           "maritalStatus": {
             "type": "string",
             "enum": [
@@ -14959,6 +14994,8 @@
           "email",
           "education",
           "occupation",
+          "schoolCollege",
+          "companyName",
           "maritalStatus",
           "address",
           "photoUrl",
@@ -16094,6 +16131,16 @@
             "type": "string",
             "nullable": true
           },
+          "schoolCollege": {
+            "type": "string",
+            "nullable": true,
+            "description": "School / college name"
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Company name"
+          },
           "maritalStatus": {
             "type": "string",
             "enum": [
@@ -16182,6 +16229,16 @@
           "occupation": {
             "type": "string",
             "nullable": true
+          },
+          "schoolCollege": {
+            "type": "string",
+            "nullable": true,
+            "description": "School / college name"
+          },
+          "companyName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Company name"
           },
           "maritalStatus": {
             "type": "string",
@@ -17001,6 +17058,11 @@
             "type": "string",
             "nullable": true
           },
+          "bloodGroup": {
+            "type": "string",
+            "nullable": true,
+            "description": "Blood group from the registration form"
+          },
           "linkedFamilyId": {
             "type": "string",
             "nullable": true
@@ -17049,6 +17111,7 @@
           "fatherName",
           "motherName",
           "educationLevel",
+          "bloodGroup",
           "linkedFamilyId",
           "linkedMembershipId"
         ]
@@ -18386,7 +18449,9 @@
               "medical",
               "room-hunting",
               "feedback",
-              "contact"
+              "contact",
+              "terms",
+              "privacy"
             ]
           },
           "section": {
@@ -18568,7 +18633,9 @@
               "medical",
               "room-hunting",
               "feedback",
-              "contact"
+              "contact",
+              "terms",
+              "privacy"
             ]
           },
           "section": {
