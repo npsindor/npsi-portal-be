@@ -791,8 +791,12 @@ model SafarEntry {
 
   adminRemarks String?   @map("admin_remarks") @db.VarChar(500)
   reviewedAt   DateTime? @map("reviewed_at") @db.DateTime(0)
+  /// A direct request ("Request Parcel Delivery", "Request to Travel Together", "Offer to Help") made from another
+  /// member's entry in Available Journeys & Requests: paired with that entry only, never auto-matched with others.
+  targetEntryId String? @map("target_entry_id") @db.VarChar(64)
 
   @@unique([userId, clientRequestId])
+  @@index([targetEntryId])
   @@index([userId, createdAt])
   @@index([status, createdAt])
   @@index([originKey, destinationKey, travelDate, kind, status], map: "safar_route_idx")
@@ -1138,18 +1142,20 @@ model SagunNotice {
 }
 
 model OtpChallenge {
-  id             String    @id @db.VarChar(64)
-  mobileDigits   String    @map("mobile_digits") @db.VarChar(10)
-  purpose        String    @db.VarChar(16)
-  codeHash       String    @map("code_hash") @db.VarChar(64)
-  channel        String    @db.VarChar(16)
-  attempts       Int       @default(0)
-  expiresAt      DateTime  @map("expires_at") @db.DateTime(0)
-  verifiedAt     DateTime? @map("verified_at") @db.DateTime(0)
-  tokenHash      String?   @unique @map("token_hash") @db.VarChar(64)
-  tokenExpiresAt DateTime? @map("token_expires_at") @db.DateTime(0)
-  usedAt         DateTime? @map("used_at") @db.DateTime(0)
-  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(0)
+  id                String    @id @db.VarChar(64)
+  mobileDigits      String    @map("mobile_digits") @db.VarChar(10)
+  purpose           String    @db.VarChar(16)
+  codeHash          String    @map("code_hash") @db.VarChar(64)
+  /// Set when MSG91's OTP widget sent the code: MSG91 created it and checks it with this request id (codeHash then matches nothing).
+  providerRequestId String?   @map("provider_request_id") @db.VarChar(128)
+  channel           String    @db.VarChar(16)
+  attempts          Int       @default(0)
+  expiresAt         DateTime  @map("expires_at") @db.DateTime(0)
+  verifiedAt        DateTime? @map("verified_at") @db.DateTime(0)
+  tokenHash         String?   @unique @map("token_hash") @db.VarChar(64)
+  tokenExpiresAt    DateTime? @map("token_expires_at") @db.DateTime(0)
+  usedAt            DateTime? @map("used_at") @db.DateTime(0)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(0)
 
   @@index([mobileDigits, purpose, createdAt])
   @@map("otp_challenges")

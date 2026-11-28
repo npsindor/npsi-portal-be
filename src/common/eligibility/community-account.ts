@@ -4,7 +4,7 @@ import { LOGIN_USER_STATUSES } from "./login-account.js";
 
 // Who a logged-in user is in the community, from the registration records (never from what the client sends):
 // the owner/member of an ACTIVE family, an ACTIVE registered student, or neither. Services decide which kinds may
-// use them (Sagun: family only; transportation and room hunting: family or student).
+// use them (Sagun: family only; Travel & Assistance and room hunting: family or student).
 export type CommunityKind = "ADMIN" | "FAMILY" | "STUDENT";
 export interface CommunityAccount {
   kind: CommunityKind;

@@ -19,6 +19,28 @@ export class CreateSafarDto {
   @RequiredChoice(["hi", "en"], "Choose Hindi or English.") lang!: string;
   @ApiProperty() @Equals(true) consent!: boolean;
 }
+// A direct request from Available Journeys & Requests: "Request Parcel Delivery" / "Request to Travel Together" on a
+// travel plan (requestType DELIVERY / TRAVEL), "Offer to Help" on a request (no requestType: the request's own).
+export class SafarConnectDto {
+  @ApiProperty() @IsUUID() clientRequestId!: string;
+  @ApiPropertyOptional({ enum: ["DELIVERY", "TRAVEL"] }) @IsOptional() @IsIn(["DELIVERY", "TRAVEL"]) requestType?: string;
+  @OptionalText(1000) itemDetails?: string | null;
+  @OptionalText(2000) instructions?: string | null;
+  @ApiPropertyOptional({ description: "Your preferred time (HH:MM); defaults to the entry's time" })
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  preferredTime?: string;
+  @ApiPropertyOptional({ enum: ["IN_APP", "EMAIL"] }) @IsOptional() @IsIn(["IN_APP", "EMAIL"]) notificationMethod?: string;
+  @RequiredChoice(["hi", "en"], "Choose Hindi or English.") lang!: string;
+  @ApiProperty() @Equals(true) consent!: boolean;
+}
+// Available Journeys & Requests: optional route and date/time the member is looking for (ranks and filters).
+export class SafarAvailableQueryDto {
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(150) origin?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(150) destination?: string;
+  @ApiPropertyOptional({ format: "date" }) @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) date?: string;
+  @ApiPropertyOptional() @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) time?: string;
+}
 export class SafarDecisionDto {
   @ApiProperty({ enum: ["ACCEPT", "DECLINE", "COMPLETE"] }) @IsIn(["ACCEPT", "DECLINE", "COMPLETE"]) decision!: string;
 }

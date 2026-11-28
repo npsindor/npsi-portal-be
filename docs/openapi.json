@@ -7184,7 +7184,7 @@
         },
         "summary": "Available notification channels; no personal data",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7204,7 +7204,7 @@
         ],
         "summary": "Own travel requests, matches and private notifications",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7234,7 +7234,100 @@
         ],
         "summary": "Create a member travel request or willing-to-help travel plan and find matches",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
+        ]
+      }
+    },
+    "/api/v1/safar-saathi/available": {
+      "get": {
+        "operationId": "SafarController_available",
+        "parameters": [
+          {
+            "name": "origin",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "destination",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "date",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          },
+          {
+            "name": "time",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Available Journeys & Requests: other members' open upcoming entries, no names or contacts; optional route/date/time",
+        "tags": [
+          "Travel & Assistance"
+        ]
+      }
+    },
+    "/api/v1/safar-saathi/entries/{id}/connections": {
+      "post": {
+        "operationId": "SafarController_connect",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SafarConnectDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Direct request to another member's entry (parcel, travelling together, or an offer to help); idempotent",
+        "tags": [
+          "Travel & Assistance"
         ]
       }
     },
@@ -7263,7 +7356,7 @@
         ],
         "summary": "Cancel only your own entry and its active matches",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7302,7 +7395,7 @@
         ],
         "summary": "Accept, decline or complete your own match; contacts require mutual acceptance",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7356,9 +7449,9 @@
             "bearer": []
           }
         ],
-        "summary": "Admin: all transportation requests and offers, filtered by status/kind/search",
+        "summary": "Admin: all Travel & Assistance requests and offers, filtered by status/kind/search",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -7397,7 +7490,7 @@
         ],
         "summary": "Admin: set a request's status with remarks (the member is notified)",
         "tags": [
-          "Transportation"
+          "Travel & Assistance"
         ]
       }
     },
@@ -17509,7 +17602,7 @@
         "properties": {
           "hidden": {
             "example": [
-              "page:/transportation",
+              "page:/travel-assistance",
               "section:home.gallery"
             ],
             "description": "Keys switched off (everything else is shown)",
@@ -19321,6 +19414,55 @@
           "travelDate",
           "preferredTime",
           "notificationMethod",
+          "lang",
+          "consent"
+        ]
+      },
+      "SafarConnectDto": {
+        "type": "object",
+        "properties": {
+          "clientRequestId": {
+            "type": "string"
+          },
+          "requestType": {
+            "type": "string",
+            "enum": [
+              "DELIVERY",
+              "TRAVEL"
+            ]
+          },
+          "itemDetails": {
+            "type": "string",
+            "nullable": true
+          },
+          "instructions": {
+            "type": "string",
+            "nullable": true
+          },
+          "preferredTime": {
+            "type": "string",
+            "description": "Your preferred time (HH:MM); defaults to the entry's time"
+          },
+          "notificationMethod": {
+            "type": "string",
+            "enum": [
+              "IN_APP",
+              "EMAIL"
+            ]
+          },
+          "lang": {
+            "type": "string",
+            "enum": [
+              "hi",
+              "en"
+            ]
+          },
+          "consent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "clientRequestId",
           "lang",
           "consent"
         ]

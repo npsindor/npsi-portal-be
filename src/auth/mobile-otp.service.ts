@@ -7,8 +7,9 @@ import { normalizeMobile } from "../common/utils/text.js";
 import { AppConfigService } from "../config/app-config.service.js";
 import { OtpChallengesRepository } from "./otp-challenges.repository.js";
 
+// Purposes the public mobile-code endpoint accepts. ADMIN_LOGIN is internal: only the administrator password step sends it.
 export const OTP_PURPOSES = ["REGISTER", "RESET"] as const;
-export type OtpPurpose = (typeof OTP_PURPOSES)[number];
+export type OtpPurpose = (typeof OTP_PURPOSES)[number] | "ADMIN_LOGIN";
 export type OtpDelivery = "WHATSAPP" | "SMS" | "EMAIL" | "DEV";
 
 const CODE_TTL_MS = 10 * 60 * 1000;
@@ -23,6 +24,7 @@ export const OTP_TOO_MANY = "Too many verification attempts. Please request a ne
 export const OTP_WAIT = "Please wait a moment before requesting another code.";
 export const OTP_HOURLY = "Too many codes requested for this mobile number. Please try again in an hour.";
 export const OTP_UNAVAILABLE = "The verification code could not be sent. Please try again later.";
+export const OTP_CHECK_UNAVAILABLE = "The code could not be checked right now. Please try again in a moment.";
 export const VERIFICATION_EXPIRED = "Your mobile verification has expired. Please verify your mobile number again.";
 
 export const validMobile = (value: unknown): string => {
@@ -31,8 +33,8 @@ export const validMobile = (value: unknown): string => {
   return mobile;
 };
 
-// One-time codes sent to a mobile number (WhatsApp, then SMS, then the email the caller gave as a
-// fallback until MSG91 is configured). A correct code yields a short-lived single-use verification
+// One-time codes sent to a mobile number (WhatsApp, then SMS — a DLT flow with our code, or MSG91's OTP widget, which
+// makes and checks its own code — then the email the caller gave as a fallback until MSG91 is configured). A correct code yields a short-lived single-use verification
 // token, which registration / password reset then consume.
 @Injectable()
 export class MobileOtpService {
@@ -50,6 +52,12 @@ export class MobileOtpService {
     if ((await this.challenges.countSince(mobile, new Date(now - 60 * 60 * 1000))) >= MAX_PER_HOUR) throw new ApiError(429, OTP_HOURLY);
     const code = generateOtp();
     let channel: OtpDelivery | null = await this.messaging.sendOtp(mobile, code);
+    // No WhatsApp / DLT flow (or it failed): MSG91's OTP widget sends its own code by SMS and checks it for us.
+    let providerRequestId: string | null = null;
+    if (!channel) {
+      providerRequestId = await this.messaging.sendWidgetOtp(mobile);
+      if (providerRequestId) channel = "SMS";
+    }
     if (!channel && fallbackEmail && this.mail.isConfigured()) {
       await this.mailCode(fallbackEmail, code);
       channel = "EMAIL";
@@ -61,8 +69,54 @@ export class MobileOtpService {
       channel = "DEV";
     }
     if (!channel) throw new ApiError(503, OTP_UNAVAILABLE);
-    await this.challenges.create({ id: randomId(), mobileDigits: mobile, purpose, codeHash: hashOtp(code), channel, expiresAt: new Date(now + CODE_TTL_MS) });
+    await this.challenges.create({
+      id: randomId(),
+      mobileDigits: mobile,
+      purpose,
+      // A widget code is MSG91's, not ours: keep a hash of an unguessable value so only MSG91's check can pass.
+      codeHash: providerRequestId ? hashOtp(createToken()) : hashOtp(code),
+      providerRequestId,
+      channel,
+      expiresAt: new Date(now + CODE_TTL_MS),
+    });
     return { channel, expiresInSeconds: CODE_TTL_MS / 1000 };
+  }
+
+  // Administrator sign-in: the code to the mobile only (WhatsApp / DLT flow / MSG91 widget), never emailed from here; on
+  // false the caller sends its own emailed code instead. True too when a mobile code went out under 30 s ago (a repeated
+  // password step), so the member keeps the code already on its way.
+  async sendToMobileOnly(mobile: string, purpose: OtpPurpose): Promise<boolean> {
+    const now = Date.now();
+    const last = await this.challenges.latest(mobile, purpose);
+    if (last && !last.verifiedAt && last.channel !== "EMAIL" && now - last.createdAt.getTime() < RESEND_GAP_MS) return true;
+    if ((await this.challenges.countSince(mobile, new Date(now - 60 * 60 * 1000))) >= MAX_PER_HOUR) return false;
+    const code = generateOtp();
+    let channel: OtpDelivery | null = await this.messaging.sendOtp(mobile, code);
+    let providerRequestId: string | null = null;
+    if (!channel) {
+      providerRequestId = await this.messaging.sendWidgetOtp(mobile);
+      if (providerRequestId) channel = "SMS";
+    }
+    if (!channel) return false;
+    await this.challenges.create({
+      id: randomId(),
+      mobileDigits: mobile,
+      purpose,
+      codeHash: providerRequestId ? hashOtp(createToken()) : hashOtp(code),
+      providerRequestId,
+      channel,
+      expiresAt: new Date(now + CODE_TTL_MS),
+    });
+    return true;
+  }
+
+  // A code sendToMobileOnly sent: null when none is waiting (the caller checks its own code), true when right; a wrong
+  // code throws like verify (and counts as an attempt).
+  async checkPending(mobile: string, purpose: OtpPurpose, code: string): Promise<true | null> {
+    const pending = await this.challenges.latest(mobile, purpose);
+    if (!pending || pending.verifiedAt || pending.expiresAt.getTime() <= Date.now()) return null;
+    await this.verify(mobile, purpose, code);
+    return true;
   }
 
   private mailCode(to: string, code: string) {
@@ -79,7 +133,12 @@ export class MobileOtpService {
     const challenge = await this.challenges.latest(mobile, purpose);
     if (!challenge || challenge.verifiedAt || challenge.expiresAt.getTime() <= Date.now()) throw new ApiError(400, OTP_INVALID);
     if (challenge.attempts >= MAX_ATTEMPTS) throw new ApiError(429, OTP_TOO_MANY);
-    if (!safeEqual(hashOtp(code), challenge.codeHash)) {
+    const correct = challenge.providerRequestId
+      ? await this.messaging.verifyWidgetOtp(challenge.providerRequestId, code)
+      : safeEqual(hashOtp(code), challenge.codeHash);
+    // MSG91 unreachable: not the user's fault, so no attempt is counted.
+    if (correct === null) throw new ApiError(503, OTP_CHECK_UNAVAILABLE);
+    if (!correct) {
       await this.challenges.addAttempt(challenge.id);
       throw new ApiError(400, OTP_INVALID);
     }

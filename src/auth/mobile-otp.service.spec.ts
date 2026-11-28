@@ -3,13 +3,30 @@ import { describe, mock, test } from "node:test";
 import type { MailService } from "../common/mail/mail.service.js";
 import type { MessagingService } from "../common/messaging/messaging.service.js";
 import type { AppConfigService } from "../config/app-config.service.js";
-import { as } from "../testing/fakes.js";
-import { MobileOtpService } from "./mobile-otp.service.js";
+import { as, rejectsWith } from "../testing/fakes.js";
+import { MobileOtpService, OTP_CHECK_UNAVAILABLE, OTP_INVALID } from "./mobile-otp.service.js";
 import type { OtpChallengesRepository } from "./otp-challenges.repository.js";
 
-const build = ({ provider = "WHATSAPP" as string | null, mailWorks = true } = {}) => {
-  const challenges = { latest: mock.fn(async () => null), countSince: mock.fn(async () => 0), create: mock.fn(async () => ({})) };
-  const messaging = { sendOtp: mock.fn(async () => provider) };
+type Challenge = { id: string; codeHash: string; providerRequestId: string | null; attempts: number; verifiedAt: Date | null; expiresAt: Date };
+const build = ({
+  provider = "WHATSAPP" as string | null,
+  mailWorks = true,
+  widgetRequestId = null as string | null,
+  widgetCheck = true as boolean | null,
+  pending = null as Challenge | null,
+} = {}) => {
+  const challenges = {
+    latest: mock.fn(async () => pending),
+    countSince: mock.fn(async () => 0),
+    create: mock.fn(async (_data: { codeHash: string; providerRequestId?: string | null; channel: string }) => ({})),
+    addAttempt: mock.fn(async () => undefined),
+    markVerified: mock.fn(async () => undefined),
+  };
+  const messaging = {
+    sendOtp: mock.fn(async () => provider),
+    sendWidgetOtp: mock.fn(async (_mobile: string) => widgetRequestId),
+    verifyWidgetOtp: mock.fn(async (_requestId: string, _code: string) => widgetCheck),
+  };
   const mail = {
     isConfigured: () => true,
     send: mock.fn(async (_message: { to: string }) => {
@@ -23,7 +40,7 @@ const build = ({ provider = "WHATSAPP" as string | null, mailWorks = true } = {}
     as<MailService>(mail),
     as<AppConfigService>({ appEnv: "production" }),
   );
-  return { service, mail, challenges };
+  return { service, mail, challenges, messaging };
 };
 
 describe("MobileOtpService delivery", () => {
@@ -49,5 +66,94 @@ describe("MobileOtpService delivery", () => {
     const result = await service.send("9876543210", "RESET", "member@example.com");
     assert.equal(result.channel, "WHATSAPP");
     assert.equal(challenges.create.mock.callCount(), 1);
+  });
+});
+
+describe("MobileOtpService with MSG91's OTP widget (SMS without our own DLT)", () => {
+  const widgetChallenge = (): Challenge => ({
+    id: "c1",
+    codeHash: "never-matches",
+    providerRequestId: "req-1",
+    attempts: 0,
+    verifiedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+  });
+
+  test("no WhatsApp / DLT flow: the widget sends the SMS, its request id is kept and nothing is emailed", async () => {
+    const { service, mail, challenges, messaging } = build({ provider: null, widgetRequestId: "req-1" });
+    const result = await service.send("9876543210", "RESET", "member@example.com");
+    assert.equal(result.channel, "SMS");
+    assert.equal(messaging.sendWidgetOtp.mock.calls[0].arguments[0], "9876543210");
+    const saved = challenges.create.mock.calls[0].arguments[0];
+    assert.equal(saved.providerRequestId, "req-1");
+    assert.equal(saved.channel, "SMS");
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
+  test("WhatsApp / DLT flow delivered: the widget is not used", async () => {
+    const { service, messaging, challenges } = build({ provider: "SMS", widgetRequestId: "req-1" });
+    await service.send("9876543210", "REGISTER");
+    assert.equal(messaging.sendWidgetOtp.mock.callCount(), 0);
+    assert.equal(challenges.create.mock.calls[0].arguments[0].providerRequestId, null);
+  });
+  test("the widget fails too: the code goes by email", async () => {
+    const { service, mail } = build({ provider: null, widgetRequestId: null });
+    const result = await service.send("9876543210", "RESET", "member@example.com");
+    assert.equal(result.channel, "EMAIL");
+    assert.equal(mail.send.mock.callCount(), 1);
+  });
+  test("a widget code is checked by MSG91 and a right one gives a verification token", async () => {
+    const { service, messaging, challenges } = build({ pending: widgetChallenge(), widgetCheck: true });
+    const token = await service.verify("9876543210", "RESET", "123456");
+    assert.ok(token);
+    assert.deepEqual(messaging.verifyWidgetOtp.mock.calls[0].arguments, ["req-1", "123456"]);
+    assert.equal(challenges.markVerified.mock.callCount(), 1);
+  });
+  test("a wrong widget code counts as a failed attempt", async () => {
+    const { service, challenges } = build({ pending: widgetChallenge(), widgetCheck: false });
+    await rejectsWith(service.verify("9876543210", "RESET", "123456"), 400, OTP_INVALID);
+    assert.equal(challenges.addAttempt.mock.callCount(), 1);
+    assert.equal(challenges.markVerified.mock.callCount(), 0);
+  });
+  test("MSG91 unreachable while checking: 503 and no attempt counted against the user", async () => {
+    const { service, challenges } = build({ pending: widgetChallenge(), widgetCheck: null });
+    await rejectsWith(service.verify("9876543210", "RESET", "123456"), 503, OTP_CHECK_UNAVAILABLE);
+    assert.equal(challenges.addAttempt.mock.callCount(), 0);
+  });
+});
+
+describe("MobileOtpService.sendToMobileOnly / checkPending (administrator sign-in)", () => {
+  const recent = (channel: string, ageMs: number): Challenge & { channel: string; createdAt: Date } => ({
+    id: "c0",
+    codeHash: "x",
+    providerRequestId: "req-0",
+    attempts: 0,
+    verifiedAt: null,
+    expiresAt: new Date(Date.now() + 60_000),
+    channel,
+    createdAt: new Date(Date.now() - ageMs),
+  });
+
+  test("sends by the widget and records the challenge; never emails", async () => {
+    const { service, mail, challenges } = build({ provider: null, widgetRequestId: "req-9" });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), true);
+    const saved = challenges.create.mock.calls[0].arguments[0];
+    assert.equal(saved.providerRequestId, "req-9");
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
+  test("nothing could send it: false (the caller emails its own code), nothing recorded", async () => {
+    const { service, challenges, mail } = build({ provider: null, widgetRequestId: null });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), false);
+    assert.equal(challenges.create.mock.callCount(), 0);
+    assert.equal(mail.send.mock.callCount(), 0);
+  });
+  test("a code sent by SMS under 30 s ago: true without sending another", async () => {
+    const { service, messaging } = build({ provider: null, widgetRequestId: "req-9", pending: recent("SMS", 5_000) });
+    assert.equal(await service.sendToMobileOnly("8989529107", "ADMIN_LOGIN"), true);
+    assert.equal(messaging.sendWidgetOtp.mock.callCount(), 0);
+  });
+  test("checkPending: null when no code is waiting", async () => {
+    const { service, messaging } = build();
+    assert.equal(await service.checkPending("8989529107", "ADMIN_LOGIN", "123456"), null);
+    assert.equal(messaging.verifyWidgetOtp.mock.callCount(), 0);
   });
 });

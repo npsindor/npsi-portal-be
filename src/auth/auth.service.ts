@@ -44,6 +44,7 @@ export const MOBILE_TAKEN = "This mobile number is already registered.";
 export const NOT_VERIFIED = "Please verify your account before logging in.";
 // Administrator sign-in has a second step: the code emailed to the admin after the password was right.
 export const ADMIN_CODE_REQUIRED = "Enter the sign-in code sent to your email to finish logging in.";
+export const ADMIN_CODE_SMS = "Enter the sign-in code sent by SMS to the mobile number on your account to finish logging in.";
 export const ADMIN_EMAIL_REQUIRED = "Administrator accounts need an email address for the sign-in code. Ask another administrator to add one.";
 export const ADMIN_CODE_NOT_SENT = "The sign-in code could not be sent. Please try again later.";
 export const OTP_INVALID_CODE = "Invalid or expired verification code.";
@@ -221,7 +222,12 @@ export class AuthService {
     const existing = phone ? await this.users.findByPhone(phone) : await this.users.findByEmail(identifier);
     const notExpired = existing?.otpExpiresAt && existing.otpExpiresAt > new Date();
     const matches = existing?.otpHash && safeEqual(hashOtp(code), existing.otpHash);
-    if (!existing || !notExpired || !matches) throw new ApiError(400, OTP_INVALID_CODE);
+    // An administrator's code may instead have gone by SMS (MSG91 checks that one; a wrong code counts as an attempt).
+    const bySms =
+      existing && !(notExpired && matches) && existing.role === "admin" && existing.phone
+        ? await this.mobileOtp.checkPending(existing.phone, "ADMIN_LOGIN", code)
+        : null;
+    if (!existing || (!(notExpired && matches) && !bySms)) throw new ApiError(400, OTP_INVALID_CODE);
     // Same portal rules as the password login: the code proves the email, not which portal the account may use.
     const account = await this.users.loginAccount(existing);
     assertLoginPortal(existing, account, asPortal(body?.portal));
@@ -231,6 +237,16 @@ export class AuthService {
     const user = (await this.users.findById(existing.id)) as UserRow;
     if (isFirstVerification) this.sendRegistrationEmails(user).catch(logMailError("registration email"));
     return { user: PublicUserVo.from(user), accessToken: token, account: AccountVo.from(account) };
+  }
+
+  // True when the administrator's sign-in code went to their mobile; any failure falls back to the emailed code.
+  private async adminCodeBySms(phone: string): Promise<boolean> {
+    try {
+      return await this.mobileOtp.sendToMobileOnly(phone, "ADMIN_LOGIN");
+    } catch (error) {
+      console.error("[auth] admin sign-in code by SMS failed:", error instanceof Error ? error.message : error);
+      return false;
+    }
   }
 
   // Same response whether or not the account exists, so this can't be used to
@@ -264,6 +280,8 @@ export class AuthService {
     assertLoginPortal(user, account, asPortal(body?.portal));
     // Administrators finish with the code emailed to them (POST /auth/otp-verifications); no session until then.
     if (user.role === "admin" && this.config.adminLoginCode) {
+      // A verified mobile gets the code by SMS; when that can't be sent, the emailed code below as before.
+      if (user.phone && user.phoneVerified && (await this.adminCodeBySms(user.phone))) throw new ApiError(403, ADMIN_CODE_SMS);
       if (!user.email) throw new ApiError(403, ADMIN_EMAIL_REQUIRED);
       if (!this.mail.isConfigured() && this.config.appEnv !== "development") throw new ApiError(503, ADMIN_CODE_NOT_SENT);
       try {

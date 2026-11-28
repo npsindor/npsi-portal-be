@@ -9,7 +9,7 @@ import { SITE_KEYS, SiteVisibilityService, SiteVisibilityUpdateDto } from "./sit
 describe("SiteVisibilityService", () => {
   test("lists only the switched-off keys it knows; an admin's change is saved per key", async () => {
     const rows = new Map<string, boolean>([
-      ["page:/transportation", false],
+      ["page:/travel-assistance", false],
       ["section:home.gallery", false],
       ["page:/old-removed-page", false],
       ["page:/about", true],
@@ -25,11 +25,11 @@ describe("SiteVisibilityService", () => {
       $transaction: mock.fn(async (work: Promise<unknown>[]) => Promise.all(work)),
     };
     const service = new SiteVisibilityService(as<PrismaService>(db));
-    assert.deepEqual((await service.hidden()).hidden, ["page:/transportation", "section:home.gallery"]);
+    assert.deepEqual((await service.hidden()).hidden, ["page:/travel-assistance", "section:home.gallery"]);
     const after = await service.update(
       {
         items: [
-          { key: "page:/transportation", visible: true },
+          { key: "page:/travel-assistance", visible: true },
           { key: "section:home.updates", visible: false },
         ],
       },

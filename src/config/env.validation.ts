@@ -36,6 +36,8 @@ export class EnvironmentVariables {
   @IsOptional() @IsString() MSG91_WHATSAPP_NOTICE_TEMPLATE?: string;
   @IsOptional() @IsString() MSG91_SMS_OTP_TEMPLATE_ID?: string;
   @IsOptional() @IsString() MSG91_SMS_OTP_VAR?: string;
+  // MSG91 OTP widget: SMS codes with MSG91's default template (no DLT of our own); MSG91 creates and checks the code.
+  @IsOptional() @IsString() MSG91_WIDGET_ID?: string;
   @IsOptional() @IsString() PAYMENTS_PRIVATE_DIR?: string;
 }
 

@@ -15,7 +15,7 @@ export const SITE_PAGES = [
   "/events",
   "/news",
   "/sagun",
-  "/transportation",
+  "/travel-assistance",
   "/room-hunting",
   "/medical",
   "/community-services",
@@ -66,7 +66,7 @@ export class SiteVisibilityUpdateDto {
 }
 
 export class SiteVisibilityVo {
-  @ApiProperty({ example: ["page:/transportation", "section:home.gallery"], description: "Keys switched off (everything else is shown)" })
+  @ApiProperty({ example: ["page:/travel-assistance", "section:home.gallery"], description: "Keys switched off (everything else is shown)" })
   hidden!: string[];
 }
 
